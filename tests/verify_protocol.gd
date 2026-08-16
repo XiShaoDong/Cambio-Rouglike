@@ -1,0 +1,106 @@
+extends Node
+
+## P0-N 协议验证（headless 单进程，直接驱动服务器端逻辑）：
+##   godot --headless --path . res://tests/verify_protocol.tscn
+## 验证：快照契约字段、revision 递增、拒绝码、action_id 幂等。
+## 拒绝码走 sender=1 的本地信号路径收集；跨 peer 拒绝码由 verify_net 双实例覆盖。
+
+var failures := 0
+var checks := 0
+var seen_rejects: Array[int] = []
+var aborted := false
+
+func _ready() -> void:
+	GameState.command_rejected.connect(_on_rejected)
+	GameState.match_aborted.connect(_on_aborted)
+	GameState._reset_match()
+	GameState._add_player(1, "房主")
+	run_checks()
+	print("=== RESULT: %d/%d passed%s ===" % [checks - failures, checks, " (FAILURES!)" if failures else ""])
+	get_tree().quit(1 if failures else 0)
+
+func _on_rejected(code: int, _message: String) -> void:
+	seen_rejects.append(code)
+
+func _on_aborted(_code: int, _message: String) -> void:
+	aborted = true
+
+func _check(name: String, ok: bool) -> void:
+	checks += 1
+	if not ok:
+		failures += 1
+		printerr("[FAIL] " + name)
+	else:
+		print("[PASS] " + name)
+
+func _rejected(code: int) -> bool:
+	return code in seen_rejects
+
+func run_checks() -> void:
+	var s: Dictionary = GameState._snapshot_for(1)
+	_check("快照含 protocol_version/match_id/state_revision",
+		s.has("protocol_version") and s.has("match_id") and s.has("state_revision"))
+	_check("快照不含暗牌 rank/suit/value（T20）", not _snapshot_leaks(s))
+	_check("空 action_id 放行", GameState._check_action_id(1, ""))
+	_check("action_id 首次放行", GameState._check_action_id(1, "dup-1"))
+	_check("同一 action_id 第二次被拒", not GameState._check_action_id(1, "dup-1"))
+	_check("不同 action_id 放行", GameState._check_action_id(1, "dup-2"))
+
+	seen_rejects.clear()
+	GameState._server_start_match(1)
+	_check("只有 1 人开局被拒 NOT_ENOUGH_PLAYERS", _rejected(GameState.RejectCode.NOT_ENOUGH_PLAYERS))
+	_check("被拒后仍在 LOBBY", GameState.phase == GameState.Phase.LOBBY)
+
+	GameState._add_player(2, "玩家B")
+	GameState._server_start_match(1)
+	_check("开局后 phase=INITIAL_PEEK", GameState.phase == GameState.Phase.INITIAL_PEEK)
+	_check("match_id 已生成", not GameState.match_id.is_empty())
+	var rev0 := GameState.state_revision
+
+	GameState._server_initial_ready(1)
+	GameState._server_initial_ready(2)
+	_check("全员确认后 phase=TURN_DRAW", GameState.phase == GameState.Phase.TURN_DRAW)
+	_check("revision 已递增", GameState.state_revision > rev0)
+
+	GameState._server_take(1, "draw", "draw-1")
+	var phase_after := GameState.phase
+	seen_rejects.clear()
+	GameState._server_take(1, "draw", "draw-1")
+	_check("重复 action_id 不重复执行", GameState.phase == phase_after)
+	_check("重复 action_id 被拒（DUPLICATE 或 INVALID_PHASE）",
+		_rejected(GameState.RejectCode.DUPLICATE_OR_EXPIRED_ACTION) or _rejected(GameState.RejectCode.INVALID_PHASE))
+
+	seen_rejects.clear()
+	GameState._server_replace(1, 99, "r1")
+	_check("越界槽位被拒 INVALID_SLOT", _rejected(GameState.RejectCode.INVALID_SLOT))
+
+	GameState._server_replace(1, 0, "r2")
+	_check("合法替换进入 SLAP_WINDOW", GameState.phase == GameState.Phase.SLAP_WINDOW)
+
+	seen_rejects.clear()
+	GameState._server_take(1, "draw", "t2")
+	_check("SLAP_WINDOW 中取牌被拒 INVALID_PHASE", _rejected(GameState.RejectCode.INVALID_PHASE))
+
+	seen_rejects.clear()
+	GameState._server_kongbaya(1, "kb1")
+	_check("非 TURN_DRAW 喊 Kongbaya 被拒 INVALID_PHASE",
+		_rejected(GameState.RejectCode.INVALID_PHASE))
+
+	var s2: Dictionary = GameState._snapshot_for(1)
+	_check("贴牌窗口快照仍不含暗牌", not _snapshot_leaks(s2))
+
+	# 断线中止：对局中玩家离开 → match_aborted + 回到大厅
+	GameState._server_slap(1, 1, 0, "s1")
+	aborted = false
+	GameState._on_peer_left(2)
+	_check("对局中玩家离开触发 match_aborted", aborted)
+	_check("中止后回到 LOBBY", GameState.phase == GameState.Phase.LOBBY)
+	_check("中止后房主保留", GameState.players.has(1) and GameState.players.size() == 1)
+	_check("中止不计分不扣血", int(GameState.players[1].health) == 3)
+
+func _snapshot_leaks(s: Dictionary) -> bool:
+	for player in s.get("players", []):
+		for slot in player.get("slots", []):
+			if slot.has("card"):
+				return true
+	return false

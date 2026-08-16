@@ -1,0 +1,55 @@
+/* ============================================
+   Cambio 风格多人卡牌游戏 - 浅色配色方案
+   基调：米白 / 暖沙色，柔和不刺眼
+   ============================================ */
+
+:root {
+  /* ---------- 背景层级 ---------- */
+  --bg-table: #EDE6D6;        /* 游戏桌面背景 */
+  --bg-surface: #FFFDF8;      /* 卡片 / 主面板背景（米白） */
+  --bg-surface-alt: #F7F1E4;  /* 次级面板，如侧边栏、设置面板 */
+  --bg-elevated: #FFFFFF;     /* 弹窗、浮层、Toast */
+
+  /* ---------- 文字 ---------- */
+  --text-primary: #3A362E;    /* 主文字，暖棕黑，比纯黑柔和 */
+  --text-secondary: #8B8577;  /* 次要说明文字 */
+  --text-muted: #B5AF9E;      /* 占位符、禁用文字 */
+  --text-inverse: #FFFDF8;    /* 深色/彩色按钮上的文字 */
+
+  /* ---------- 边框 / 分割线 ---------- */
+  --border: #E3DBC8;
+  --border-strong: #CFC5AC;
+
+  /* ---------- 强调色（CTA，如"喊 Cambio"按钮） ---------- */
+  --accent: #D9714F;          /* 陶土橙 */
+  --accent-hover: #C4623F;
+  --accent-soft: #FBE3D8;     /* 浅底色，用于 badge / 高亮区域 */
+
+  /* ---------- 语义色（游戏状态提示，均做低饱和处理，避免刺眼） ---------- */
+  --success: #7A9B6E;         /* 摸牌成功 / 猜对 / 回合完成 */
+  --success-soft: #E4EDDE;
+  --danger: #C1604F;          /* 出局 / 犯规 / 惩罚 */
+  --danger-soft: #F5E1DB;
+  --warning: #D9A441;         /* 限时提醒 / 待确认操作 */
+  --warning-soft: #F7EBD3;
+
+  /* ---------- 玩家 / 座位标识色（6 个，柔和莫兰迪色系） ---------- */
+  --player-1: #E8917B; --player-1-soft: #FBE7DF; /* 珊瑚 */
+  --player-2: #8FAE8B; --player-2-soft: #E9F0E6; /* 鼠尾草绿 */
+  --player-3: #7FA6C9; --player-3-soft: #E5EEF5; /* 雾霾蓝 */
+  --player-4: #A896C2; --player-4-soft: #EEE9F3; /* 淡紫 */
+  --player-5: #D9A441; --player-5-soft: #F7EBD3; /* 暖芥末黄 */
+  --player-6: #D98CA0; --player-6-soft: #F7E5EA; /* 灰玫瑰 */
+
+  /* ---------- 卡牌本身 ---------- */
+  --card-face-bg: #FFFDF8;    /* 牌面 */
+  --card-back-bg: #D9714F;    /* 牌背，用主强调色做统一识别 */
+  --card-back-pattern: #C4623F; /* 牌背花纹稍深一档 */
+  --card-border: #E3DBC8;
+  --card-shadow: rgba(58, 54, 46, 0.08); /* 极轻投影，用暖棕黑取代纯黑阴影 */
+
+  /* ---------- 圆角 / 阴影统一变量（可选） ---------- */
+  --radius-card: 10px;
+  --radius-panel: 16px;
+  --shadow-panel: 0 2px 8px rgba(58, 54, 46, 0.06);
+}
