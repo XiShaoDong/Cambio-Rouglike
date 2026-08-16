@@ -152,7 +152,12 @@ func _handle_mouse_click(event: InputEvent) -> void:
 		tween_hover = create_tween().set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
 		tween_hover.tween_property(self, "rotation", 0.0, 0.3)
 
+func _alive() -> bool:
+	return is_inside_tree() and not is_queued_for_deletion()
+
 func _on_gui_input(event: InputEvent) -> void:
+	if not _alive():
+		return
 	_handle_mouse_click(event)
 	if following_mouse:
 		return
@@ -163,21 +168,29 @@ func _on_gui_input(event: InputEvent) -> void:
 	var lerp_val_y := remap(mouse_pos.y, 0.0, size.y, 0.0, 1.0)
 	var rot_x := rad_to_deg(lerp_angle(-angle_max, angle_max, lerp_val_x))
 	var rot_y := rad_to_deg(lerp_angle(angle_max, -angle_max, lerp_val_y))
+	if not is_instance_valid(card_texture):
+		return
 	var shader_material := card_texture.material as ShaderMaterial
 	if shader_material:
 		shader_material.set_shader_parameter("x_rot", rot_y)
 		shader_material.set_shader_parameter("y_rot", rot_x)
 
 func _on_mouse_entered() -> void:
+	if not _alive():
+		return
 	if tween_hover and tween_hover.is_running():
 		tween_hover.kill()
 	tween_hover = create_tween().set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_ELASTIC)
 	tween_hover.tween_property(self, "scale", Vector2(1.2, 1.2), 0.5)
 
 func _on_mouse_exited() -> void:
+	if not _alive():
+		return
 	if tween_rot and tween_rot.is_running():
 		tween_rot.kill()
 	tween_rot = create_tween().set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK).set_parallel(true)
+	if not is_instance_valid(card_texture):
+		return
 	var shader_material := card_texture.material as ShaderMaterial
 	if shader_material:
 		tween_rot.tween_property(shader_material, "shader_parameter/x_rot", 0.0, 0.5)
