@@ -700,6 +700,9 @@ func _card_actionable(player_id: int, _slot: int) -> bool:
 	return false
 
 func _highlight(button: Button, on: bool) -> void:
+	if button.has_method("highlight") and button.get_script() != null:
+		button.call("highlight", on)
+		return
 	var base: StyleBoxFlat = button.get_meta("base_style", null) as StyleBoxFlat
 	if on:
 		var style := (base.duplicate() if base else StyleBoxFlat.new()) as StyleBoxFlat

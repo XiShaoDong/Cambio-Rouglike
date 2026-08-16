@@ -40,8 +40,12 @@ func _ready() -> void:
 	pivot_offset = size / 2.0
 	angle_max = deg_to_rad(angle_max)
 	apply_card()
+	if _pending_highlight:
+		highlight(true)
 
 func _process(delta: float) -> void:
+	if not is_inside_tree() or is_queued_for_deletion():
+		return
 	_rotate_velocity(delta)
 	_follow_mouse(delta)
 	_handle_shadow(delta)
@@ -83,15 +87,21 @@ func apply_card() -> void:
 	shadow.visible = show_shadow
 
 func highlight(on: bool) -> void:
+	if not is_inside_tree():
+		_pending_highlight = on
+		return
+	_pending_highlight = on
+	var glow := UITheme.color("highlight_glow")
 	if on:
-		if tween_hover and tween_hover.is_running():
-			tween_hover.kill()
-		var style := (card_texture.material as ShaderMaterial) if card_texture.material else null
-		if style:
-			style.set_shader_parameter("y_rot", 0.0)
-		shadow.self_modulate = Color(1, 1, 1, 0.5)
-	else:
+		modulate = Color(1.35, 1.25, 1.0, 1.0)
+		if is_instance_valid(shadow):
+			shadow.self_modulate = glow
+		return
+	modulate = Color.WHITE
+	if is_instance_valid(shadow):
 		shadow.self_modulate = Color(1, 1, 1, 0.168627)
+
+var _pending_highlight := false
 
 func draw_in(from_pos: Vector2, delay: float, target_pos: Vector2, rot := 0.0) -> void:
 	global_position = from_pos
@@ -116,7 +126,7 @@ func _rotate_velocity(delta: float) -> void:
 	rotation = displacement
 
 func _handle_shadow(_delta: float) -> void:
-	if not show_shadow:
+	if not show_shadow or not is_instance_valid(shadow):
 		return
 	var center: Vector2 = get_viewport_rect().size / 2.0
 	var distance: float = global_position.x - center.x
