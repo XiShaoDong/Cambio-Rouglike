@@ -14,6 +14,10 @@ const CARD_H := 89.0
 @export var damp := 10.0
 @export var velocity_multiplier := 2.0
 @export var show_shadow := true
+## 是否启用 hover/拖拽等动效（牌堆/弃牌堆设 false，仅保留点击）
+@export var interactive := true
+## 是否可拖拽（手牌默认关闭，避免干扰点击选择）
+@export var draggable := false
 
 var card_data: Dictionary = {}
 var is_face_up := false
@@ -139,6 +143,8 @@ func _follow_mouse(_delta: float) -> void:
 	global_position = mouse_pos - (size / 2.0)
 
 func _handle_mouse_click(event: InputEvent) -> void:
+	if not draggable:
+		return
 	if not event is InputEventMouseButton:
 		return
 	if event.button_index != MOUSE_BUTTON_LEFT:
@@ -159,6 +165,8 @@ func _on_gui_input(event: InputEvent) -> void:
 	if not _alive():
 		return
 	_handle_mouse_click(event)
+	if not interactive:
+		return
 	if following_mouse:
 		return
 	if not event is InputEventMouseMotion:
@@ -176,7 +184,7 @@ func _on_gui_input(event: InputEvent) -> void:
 		shader_material.set_shader_parameter("y_rot", rot_x)
 
 func _on_mouse_entered() -> void:
-	if not _alive():
+	if not _alive() or not interactive:
 		return
 	if tween_hover and tween_hover.is_running():
 		tween_hover.kill()
@@ -184,7 +192,7 @@ func _on_mouse_entered() -> void:
 	tween_hover.tween_property(self, "scale", Vector2(1.2, 1.2), 0.5)
 
 func _on_mouse_exited() -> void:
-	if not _alive():
+	if not _alive() or not interactive:
 		return
 	if tween_rot and tween_rot.is_running():
 		tween_rot.kill()

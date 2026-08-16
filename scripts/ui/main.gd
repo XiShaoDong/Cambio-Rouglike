@@ -289,10 +289,10 @@ func _build_game() -> void:
 	pile_row.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	pile_row.add_theme_constant_override("separation", 28)
 	center_unit.add_child(pile_row)
-	deck_button = _make_card_button({}, Vector2(68, 107))
+	deck_button = _make_card_button({}, Vector2(68, 107), false)
 	deck_button.pressed.connect(_on_deck_pressed)
 	pile_row.add_child(deck_button)
-	discard_button = _make_card_button({}, Vector2(68, 107))
+	discard_button = _make_card_button({}, Vector2(68, 107), false)
 	discard_button.pressed.connect(_on_discard_pressed)
 	pile_row.add_child(discard_button)
 	var pile_hint := Label.new()
@@ -322,7 +322,7 @@ func _build_game() -> void:
 	pending_card_box.grow_vertical = Control.GROW_DIRECTION_BOTH
 	pending_card_box.visible = false
 	pending_overlay.add_child(pending_card_box)
-	pending_card_button = _make_card_button({}, Vector2(68, 107))
+	pending_card_button = _make_card_button({}, Vector2(68, 107), false)
 	pending_card_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	pending_card_box.add_child(pending_card_button)
 	pending_action_button = _button("Use Power")
@@ -561,7 +561,7 @@ func _update_pending_card(phase: int, is_current: bool) -> void:
 		return
 	var pending: Dictionary = latest_state.pending
 	pending_card_button.queue_free()
-	pending_card_button = _make_card_button(pending, Vector2(68, 107))
+	pending_card_button = _make_card_button(pending, Vector2(68, 107), false)
 	pending_card_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	pending_card_box.add_child(pending_card_button)
 	pending_card_button.move_to_front()
@@ -723,7 +723,7 @@ func _card_scene() -> PackedScene:
 		_card_scene_cache = load("res://scenes/ui/card.tscn")
 	return _card_scene_cache
 
-func _make_card_button(card: Dictionary, card_size: Vector2) -> Button:
+func _make_card_button(card: Dictionary, card_size: Vector2, interactive := true) -> Button:
 	var btn: Button = _card_scene().instantiate()
 	btn.custom_minimum_size = card_size
 	btn.size = card_size
@@ -731,6 +731,7 @@ func _make_card_button(card: Dictionary, card_size: Vector2) -> Button:
 	if btn.has_method("setup"):
 		btn.call("setup", card, not card.is_empty(), -1, card_size)
 	btn.set("show_shadow", true)
+	btn.set("interactive", interactive)
 	btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 	return btn
 
