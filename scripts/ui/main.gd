@@ -106,6 +106,7 @@ var is_dev_join := false
 var _ready_clicked := false
 var start_button: Button = null
 var _cards := CardFactory.new()
+var _card_slots: Dictionary = {}
 
 func _ready() -> void:
 	_build_interface()
@@ -618,6 +619,9 @@ func _render_player_section(box: VBoxContainer, player: Dictionary, viewer: int,
 		card_button.pressed.connect(_on_card_pressed.bind(int(player.id), slot_index))
 		_highlight(card_button, _card_actionable(int(player.id), slot_index))
 		hand.add_child(card_button)
+		if not _card_slots.has(int(player.id)):
+			_card_slots[int(player.id)] = {}
+		_card_slots[int(player.id)][slot_index] = card_button
 	var name_panel := PanelContainer.new()
 	var name_style := StyleBoxFlat.new()
 	name_style.bg_color = UITheme.color("player_self_bg") if is_me else UITheme.color("player_other_bg")
@@ -753,55 +757,43 @@ func _mode_instruction(fallback: String) -> String:
 		"jack_their": return "J：请选择对方要盲换的牌。"
 	return fallback
 
-func _show_private_reveal(title: String, revealed_cards: Array) -> void:
+func _show_private_reveal(title: String, revealed_cards: Array, target: Dictionary = {}) -> void:
 	for card in revealed_cards:
-		_flip_card_show(title, card)
+		await _flip_card_show(title, card, target)
 
-func _flip_card_show(title: String, card: Dictionary) -> void:
-	var layer := Panel.new()
+func _flip_card_show(_title: String, card: Dictionary, target: Dictionary = {}) -> void:
+	var anchor: Control = null
+	var target_id := int(target.get("player_id", 0))
+	var slot := int(target.get("slot", -1))
+	if _card_slots.has(target_id) and _card_slots[target_id].has(slot):
+		anchor = _card_slots[target_id][slot]
+	# 在目标卡牌原位置叠加覆盖层
+	var layer := Control.new()
 	layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	layer.mouse_filter = Control.MOUSE_FILTER_STOP
-	var dim := StyleBoxFlat.new()
-	dim.bg_color = Color(0, 0, 0, 0.55)
-	layer.add_theme_stylebox_override("panel", dim)
-	add_child(layer)
-	var title_label := Label.new()
-	title_label.text = title
-	title_label.add_theme_font_size_override("font_size", 20)
-	title_label.add_theme_color_override("font_color", UITheme.color("accent"))
-	title_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	title_label.offset_top = -150
-	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	layer.add_child(title_label)
-	var card_face := _make_card_button(card, Vector2(114, 178))
+	layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	(anchor if anchor else game_panel).add_child(layer)
+	var card_size := Vector2(90, 140)
+	var card_face := _make_card_button(card, card_size)
 	card_face.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	card_face.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layer.add_child(card_face)
 	card_face.pivot_offset = card_face.size / 2.0
-	var flip := layer.create_tween()
-	flip.set_trans(Tween.TRANS_QUAD)
-	flip.set_ease(Tween.EASE_IN)
-	flip.tween_property(card_face, "scale:x", 0.05, 0.28)
-	flip.tween_callback(func():
-		card_face.visible = false
-		var back := _make_card_button({}, Vector2(114, 178))
-		back.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-		back.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		layer.add_child(back)
-		back.scale = Vector2(0.05, 1.0)
-		back.pivot_offset = back.size / 2.0
-		flip.set_ease(Tween.EASE_OUT)
-		flip.tween_property(back, "scale:x", 1.0, 0.28)
-		flip.tween_interval(1.8)
-		flip.set_ease(Tween.EASE_IN)
-		flip.tween_property(back, "scale:x", 0.05, 0.28)
-		flip.tween_callback(func():
-			back.queue_free()
-			card_face.visible = true
-			flip.set_ease(Tween.EASE_OUT)
-			flip.tween_property(card_face, "scale:x", 1.0, 0.28)
-			flip.tween_callback(layer.queue_free)))
+	# 阶段1：牌面 scale.x 收缩到 0
+	await _scale_to(card_face, 0.05, 0.28)
+	# 阶段2：翻到背面（显示真实牌 → 这里直接展示牌面内容停留）
+	card_face.visible = true
+	await _scale_to(card_face, 1.0, 0.28)
+	# 阶段3：停留后翻回
+	await get_tree().create_timer(1.8).timeout
+	await _scale_to(card_face, 0.05, 0.28)
+	layer.queue_free()
+
+func _scale_to(node: Control, x: float, duration: float) -> void:
+	var tween := create_tween()
+	tween.set_trans(Tween.TRANS_QUAD)
+	tween.set_ease(Tween.EASE_IN_OUT)
+	tween.tween_property(node, "scale:x", x, duration)
+	await tween.finished
 
 func _show_toast(message: String) -> void:
 	_set_status(message)

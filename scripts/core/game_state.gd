@@ -7,7 +7,7 @@ extends Node
 
 signal lobby_updated(lobby: Dictionary)
 signal state_updated(state: Dictionary)
-signal private_reveal_received(title: String, cards: Array)
+signal private_reveal_received(title: String, cards: Array, target: Dictionary)
 signal toast_received(message: String)
 signal command_rejected(code: int, message: String)
 signal match_aborted(code: int, message: String)
@@ -427,7 +427,7 @@ func _server_use_ability(sender: int, data: Dictionary, action_id := "") -> void
 			if not _valid_slot(sender, own_slot):
 				_reject(sender, RejectCode.INVALID_SLOT, action_id)
 				return
-			_send_reveal(sender, "查看自己的牌", [_card_public(players[sender].cards[own_slot])])
+			_send_reveal(sender, "查看自己的牌", [_card_public(players[sender].cards[own_slot])], {"player_id": sender, "slot": own_slot})
 			_add_log("%s 查看了自己的一张牌。" % players[sender].name)
 			_discard_pending_and_open_slap("advance")
 		"9", "10":
@@ -436,7 +436,7 @@ func _server_use_ability(sender: int, data: Dictionary, action_id := "") -> void
 			if target == sender or not _valid_slot(target, target_slot):
 				_reject(sender, RejectCode.INVALID_TARGET, action_id)
 				return
-			_send_reveal(sender, "查看别人的牌", [_card_public(players[target].cards[target_slot])])
+			_send_reveal(sender, "查看别人的牌", [_card_public(players[target].cards[target_slot])], {"player_id": target, "slot": target_slot})
 			_add_log("%s 查看了 %s 的一张牌。" % [players[sender].name, players[target].name])
 			_discard_pending_and_open_slap("advance")
 		"J":
@@ -459,7 +459,7 @@ func _server_use_ability(sender: int, data: Dictionary, action_id := "") -> void
 				return
 			q_context = {"actor": sender, "target": q_target, "target_slot": q_slot}
 			phase = Phase.Q_DECISION
-			_send_reveal(sender, "Q：查看后决定是否交换", [_card_public(players[q_target].cards[q_slot])])
+			_send_reveal(sender, "Q：查看后决定是否交换", [_card_public(players[q_target].cards[q_slot])], {"player_id": q_target, "slot": q_slot})
 			_add_log("%s 正在决定是否交换。" % players[sender].name)
 			_broadcast_state()
 
@@ -753,11 +753,11 @@ func _broadcast_abort(code: int, message := "") -> void:
 		else:
 			receive_match_aborted.rpc_id(int(peer_id), code, message)
 
-func _send_reveal(peer_id: int, title: String, revealed_cards: Array) -> void:
+func _send_reveal(peer_id: int, title: String, revealed_cards: Array, target: Dictionary = {}) -> void:
 	if peer_id == 1:
-		_receive_reveal(title, revealed_cards)
+		_receive_reveal(title, revealed_cards, target)
 	else:
-		receive_reveal.rpc_id(peer_id, title, revealed_cards)
+		receive_reveal.rpc_id(peer_id, title, revealed_cards, target)
 
 func _send_toast(peer_id: int, message: String) -> void:
 	if peer_id == 1:
@@ -780,8 +780,8 @@ func _receive_state(snapshot: Dictionary) -> void:
 	last_seen_revision = revision
 	state_updated.emit(snapshot)
 
-func _receive_reveal(title: String, revealed_cards: Array) -> void:
-	private_reveal_received.emit(title, revealed_cards)
+func _receive_reveal(title: String, revealed_cards: Array, target: Dictionary = {}) -> void:
+	private_reveal_received.emit(title, revealed_cards, target)
 
 @rpc("authority", "call_remote", "reliable")
 func receive_lobby(lobby: Dictionary) -> void:
@@ -792,8 +792,8 @@ func receive_state(snapshot: Dictionary) -> void:
 	_receive_state(snapshot)
 
 @rpc("authority", "call_remote", "reliable")
-func receive_reveal(title: String, revealed_cards: Array) -> void:
-	_receive_reveal(title, revealed_cards)
+func receive_reveal(title: String, revealed_cards: Array, target: Dictionary = {}) -> void:
+	_receive_reveal(title, revealed_cards, target)
 
 @rpc("authority", "call_remote", "reliable")
 func receive_toast(message: String) -> void:
