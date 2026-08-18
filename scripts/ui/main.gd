@@ -3,51 +3,11 @@ extends Control
 ## Deliberately code-built MVP interface: it keeps the visual layer small while
 ## the game rules and networking remain independently testable.
 
-var _layout_debug := false
-var _theme_index := 0
+var dev: DevTools
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_F12:
-			_layout_debug = not _layout_debug
-			_apply_layout_debug()
-		elif event.keycode == KEY_T:
-			_theme_index = (_theme_index + 1) % UITheme.TOKENS.size()
-			var names: Array = UITheme.TOKENS.keys()
-			UITheme.switch_theme(str(names[_theme_index]))
-			_rebuild_theme()
+	dev.handle_input(event)
 
-func _apply_layout_debug() -> void:
-	var colors := [Color(1, 0, 0, 0.45), Color(0, 1, 0, 0.45), Color(0, 0, 1, 0.45), Color(1, 1, 0, 0.45), Color(1, 0, 1, 0.45)]
-	var index := 0
-	_tint_children(self, colors, index)
-
-func _rebuild_theme() -> void:
-	background.color = UITheme.color("bg_table")
-	if not latest_state.is_empty():
-		_render_game()
-	else:
-		_set_status("主题已切换：%s" % UITheme.current)
-
-func _tint_children(node: Node, colors: Array, depth: int) -> void:
-	if node is Control:
-		var ctl: Control = node
-		if _layout_debug:
-			var style := StyleBoxFlat.new()
-			style.bg_color = Color(1, 1, 1, 0.04)
-			style.border_color = colors[depth % colors.size()]
-			style.set_border_width_all(2)
-			style.set_corner_radius_all(4)
-			ctl.add_theme_stylebox_override("panel", style)
-			ctl.add_theme_stylebox_override("normal", style)
-			ctl.set_meta("debug_style", style)
-		else:
-			if ctl.has_meta("debug_style"):
-				ctl.remove_theme_stylebox_override("panel")
-				ctl.remove_theme_stylebox_override("normal")
-				ctl.remove_meta("debug_style")
-	for child in node.get_children():
-		_tint_children(child, colors, depth + 1)
 
 const PHASE_LOBBY := 0
 const PHASE_INITIAL_PEEK := 1
@@ -95,6 +55,7 @@ var _cards := CardFactory.new()
 var interaction: GameInteraction
 var lobby: LobbyView
 var game_view: GameView
+var reveal: RevealController
 var _card_slots: Dictionary = {}
 var _pending_flips: Array = []
 
@@ -102,6 +63,8 @@ func _ready() -> void:
 	interaction = GameInteraction.new(self)
 	lobby = LobbyView.new(self)
 	game_view = GameView.new(self)
+	reveal = RevealController.new(self)
+	dev = DevTools.new(self)
 	_build_interface()
 	GameState.lobby_updated.connect(func(l: Dictionary): lobby.update_lobby(l))
 	GameState.state_updated.connect(_on_state_updated)
@@ -384,7 +347,7 @@ func _flush_pending_flips() -> void:
 		var target_id := int(entry.target_id)
 		var slot := int(entry.slot)
 		if _card_slots.has(target_id) and _card_slots[target_id].has(slot) and is_instance_valid(_card_slots[target_id][slot]):
-			_flip_at(_card_slots[target_id][slot], entry.card)
+			reveal._flip_at(_card_slots[target_id][slot], entry.card)
 		else:
 			remaining.append(entry)
 	_pending_flips = remaining
@@ -427,78 +390,7 @@ func _mode_instruction(fallback: String) -> String:
 	return interaction.mode_instruction(fallback)
 
 func _show_private_reveal(title: String, revealed_cards: Array, target: Dictionary = {}) -> void:
-	print("[PEEK] title=%s cards=%d target=%s slots=%s" % [title, revealed_cards.size(), str(target), str(_card_slots.keys())])
-	for card in revealed_cards:
-		_flip_card_show(title, card, target)
-
-func _flip_card_show(_title: String, card: Dictionary, target: Dictionary = {}) -> void:
-	var anchor: Control = null
-	var target_id := int(target.get("player_id", 0))
-	var slot := int(target.get("slot", -1))
-	if _card_slots.has(target_id) and _card_slots[target_id].has(slot):
-		var candidate: Control = _card_slots[target_id][slot]
-		if is_instance_valid(candidate):
-			anchor = candidate
-	if anchor == null:
-		# 目标卡牌尚未渲染或已释放（reveal 与状态广播时序），挂起到渲染后执行
-		_pending_flips.append({"card": card, "target_id": target_id, "slot": slot})
-		return
-	_flip_at(anchor, card)
-
-## 在指定锚点位置执行翻转展示动画。
-func _flip_at(anchor: Control, card: Dictionary) -> void:
-	var center := anchor.get_global_rect().get_center()
-	_play_flip_at(center, card)
-
-## 在全局坐标 center 处播放翻牌动画（挂到稳定的 overlay，避免被界面重建释放）。
-func _play_flip_at(center: Vector2, card: Dictionary) -> void:
-	var layer := Control.new()
-	layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	overlay.add_child(layer)
-	var card_size := Vector2(90, 140)
-	layer.global_position = center - card_size / 2.0
-	layer.custom_minimum_size = card_size
-	# 背面：先展示（代表被点击的那张牌）
-	var back_face := _make_card_button({}, card_size)
-	back_face.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	layer.add_child(back_face)
-	back_face.pivot_offset = back_face.size / 2.0
-	# 正面：真实牌面（预创建但隐藏）
-	var front_face := _make_card_button(card, card_size)
-	front_face.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	front_face.visible = false
-	layer.add_child(front_face)
-	front_face.pivot_offset = front_face.size / 2.0
-	# 阶段1：背面收缩到 0
-	await _scale_to(back_face, 0.05, 0.25)
-	if not is_instance_valid(layer) or not is_instance_valid(back_face) or not is_instance_valid(front_face):
-		return
-	# 阶段2：切换为正面，展开
-	back_face.visible = false
-	front_face.visible = true
-	await _scale_to(front_face, 1.0, 0.25)
-	if not is_instance_valid(layer) or not is_instance_valid(front_face):
-		return
-	# 阶段3：停留展示
-	await get_tree().create_timer(1.0).timeout
-	if not is_instance_valid(layer) or not is_instance_valid(front_face):
-		return
-	# 阶段4：正面收缩，翻回背面
-	await _scale_to(front_face, 0.05, 0.25)
-	if not is_instance_valid(layer) or not is_instance_valid(front_face) or not is_instance_valid(back_face):
-		return
-	front_face.visible = false
-	back_face.visible = true
-	await _scale_to(back_face, 1.0, 0.25)
-	if is_instance_valid(layer):
-		layer.queue_free()
-
-func _scale_to(node: Control, x: float, duration: float) -> void:
-	var tween := create_tween()
-	tween.set_trans(Tween.TRANS_QUAD)
-	tween.set_ease(Tween.EASE_IN_OUT)
-	tween.tween_property(node, "scale:x", x, duration)
-	await tween.finished
+	reveal.show_private_reveal(title, revealed_cards, target)
 
 func _show_toast(message: String) -> void:
 	_set_status(message)
