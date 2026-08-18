@@ -129,12 +129,21 @@ func build() -> void:
 	main.bottom_player_box.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	main.bottom_player_box.add_theme_constant_override("separation", 4)
 	main.game_panel.add_child(main.bottom_player_box)
-	# 右下操作区
+	# 右下操作区（绝对定位到右下角，不随对局内容流动）
+	var corner := VBoxContainer.new()
+	corner.alignment = BoxContainer.ALIGNMENT_END
+	corner.add_theme_constant_override("separation", 8)
+	corner.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	corner.offset_left = -360
+	corner.offset_top = -150
+	corner.offset_right = -12
+	corner.offset_bottom = -8
+	main.overlay.add_child(corner)
 	var controls_row := HBoxContainer.new()
 	controls_row.alignment = BoxContainer.ALIGNMENT_END
 	controls_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	controls_row.add_theme_constant_override("separation", 14)
-	main.game_panel.add_child(controls_row)
+	corner.add_child(controls_row)
 	main.bell_button = main._button("🔔 KONGBAYA")
 	main.bell_button.custom_minimum_size = Vector2(190, 46)
 	main.bell_button.add_theme_font_size_override("font_size", 18)
@@ -154,10 +163,10 @@ func build() -> void:
 	var log_row := HBoxContainer.new()
 	log_row.alignment = BoxContainer.ALIGNMENT_END
 	log_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	main.game_panel.add_child(log_row)
+	corner.add_child(log_row)
 	main.log_box = RichTextLabel.new()
 	main.log_box.bbcode_enabled = true
-	main.log_box.custom_minimum_size = Vector2(340, 130)
+	main.log_box.custom_minimum_size = Vector2(340, 120)
 	main.log_box.add_theme_font_size_override("normal_font_size", 12)
 	main.log_box.add_theme_color_override("default_color", UITheme.color("text_secondary"))
 	log_row.add_child(main.log_box)
@@ -295,15 +304,20 @@ func _render_player_section(box: VBoxContainer, player: Dictionary, viewer: int,
 	section.add_theme_constant_override("separation", 4)
 	box.add_child(section)
 	var hand := GridContainer.new()
-	hand.columns = 2
+	hand.columns = maxi(2, ceili(player.slots.size() / 2.0))
 	hand.add_theme_constant_override("h_separation", 6)
 	hand.add_theme_constant_override("v_separation", 6)
 	hand.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	section.add_child(hand)
 	for slot_index in player.slots.size():
 		var slot: Dictionary = player.slots[slot_index]
+		var is_empty_slot := str(slot.get("card_id", "")) == ""
 		var card_button: Button = main._make_card_button(slot.get("card", {}), card_size)
-		card_button.tooltip_text = "记忆牌面后，点击以执行当前操作"
+		if is_empty_slot:
+			card_button.disabled = true
+			card_button.modulate = Color(1, 1, 1, 0.25)
+		else:
+			card_button.tooltip_text = "记忆牌面后，点击以执行当前操作"
 		card_button.pressed.connect(main._on_card_pressed.bind(int(player.id), slot_index))
 		main._highlight(card_button, main._card_actionable(int(player.id), slot_index))
 		hand.add_child(card_button)

@@ -47,7 +47,7 @@ func attempt(sender: int, target_player: int, slot: int, action_id := "") -> voi
 		game._broadcast_state()
 		return
 	if target_player == sender:
-		game.players[sender].cards.remove_at(slot)
+		game.players[sender].cards[slot] = ""
 		game.discard_pile.append(target_card)
 		game._add_log("%s 成功贴出自己的 %s。" % [game.players[sender].name, game.slap_rank])
 		finish_slap()
@@ -78,7 +78,7 @@ func exchange(sender: int, own_slot: int, action_id := "") -> void:
 		return
 	var gift: String = game.players[sender].cards[own_slot]
 	var pasted: String = game.players[target].cards[target_slot]
-	game.players[sender].cards.remove_at(own_slot)
+	game.players[sender].cards[own_slot] = ""
 	game.players[target].cards[target_slot] = gift
 	game.discard_pile.append(pasted)
 	game._add_log("%s 成功贴牌并将一张牌交给 %s。" % [game.players[sender].name, game.players[target].name])
@@ -102,8 +102,14 @@ func finish_slap() -> void:
 		game.phase = game.Phase.TURN_DRAW
 		game._broadcast_state()
 
-## 给玩家加一张罚抽牌。
+## 给玩家加一张罚抽牌（优先填入空槽位，保持固定布局；满则横向追加）。
 func add_penalty(peer_id: int) -> void:
 	var penalty: String = game._draw_from_deck()
-	if not penalty.is_empty():
-		game.players[peer_id].cards.append(penalty)
+	if penalty.is_empty():
+		return
+	var cards: Array = game.players[peer_id].cards
+	for index in cards.size():
+		if str(cards[index]) == "":
+			cards[index] = penalty
+			return
+	cards.append(penalty)

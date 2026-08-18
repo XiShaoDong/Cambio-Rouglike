@@ -48,14 +48,19 @@ static func snapshot_for(state: Node, viewer_id: int) -> Dictionary:
 	return snapshot
 
 ## 单玩家投影：玩家自己的牌按 peek_slots 揭示；他人牌只给令牌。
+## 槽位固定为 HAND_SIZE（初始布局），缺失槽位为空；超出部分横向追加。
 static func _player_snapshot(state: Node, peer_id: int, reveal_all: bool, viewer_id: int, peek_slots: Array[int]) -> Dictionary:
 	var player: Dictionary = state.players[peer_id]
+	var slot_count: int = maxi(KongRules.HAND_SIZE, player.cards.size())
 	var slots: Array = []
-	for index in player.cards.size():
-		var card_id: String = player.cards[index]
-		var slot := {"card_id": card_id}
-		if reveal_all or (peer_id == viewer_id and peek_slots.has(index)):
-			slot["card"] = public_card(state, card_id)
+	for index in slot_count:
+		var slot := {"card_id": ""}
+		if index < player.cards.size():
+			var card_id: String = player.cards[index]
+			if not card_id.is_empty():
+				slot["card_id"] = card_id
+				if reveal_all or (peer_id == viewer_id and peek_slots.has(index)):
+					slot["card"] = public_card(state, card_id)
 		slots.append(slot)
 	return {"id": peer_id, "name": player.name, "count": player.cards.size(), "health": player.health,
 		"ready": state.initial_confirmed.has(peer_id), "slots": slots}
