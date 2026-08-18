@@ -85,21 +85,21 @@ Roguelike 内容应当增强这些决策，而不应遮蔽基础牌局。
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Lobby
-    Lobby --> InitialPeek: 房主开始且至少 2 人
-    InitialPeek --> TurnDraw: 全员确认已记牌
-    TurnDraw --> TurnDecision: 抽牌堆 / 弃牌堆取牌
-    TurnDecision --> SlapWindow: 替换或弃掉
-    TurnDecision --> QDecision: 使用 Q 并查看目标
-    QDecision --> SlapWindow: 保留或交换后弃 Q
-    SlapWindow --> SlapExchange: 贴中其他玩家
-    SlapExchange --> NextTurn: 交出一张自己的牌
-    SlapWindow --> NextTurn: 超时、贴错后超时、贴中自己
-    NextTurn --> TurnDraw
-    TurnDraw --> FinalTurns: 当前玩家喊 Kongbaya
-    FinalTurns --> TurnDecision
-    FinalTurns --> GameOver: 其他每人完成一次行动
-    GameOver --> [*]
+	[*] --> Lobby
+	Lobby --> InitialPeek: 房主开始且至少 2 人
+	InitialPeek --> TurnDraw: 全员确认已记牌
+	TurnDraw --> TurnDecision: 抽牌堆 / 弃牌堆取牌
+	TurnDecision --> SlapWindow: 替换或弃掉
+	TurnDecision --> QDecision: 使用 Q 并查看目标
+	QDecision --> SlapWindow: 保留或交换后弃 Q
+	SlapWindow --> SlapExchange: 贴中其他玩家
+	SlapExchange --> NextTurn: 交出一张自己的牌
+	SlapWindow --> NextTurn: 超时、贴错后超时、贴中自己
+	NextTurn --> TurnDraw
+	TurnDraw --> FinalTurns: 当前玩家喊 Kongbaya
+	FinalTurns --> TurnDecision
+	FinalTurns --> GameOver: 其他每人完成一次行动
+	GameOver --> [*]
 ```
 
 常规回合严格遵循以下顺序：
@@ -258,10 +258,10 @@ stateDiagram-v2
 
 ```mermaid
 flowchart LR
-    A[LAN MVP 客户端] <-- ENet / UDP --> B[房主进程\n规则权威]
-    C[未来游戏客户端] <-- ENet / UDP + TLS/WSS 网关 --> D[VPS Headless\n同一规则权威]
-    D --> E[房间服务 / 匹配]
-    D --> F[认证与持久化]
+	A[LAN MVP 客户端] <-- ENet / UDP --> B[房主进程\n规则权威]
+	C[未来游戏客户端] <-- ENet / UDP + TLS/WSS 网关 --> D[VPS Headless\n同一规则权威]
+	D --> E[房间服务 / 匹配]
+	D --> F[认证与持久化]
 ```
 
 第一阶段的房主与将来的 VPS 都运行相同的 `game_state`。迁移时替换的是部署与连接发现，而不是回合判定：

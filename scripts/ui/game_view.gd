@@ -46,7 +46,7 @@ func build() -> void:
 	top_bar.add_child(main.ready_button)
 	main.center_hint = Label.new()
 	main.center_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	main.center_hint.max_lines_visible = 2
+	main.center_hint.max_lines_visible = 1
 	main.center_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	main.center_hint.add_theme_color_override("font_color", UITheme.color("accent"))
 	top_unit.add_child(main.center_hint)

@@ -49,7 +49,7 @@ const TOKENS := {
 	},
 	"light": {
 		# 背景层级（来自 docs/light_theme.css）
-		"bg_table": Color("EDE6D6"),
+		"bg_table": Color("#ECF0F1"),
 		"bg_surface": Color("FFFDF8"),
 		"bg_surface_alt": Color("F7F1E4"),
 		"bg_elevated": Color("FFFFFF"),
