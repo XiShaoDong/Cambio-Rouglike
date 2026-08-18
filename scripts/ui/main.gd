@@ -780,13 +780,20 @@ func _flip_card_show(_title: String, card: Dictionary, target: Dictionary = {}) 
 	card_face.pivot_offset = card_face.size / 2.0
 	# 阶段1：牌面 scale.x 收缩到 0
 	await _scale_to(card_face, 0.05, 0.28)
+	if not is_instance_valid(card_face) or not is_instance_valid(layer):
+		return
 	# 阶段2：翻到背面（显示真实牌 → 这里直接展示牌面内容停留）
 	card_face.visible = true
 	await _scale_to(card_face, 1.0, 0.28)
+	if not is_instance_valid(card_face) or not is_instance_valid(layer):
+		return
 	# 阶段3：停留后翻回
 	await get_tree().create_timer(1.8).timeout
+	if not is_instance_valid(card_face) or not is_instance_valid(layer):
+		return
 	await _scale_to(card_face, 0.05, 0.28)
-	layer.queue_free()
+	if is_instance_valid(layer):
+		layer.queue_free()
 
 func _scale_to(node: Control, x: float, duration: float) -> void:
 	var tween := create_tween()
