@@ -107,6 +107,7 @@ var _ready_clicked := false
 var start_button: Button = null
 var _cards := CardFactory.new()
 var _card_slots: Dictionary = {}
+var _pending_flips: Array = []
 
 func _ready() -> void:
 	_build_interface()
@@ -254,6 +255,7 @@ func _build_game() -> void:
 	top_bar.add_child(ready_button)
 	center_hint = Label.new()
 	center_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	center_hint.max_lines_visible = 2
 	center_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	center_hint.add_theme_color_override("font_color", UITheme.color("accent"))
 	top_unit.add_child(center_hint)
@@ -503,6 +505,21 @@ func _render_game() -> void:
 	_render_controls(phase, is_current)
 	_render_players(viewer)
 	_render_log()
+	_flush_pending_flips()
+
+## 处理因渲染未完成而挂起的看牌翻转。
+func _flush_pending_flips() -> void:
+	if _pending_flips.is_empty():
+		return
+	var remaining: Array = []
+	for entry in _pending_flips:
+		var target_id := int(entry.target_id)
+		var slot := int(entry.slot)
+		if _card_slots.has(target_id) and _card_slots[target_id].has(slot):
+			_flip_at(_card_slots[target_id][slot], entry.card)
+		else:
+			remaining.append(entry)
+	_pending_flips = remaining
 
 func _update_discard_button(discard: Dictionary, available: bool) -> void:
 	discard_button.disabled = not available
@@ -734,16 +751,16 @@ func _on_card_pressed(player_id: int, slot: int) -> void:
 				GameState.request_use_ability({"target": selected_target, "own_slot": selected_own_slot, "target_slot": slot}, _next_action_id())
 
 func _hint_for(phase: int, is_current: bool) -> String:
-	if phase == PHASE_INITIAL_PEEK: return "记住你下方两张牌，然后在顶部点击 Ready 等待其他玩家。"
-	if phase == PHASE_SLAP_WINDOW: return "贴牌窗口：如果你记得任意一张同点数牌，立刻点击它。贴错会罚抽；每人本次只能尝试一次。"
+	if phase == PHASE_INITIAL_PEEK: return "记住下方两张牌，点 Ready 等待。"
+	if phase == PHASE_SLAP_WINDOW: return "贴牌：记到同点数就点它，贴错罚抽。"
 	if phase == PHASE_SLAP_EXCHANGE:
-		return "贴中他人：成功者请选择自己的一张牌交给对方。"
-	if phase == PHASE_TURN_DRAW and is_current: return "点击高亮的抽牌堆或弃牌顶取牌；拿弃牌顶只能用于替换。"
+		return "贴中他人：选一张自己的牌交给对方。"
+	if phase == PHASE_TURN_DRAW and is_current: return "抽牌堆或弃牌顶取牌；弃牌顶只能替换。"
 	if phase == PHASE_TURN_DECISION and is_current:
-		return _mode_instruction("处理抽到的牌：点击高亮的自己手牌替换，或使用大牌下方的操作按钮。")
-	if phase == PHASE_Q_DECISION and is_current: return _mode_instruction("Q 已让你看过目标牌：选择不换，或点击自己一张牌来交换。")
-	if phase == PHASE_GAME_OVER: return "按总分、牌数、最高单牌依次判定。"
-	return "等待其他玩家行动；任何弃牌后都可能出现贴牌抢答。"
+		return _mode_instruction("处理抽到的牌：替换或使用大牌下按钮。")
+	if phase == PHASE_Q_DECISION and is_current: return _mode_instruction("Q 已看过目标牌：不换或点自己一张交换。")
+	if phase == PHASE_GAME_OVER: return "按总分、牌数、最高单牌判定。"
+	return "等待其他玩家行动。"
 
 func _mode_instruction(fallback: String) -> String:
 	match action_mode:
@@ -759,7 +776,7 @@ func _mode_instruction(fallback: String) -> String:
 
 func _show_private_reveal(title: String, revealed_cards: Array, target: Dictionary = {}) -> void:
 	for card in revealed_cards:
-		await _flip_card_show(title, card, target)
+		_flip_card_show(title, card, target)
 
 func _flip_card_show(_title: String, card: Dictionary, target: Dictionary = {}) -> void:
 	var anchor: Control = null
@@ -767,11 +784,18 @@ func _flip_card_show(_title: String, card: Dictionary, target: Dictionary = {}) 
 	var slot := int(target.get("slot", -1))
 	if _card_slots.has(target_id) and _card_slots[target_id].has(slot):
 		anchor = _card_slots[target_id][slot]
-	# 在目标卡牌原位置叠加覆盖层
+	if anchor == null:
+		# 目标卡牌尚未渲染（reveal 先于状态广播到达），挂起到渲染后执行
+		_pending_flips.append({"card": card, "target_id": target_id, "slot": slot})
+		return
+	_flip_at(anchor, card)
+
+## 在指定锚点位置执行翻转展示动画。
+func _flip_at(anchor: Control, card: Dictionary) -> void:
 	var layer := Control.new()
 	layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	(anchor if anchor else game_panel).add_child(layer)
+	anchor.add_child(layer)
 	var card_size := Vector2(90, 140)
 	var card_face := _make_card_button(card, card_size)
 	card_face.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
@@ -788,7 +812,7 @@ func _flip_card_show(_title: String, card: Dictionary, target: Dictionary = {}) 
 	if not is_instance_valid(card_face) or not is_instance_valid(layer):
 		return
 	# 阶段3：停留后翻回
-	await get_tree().create_timer(1.8).timeout
+	await get_tree().create_timer(1.0).timeout
 	if not is_instance_valid(card_face) or not is_instance_valid(layer):
 		return
 	await _scale_to(card_face, 0.05, 0.28)
