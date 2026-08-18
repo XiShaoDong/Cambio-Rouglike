@@ -9,15 +9,20 @@ var failures := 0
 var checks := 0
 var seen_rejects: Array[int] = []
 var aborted := false
+var last_reveal: Dictionary = {}
 
 func _ready() -> void:
 	GameState.command_rejected.connect(_on_rejected)
 	GameState.match_aborted.connect(_on_aborted)
+	GameState.private_reveal_received.connect(_on_reveal)
 	GameState._reset_match()
 	GameState._add_player(1, "房主")
 	run_checks()
 	print("=== RESULT: %d/%d passed%s ===" % [checks - failures, checks, " (FAILURES!)" if failures else ""])
 	get_tree().quit(1 if failures else 0)
+
+func _on_reveal(title: String, cards: Array, target: Dictionary) -> void:
+	last_reveal = {"title": title, "cards": cards, "target": target}
 
 func _on_rejected(code: int, _message: String) -> void:
 	seen_rejects.append(code)
@@ -74,6 +79,29 @@ func run_checks() -> void:
 	GameState._server_replace(1, 99, "r1")
 	_check("越界槽位被拒 INVALID_SLOT", _rejected(GameState.RejectCode.INVALID_SLOT))
 
+	# Peek（7/8）测试：注入 pending 为 7，看自己一张牌应触发 reveal 且 target 正确
+	var seven_id := ""
+	for cid in GameState.cards:
+		if str(GameState.cards[cid].rank) == "7":
+			seven_id = cid
+			break
+	if not seven_id.is_empty():
+		GameState.pending_draw = {"card_id": seven_id, "source": "draw"}
+		last_reveal = {}
+		GameState._server_use_ability(1, {"slot": 0}, "peek-1")
+		_check("7/8 看牌触发 private_reveal_received", not last_reveal.is_empty())
+		if not last_reveal.is_empty():
+			_check("reveal 带 target(player_id/slot)", int(last_reveal.target.get("player_id", 0)) == 1 and last_reveal.target.get("slot", -1) == 0)
+			_check("reveal 卡牌是玩家手牌 slot 0 的牌", str(last_reveal.cards[0].get("id", "")) == str(GameState.players[1].cards[0]))
+		_check("看牌后进入 SLAP_WINDOW", GameState.phase == GameState.Phase.SLAP_WINDOW)
+		# 回到 TURN_DECISION 供后续测试（重置 pending 为另一张非能力牌）
+		for cid in GameState.cards:
+			if str(GameState.cards[cid].rank) == "A":
+				GameState.pending_draw = {"card_id": cid, "source": "draw"}
+				break
+		GameState.phase = GameState.Phase.TURN_DECISION
+
+	seen_rejects.clear()
 	GameState._server_replace(1, 0, "r2")
 	_check("合法替换进入 SLAP_WINDOW", GameState.phase == GameState.Phase.SLAP_WINDOW)
 

@@ -515,7 +515,7 @@ func _flush_pending_flips() -> void:
 	for entry in _pending_flips:
 		var target_id := int(entry.target_id)
 		var slot := int(entry.slot)
-		if _card_slots.has(target_id) and _card_slots[target_id].has(slot):
+		if _card_slots.has(target_id) and _card_slots[target_id].has(slot) and is_instance_valid(_card_slots[target_id][slot]):
 			_flip_at(_card_slots[target_id][slot], entry.card)
 		else:
 			remaining.append(entry)
@@ -775,6 +775,7 @@ func _mode_instruction(fallback: String) -> String:
 	return fallback
 
 func _show_private_reveal(title: String, revealed_cards: Array, target: Dictionary = {}) -> void:
+	print("[PEEK] title=%s cards=%d target=%s slots=%s" % [title, revealed_cards.size(), str(target), str(_card_slots.keys())])
 	for card in revealed_cards:
 		_flip_card_show(title, card, target)
 
@@ -783,39 +784,60 @@ func _flip_card_show(_title: String, card: Dictionary, target: Dictionary = {}) 
 	var target_id := int(target.get("player_id", 0))
 	var slot := int(target.get("slot", -1))
 	if _card_slots.has(target_id) and _card_slots[target_id].has(slot):
-		anchor = _card_slots[target_id][slot]
+		var candidate: Control = _card_slots[target_id][slot]
+		if is_instance_valid(candidate):
+			anchor = candidate
 	if anchor == null:
-		# 目标卡牌尚未渲染（reveal 先于状态广播到达），挂起到渲染后执行
+		# 目标卡牌尚未渲染或已释放（reveal 与状态广播时序），挂起到渲染后执行
 		_pending_flips.append({"card": card, "target_id": target_id, "slot": slot})
 		return
 	_flip_at(anchor, card)
 
 ## 在指定锚点位置执行翻转展示动画。
 func _flip_at(anchor: Control, card: Dictionary) -> void:
+	var center := anchor.get_global_rect().get_center()
+	_play_flip_at(center, card)
+
+## 在全局坐标 center 处播放翻牌动画（挂到稳定的 overlay，避免被界面重建释放）。
+func _play_flip_at(center: Vector2, card: Dictionary) -> void:
 	var layer := Control.new()
-	layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	anchor.add_child(layer)
+	overlay.add_child(layer)
 	var card_size := Vector2(90, 140)
-	var card_face := _make_card_button(card, card_size)
-	card_face.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	card_face.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	layer.add_child(card_face)
-	card_face.pivot_offset = card_face.size / 2.0
-	# 阶段1：牌面 scale.x 收缩到 0
-	await _scale_to(card_face, 0.05, 0.28)
-	if not is_instance_valid(card_face) or not is_instance_valid(layer):
+	layer.global_position = center - card_size / 2.0
+	layer.custom_minimum_size = card_size
+	# 背面：先展示（代表被点击的那张牌）
+	var back_face := _make_card_button({}, card_size)
+	back_face.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(back_face)
+	back_face.pivot_offset = back_face.size / 2.0
+	# 正面：真实牌面（预创建但隐藏）
+	var front_face := _make_card_button(card, card_size)
+	front_face.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	front_face.visible = false
+	layer.add_child(front_face)
+	front_face.pivot_offset = front_face.size / 2.0
+	# 阶段1：背面收缩到 0
+	await _scale_to(back_face, 0.05, 0.25)
+	if not is_instance_valid(layer) or not is_instance_valid(back_face) or not is_instance_valid(front_face):
 		return
-	# 阶段2：翻到背面（显示真实牌 → 这里直接展示牌面内容停留）
-	card_face.visible = true
-	await _scale_to(card_face, 1.0, 0.28)
-	if not is_instance_valid(card_face) or not is_instance_valid(layer):
+	# 阶段2：切换为正面，展开
+	back_face.visible = false
+	front_face.visible = true
+	await _scale_to(front_face, 1.0, 0.25)
+	if not is_instance_valid(layer) or not is_instance_valid(front_face):
 		return
-	# 阶段3：停留后翻回
+	# 阶段3：停留展示
 	await get_tree().create_timer(1.0).timeout
-	if not is_instance_valid(card_face) or not is_instance_valid(layer):
+	if not is_instance_valid(layer) or not is_instance_valid(front_face):
 		return
-	await _scale_to(card_face, 0.05, 0.28)
+	# 阶段4：正面收缩，翻回背面
+	await _scale_to(front_face, 0.05, 0.25)
+	if not is_instance_valid(layer) or not is_instance_valid(front_face) or not is_instance_valid(back_face):
+		return
+	front_face.visible = false
+	back_face.visible = true
+	await _scale_to(back_face, 1.0, 0.25)
 	if is_instance_valid(layer):
 		layer.queue_free()
 
