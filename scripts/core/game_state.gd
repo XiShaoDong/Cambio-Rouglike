@@ -603,10 +603,7 @@ func _server_kongbaya(sender: int, action_id := "") -> void:
 		return
 	kong_caller = sender
 	kong_called_first_turn = not bool(players[sender].has_acted)
-	final_queue.clear()
-	var start_index := turn_order.find(sender)
-	for offset in range(1, turn_order.size()):
-		final_queue.append(turn_order[(start_index + offset) % turn_order.size()])
+	final_queue = TurnSystem.build_final_queue(turn_order, sender)
 	_add_log("%s 喊出了 Kongbaya！其他玩家各有最后一次行动。" % players[sender].name)
 	_advance_turn(true)
 
@@ -647,20 +644,28 @@ func _finish_slap() -> void:
 func _advance_turn(final_mode := false) -> void:
 	if players.has(current_player_id):
 		players[current_player_id].has_acted = true
+	var decision: Dictionary
 	if kong_caller != 0 or final_mode:
-		if final_queue.is_empty():
+		decision = {"type": TurnSystem.Decision.FINAL if not final_queue.is_empty() else TurnSystem.Decision.FINISH,
+			"next_player": int(final_queue[0]) if not final_queue.is_empty() else 0}
+	else:
+		decision = TurnSystem.decide(turn_order, current_player_id, 0, [])
+	match decision.type:
+		TurnSystem.Decision.FINISH:
 			_finish_game()
 			return
-		current_player_id = final_queue.pop_front()
-		phase = Phase.TURN_DRAW
-		_add_log("%s 的最终行动。" % players[current_player_id].name)
-		_broadcast_state()
-		return
-	var current_index := turn_order.find(current_player_id)
-	current_player_id = turn_order[(current_index + 1) % turn_order.size()]
-	phase = Phase.TURN_DRAW
-	_add_log("轮到 %s 行动。" % players[current_player_id].name)
-	_broadcast_state()
+		TurnSystem.Decision.FINAL:
+			current_player_id = decision.next_player
+			final_queue.pop_front()
+			phase = Phase.TURN_DRAW
+			_add_log("%s 的最终行动。" % players[current_player_id].name)
+			_broadcast_state()
+			return
+		TurnSystem.Decision.NEXT:
+			current_player_id = decision.next_player
+			phase = Phase.TURN_DRAW
+			_add_log("轮到 %s 行动。" % players[current_player_id].name)
+			_broadcast_state()
 
 func _add_penalty_card(peer_id: int) -> void:
 	var penalty := _draw_from_deck()
