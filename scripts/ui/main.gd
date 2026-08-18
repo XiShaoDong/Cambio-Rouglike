@@ -49,7 +49,6 @@ var overlay: Control
 var pending_overlay: Control
 var background: ColorRect
 var is_dev_join := false
-var _ready_clicked := false
 var start_button: Button = null
 var _cards := CardFactory.new()
 var interaction: GameInteraction
@@ -136,154 +135,10 @@ func _build_interface() -> void:
 	game_panel.add_theme_constant_override("separation", 12)
 	game_panel.visible = false
 	page.add_child(game_panel)
-	_build_game()
+	game_view.build()
 
 func _build_lobby() -> void:
 	lobby.build()
-
-func _build_game() -> void:
-	game_panel.add_theme_constant_override("separation", 14)
-	# ── 顶部单元（居中）：标题 + 对局记录 log + 提示 + Ready ──
-	var top_unit := VBoxContainer.new()
-	top_unit.alignment = BoxContainer.ALIGNMENT_CENTER
-	top_unit.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	top_unit.add_theme_constant_override("separation", 6)
-	game_panel.add_child(top_unit)
-	var top_bar := HBoxContainer.new()
-	top_bar.alignment = BoxContainer.ALIGNMENT_CENTER
-	top_bar.add_theme_constant_override("separation", 24)
-	top_unit.add_child(top_bar)
-	game_header = Label.new()
-	game_header.add_theme_font_size_override("font_size", 18)
-	game_header.add_theme_color_override("font_color", UITheme.color("text_primary"))
-	game_header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	top_bar.add_child(game_header)
-	ready_button = _button("Ready（0/0）")
-	ready_button.custom_minimum_size = Vector2(180, 40)
-	ready_button.add_theme_font_size_override("font_size", 16)
-	ready_button.add_theme_color_override("font_color", UITheme.color("success"))
-	ready_button.pressed.connect(func():
-		_ready_clicked = true
-		GameState.request_initial_ready())
-	ready_button.visible = false
-	top_bar.add_child(ready_button)
-	center_hint = Label.new()
-	center_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	center_hint.max_lines_visible = 2
-	center_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	center_hint.add_theme_color_override("font_color", UITheme.color("accent"))
-	top_unit.add_child(center_hint)
-	# ── 对家（上方，居中）──
-	top_player_box = VBoxContainer.new()
-	top_player_box.alignment = BoxContainer.ALIGNMENT_CENTER
-	top_player_box.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	top_player_box.add_theme_constant_override("separation", 4)
-	game_panel.add_child(top_player_box)
-	# ── 中部行（居中）：左对手 | 中央牌堆单元 | 右对手 ──
-	var opponents_row := HBoxContainer.new()
-	opponents_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	opponents_row.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	opponents_row.add_theme_constant_override("separation", 36)
-	game_panel.add_child(opponents_row)
-	left_player_box = VBoxContainer.new()
-	left_player_box.alignment = BoxContainer.ALIGNMENT_CENTER
-	left_player_box.add_theme_constant_override("separation", 4)
-	opponents_row.add_child(left_player_box)
-	# 中央牌堆单元（组件 2）：抽牌堆 | 弃牌堆 + 提示，正中央
-	var center_unit := VBoxContainer.new()
-	center_unit.alignment = BoxContainer.ALIGNMENT_CENTER
-	center_unit.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	center_unit.add_theme_constant_override("separation", 12)
-	opponents_row.add_child(center_unit)
-	var pile_row := HBoxContainer.new()
-	pile_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	pile_row.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	pile_row.add_theme_constant_override("separation", 28)
-	center_unit.add_child(pile_row)
-	deck_button = _make_card_button({}, Vector2(68, 107))
-	deck_button.pressed.connect(_on_deck_pressed)
-	pile_row.add_child(deck_button)
-	discard_button = _make_card_button({}, Vector2(68, 107))
-	discard_button.pressed.connect(_on_discard_pressed)
-	pile_row.add_child(discard_button)
-	var pile_hint := Label.new()
-	pile_hint.text = "抽牌堆          弃牌堆"
-	pile_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	pile_hint.add_theme_font_size_override("font_size", 12)
-	pile_hint.add_theme_color_override("font_color", UITheme.color("text_muted"))
-	center_unit.add_child(pile_hint)
-	right_player_box = VBoxContainer.new()
-	right_player_box.alignment = BoxContainer.ALIGNMENT_CENTER
-	right_player_box.add_theme_constant_override("separation", 4)
-	opponents_row.add_child(right_player_box)
-	# 抽到的牌（大牌）：覆盖在牌堆单元上（两堆正中间）
-	pending_overlay = Control.new()
-	pending_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	pending_overlay.mouse_filter = Control.MOUSE_FILTER_PASS
-	pending_overlay.z_index = 10
-	center_unit.add_child(pending_overlay)
-	pending_card_box = VBoxContainer.new()
-	pending_card_box.alignment = BoxContainer.ALIGNMENT_CENTER
-	pending_card_box.add_theme_constant_override("separation", 10)
-	pending_card_box.anchor_left = 0.5
-	pending_card_box.anchor_right = 0.5
-	pending_card_box.anchor_top = 0.5
-	pending_card_box.anchor_bottom = 0.5
-	pending_card_box.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	pending_card_box.grow_vertical = Control.GROW_DIRECTION_BOTH
-	pending_card_box.visible = false
-	pending_overlay.add_child(pending_card_box)
-	pending_card_button = _make_card_button({}, Vector2(68, 107))
-	pending_card_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	pending_card_box.add_child(pending_card_button)
-	pending_action_button = _button("Use Power")
-	pending_action_button.custom_minimum_size = Vector2(0, 30)
-	pending_action_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	pending_action_button.add_theme_font_size_override("font_size", 13)
-	pending_action_button.pressed.connect(_on_pending_action)
-	pending_card_box.add_child(pending_action_button)
-	# ── 当前玩家（组件 3）：牌堆正下方，间距加大 ──
-	var spacer := Control.new()
-	spacer.custom_minimum_size = Vector2(0, 80)
-	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	game_panel.add_child(spacer)
-	bottom_player_box = VBoxContainer.new()
-	bottom_player_box.alignment = BoxContainer.ALIGNMENT_CENTER
-	bottom_player_box.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	bottom_player_box.add_theme_constant_override("separation", 4)
-	game_panel.add_child(bottom_player_box)
-	# ── 右下操作区 ──
-	var controls_row := HBoxContainer.new()
-	controls_row.alignment = BoxContainer.ALIGNMENT_END
-	controls_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	controls_row.add_theme_constant_override("separation", 14)
-	game_panel.add_child(controls_row)
-	bell_button = _button("🔔 KONGBAYA")
-	bell_button.custom_minimum_size = Vector2(190, 46)
-	bell_button.add_theme_font_size_override("font_size", 18)
-	bell_button.add_theme_color_override("font_color", UITheme.color("danger"))
-	bell_button.pressed.connect(_request_kongbaya)
-	controls_row.add_child(bell_button)
-	round_label = Label.new()
-	round_label.text = "第 1 局"
-	round_label.add_theme_font_size_override("font_size", 14)
-	round_label.add_theme_color_override("font_color", UITheme.color("text_secondary"))
-	round_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	controls_row.add_child(round_label)
-	controls_box = HBoxContainer.new()
-	controls_box.add_theme_constant_override("separation", 8)
-	controls_row.add_child(controls_box)
-	# ── 右下角：对局记录 ──
-	var log_row := HBoxContainer.new()
-	log_row.alignment = BoxContainer.ALIGNMENT_END
-	log_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	game_panel.add_child(log_row)
-	log_box = RichTextLabel.new()
-	log_box.bbcode_enabled = true
-	log_box.custom_minimum_size = Vector2(340, 130)
-	log_box.add_theme_font_size_override("normal_font_size", 12)
-	log_box.add_theme_color_override("default_color", UITheme.color("text_secondary"))
-	log_row.add_child(log_box)
 
 func _on_deck_pressed() -> void:
 	GameState.request_take("draw", _next_action_id())

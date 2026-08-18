@@ -14,6 +14,7 @@ const PHASE_SLAP_EXCHANGE := 6
 const PHASE_GAME_OVER := 7
 
 var main: Node
+var _ready_clicked := false
 
 func _init(owner_node: Node) -> void:
 	main = owner_node
@@ -40,7 +41,7 @@ func build() -> void:
 	main.ready_button.add_theme_font_size_override("font_size", 16)
 	main.ready_button.add_theme_color_override("font_color", UITheme.color("success"))
 	main.ready_button.pressed.connect(func():
-		main._ready_clicked = true
+		_ready_clicked = true
 		GameState.request_initial_ready())
 	main.ready_button.visible = false
 	top_bar.add_child(main.ready_button)
@@ -173,14 +174,14 @@ func render(state: Dictionary) -> void:
 	if phase == PHASE_INITIAL_PEEK:
 		var ready_count: int = int(state.get("ready_count", 0))
 		main.ready_button.visible = true
-		main.ready_button.disabled = ready_count >= total_players or main._ready_clicked
-		if main._ready_clicked:
+		main.ready_button.disabled = ready_count >= total_players or _ready_clicked
+		if _ready_clicked:
 			main.ready_button.text = "已准备（%d/%d）" % [ready_count, total_players]
 		else:
 			main.ready_button.text = "Ready（%d/%d）" % [ready_count, total_players]
 	else:
 		main.ready_button.visible = false
-		main._ready_clicked = false
+		_ready_clicked = false
 	main.center_hint.text = main._hint_for(phase, is_current)
 	main.round_label.text = "第 %d 局" % int(state.get("match_number", 1))
 	main.bell_button.disabled = not (phase == PHASE_TURN_DRAW and is_current)
