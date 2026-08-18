@@ -92,6 +92,6 @@ const TOKENS := {
 func color(key: String) -> Color:
 	return TOKENS[current].get(key, Color.WHITE)
 
-func switch_theme(name: String) -> void:
-	if TOKENS.has(name):
-		current = name
+func switch_theme(theme_name: String) -> void:
+	if TOKENS.has(theme_name):
+		current = theme_name

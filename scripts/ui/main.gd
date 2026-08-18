@@ -504,58 +504,18 @@ func _render_game() -> void:
 
 func _update_discard_button(discard: Dictionary, available: bool) -> void:
 	discard_button.disabled = not available
-	# 清空旧内容（保留虚线占位）
-	for child in discard_button.get_children():
-		if child.name != "DiscardDashed":
-			child.queue_free()
-	discard_button.set_meta("base_style", null)
-	if discard.is_empty():
-		var style := StyleBoxFlat.new()
-		style.bg_color = Color(0, 0, 0, 0)
-		style.set_corner_radius_all(8)
-		discard_button.add_theme_stylebox_override("normal", style)
-		discard_button.add_theme_stylebox_override("hover", style)
-		discard_button.add_theme_stylebox_override("pressed", style)
-		discard_button.add_theme_stylebox_override("disabled", style)
-		discard_button.set_meta("base_style", style)
-		discard_button.text = ""
-		if not discard_button.has_node("DiscardDashed"):
-			var dashed := DashedBorder.new()
-			dashed.name = "DiscardDashed"
-			dashed.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-			dashed.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			discard_button.add_child(dashed)
-		discard_button.get_node("DiscardDashed").visible = true
-	else:
-		if discard_button.has_node("DiscardDashed"):
+	if discard_button is CardView:
+		discard_button.setup(discard)
+		if discard.is_empty():
+			if not discard_button.has_node("DiscardDashed"):
+				var dashed := DashedBorder.new()
+				dashed.name = "DiscardDashed"
+				dashed.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+				dashed.mouse_filter = Control.MOUSE_FILTER_IGNORE
+				discard_button.add_child(dashed)
+			discard_button.get_node("DiscardDashed").visible = true
+		elif discard_button.has_node("DiscardDashed"):
 			discard_button.get_node("DiscardDashed").visible = false
-		discard_button.text = ""
-		var face := PanelContainer.new()
-		var face_style := StyleBoxFlat.new()
-		face_style.bg_color = UITheme.color("card_face_bg")
-		face_style.border_color = UITheme.color("card_border")
-		face_style.set_border_width_all(1)
-		face_style.set_corner_radius_all(8)
-		face.add_theme_stylebox_override("panel", face_style)
-		face.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		face.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var rank_label := Label.new()
-		rank_label.text = str(discard.get("rank", "?"))
-		rank_label.add_theme_font_size_override("font_size", 15)
-		rank_label.add_theme_color_override("font_color", UITheme.color("card_rank_red") if str(discard.get("suit", "")) in ["♥", "♦"] else UITheme.color("card_rank_black"))
-		rank_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
-		rank_label.offset_left = 5
-		rank_label.offset_top = 1
-		rank_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		face.add_child(rank_label)
-		var suit_label := Label.new()
-		suit_label.text = str(discard.get("suit", ""))
-		suit_label.add_theme_font_size_override("font_size", 22)
-		suit_label.add_theme_color_override("font_color", UITheme.color("card_rank_red") if str(discard.get("suit", "")) in ["♥", "♦"] else UITheme.color("card_rank_black"))
-		suit_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-		suit_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		face.add_child(suit_label)
-		discard_button.add_child(face)
 	_highlight(discard_button, available)
 
 func _update_pending_card(phase: int, is_current: bool) -> void:
@@ -704,6 +664,9 @@ func _card_actionable(player_id: int, _slot: int) -> bool:
 	return false
 
 func _highlight(button: Button, on: bool) -> void:
+	if button is CardView:
+		button.set_highlight(on)
+		return
 	var base: StyleBoxFlat = button.get_meta("base_style", null) as StyleBoxFlat
 	if on:
 		var style := (base.duplicate() if base else StyleBoxFlat.new()) as StyleBoxFlat
@@ -717,66 +680,19 @@ func _highlight(button: Button, on: bool) -> void:
 		button.add_theme_stylebox_override("hover", base)
 		button.add_theme_stylebox_override("pressed", base)
 
+var _card_scene_cache: PackedScene = null
+
+func _card_scene() -> PackedScene:
+	if _card_scene_cache == null:
+		_card_scene_cache = load("res://scenes/ui/card.tscn")
+	return _card_scene_cache
+
 func _make_card_button(card: Dictionary, card_size: Vector2) -> Button:
-	var btn := _button("")
+	var btn: Button = _card_scene().instantiate()
 	btn.custom_minimum_size = card_size
-	var base := StyleBoxFlat.new()
-	base.set_corner_radius_all(8)
-	if card.is_empty():
-		base.bg_color = UITheme.color("card_back_bg")
-		base.border_color = UITheme.color("card_back_border")
-		base.set_border_width_all(clampi(int(card_size.x * 0.05), 2, 5))
-		btn.add_theme_stylebox_override("normal", base)
-		btn.add_theme_stylebox_override("hover", base)
-		btn.add_theme_stylebox_override("pressed", base)
-		btn.add_theme_stylebox_override("disabled", base)
-		btn.set_meta("base_style", base)
-		btn.text = "🂠"
-		return btn
-	base.bg_color = UITheme.color("card_face_bg")
-	base.border_color = UITheme.color("card_border")
-	base.set_border_width_all(1)
-	btn.add_theme_stylebox_override("normal", base)
-	btn.add_theme_stylebox_override("hover", base)
-	btn.add_theme_stylebox_override("pressed", base)
-	btn.add_theme_stylebox_override("disabled", base)
-	btn.set_meta("base_style", base)
-	var is_big := card_size.y >= 60.0
-	var is_xl := card_size.y >= 95.0
-	var rank := str(card.get("rank", "?"))
-	var suit := str(card.get("suit", ""))
-	var value := int(card.get("value", 0))
-	var is_joker := rank == "JOKER"
-	var is_red := suit == "♥" or suit == "♦" or (is_joker and suit == "red")
-	var suit_color := UITheme.color("card_rank_red") if is_red else UITheme.color("card_rank_black")
-	# 左上角：点数（A–K）
-	var rank_label := Label.new()
-	rank_label.text = "J" if is_joker else rank
-	rank_label.add_theme_font_size_override("font_size", 18 if is_xl else (15 if is_big else 11))
-	rank_label.add_theme_color_override("font_color", suit_color)
-	rank_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
-	rank_label.offset_left = 5
-	rank_label.offset_top = 1
-	rank_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	btn.add_child(rank_label)
-	# 中央：花色符号
-	var suit_label := Label.new()
-	suit_label.text = "🃏" if is_joker else suit
-	suit_label.add_theme_font_size_override("font_size", 30 if is_xl else (24 if is_big else 16))
-	suit_label.add_theme_color_override("font_color", suit_color)
-	suit_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	suit_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	btn.add_child(suit_label)
-	# 右下角：分数
-	var value_label := Label.new()
-	value_label.text = str(value)
-	value_label.add_theme_font_size_override("font_size", 17 if is_xl else (14 if is_big else 10))
-	value_label.add_theme_color_override("font_color", UITheme.color("card_value"))
-	value_label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
-	value_label.offset_right = -5
-	value_label.offset_bottom = -2
-	value_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	btn.add_child(value_label)
+	btn.size = card_size
+	if btn is CardView:
+		(btn as CardView).setup(card)
 	return btn
 
 func _render_log() -> void:
