@@ -64,8 +64,18 @@ var action_history: Dictionary = {}
 var last_seen_revision := -1
 
 var slap_timer := Timer.new()
+var peek: PeekSystem
+var effects: EffectSystem
+var swap: SwapSystem
+var slap: SlapSystem
+var kongbaya: KongbayaSystem
 
 func _ready() -> void:
+	peek = PeekSystem.new(self)
+	effects = EffectSystem.new(self)
+	swap = SwapSystem.new(self)
+	slap = SlapSystem.new(self)
+	kongbaya = KongbayaSystem.new(self)
 	slap_timer.one_shot = true
 	add_child(slap_timer)
 	slap_timer.timeout.connect(_on_slap_timeout)
@@ -421,47 +431,7 @@ func _server_use_ability(sender: int, data: Dictionary, action_id := "") -> void
 	if not KongRules.has_ability(rank):
 		_reject(sender, RejectCode.ABILITY_FORBIDDEN, action_id)
 		return
-	match rank:
-		"7", "8":
-			var own_slot := int(data.get("slot", -1))
-			if not _valid_slot(sender, own_slot):
-				_reject(sender, RejectCode.INVALID_SLOT, action_id)
-				return
-			_send_reveal(sender, "查看自己的牌", [_card_public(players[sender].cards[own_slot])], {"player_id": sender, "slot": own_slot})
-			_add_log("%s 查看了自己的一张牌。" % players[sender].name)
-			_discard_pending_and_open_slap("advance")
-		"9", "10":
-			var target := int(data.get("target", 0))
-			var target_slot := int(data.get("target_slot", -1))
-			if target == sender or not _valid_slot(target, target_slot):
-				_reject(sender, RejectCode.INVALID_TARGET, action_id)
-				return
-			_send_reveal(sender, "查看别人的牌", [_card_public(players[target].cards[target_slot])], {"player_id": target, "slot": target_slot})
-			_add_log("%s 查看了 %s 的一张牌。" % [players[sender].name, players[target].name])
-			_discard_pending_and_open_slap("advance")
-		"J":
-			var swap_target := int(data.get("target", 0))
-			var own_swap_slot := int(data.get("own_slot", -1))
-			var their_swap_slot := int(data.get("target_slot", -1))
-			if swap_target == sender or not _valid_slot(sender, own_swap_slot) or not _valid_slot(swap_target, their_swap_slot):
-				_reject(sender, RejectCode.INVALID_TARGET, action_id)
-				return
-			var mine: String = players[sender].cards[own_swap_slot]
-			players[sender].cards[own_swap_slot] = players[swap_target].cards[their_swap_slot]
-			players[swap_target].cards[their_swap_slot] = mine
-			_add_log("%s 与 %s 盲换了一张牌。" % [players[sender].name, players[swap_target].name])
-			_discard_pending_and_open_slap("advance")
-		"Q":
-			var q_target := int(data.get("target", 0))
-			var q_slot := int(data.get("target_slot", -1))
-			if q_target == sender or not _valid_slot(q_target, q_slot):
-				_reject(sender, RejectCode.INVALID_TARGET, action_id)
-				return
-			q_context = {"actor": sender, "target": q_target, "target_slot": q_slot}
-			phase = Phase.Q_DECISION
-			_send_reveal(sender, "Q：查看后决定是否交换", [_card_public(players[q_target].cards[q_slot])], {"player_id": q_target, "slot": q_slot})
-			_add_log("%s 正在决定是否交换。" % players[sender].name)
-			_broadcast_state()
+	effects.resolve_ability(sender, rank, data, action_id)
 
 func request_q_decision(exchange: bool, own_slot := -1, action_id := "") -> void:
 	if multiplayer.is_server():
@@ -490,10 +460,7 @@ func _server_q_decision(sender: int, exchange: bool, own_slot: int, action_id :=
 		if not _valid_slot(sender, own_slot) or not _valid_slot(target, target_slot):
 			_reject(sender, RejectCode.INVALID_SLOT, action_id)
 			return
-		var mine: String = players[sender].cards[own_slot]
-		players[sender].cards[own_slot] = players[target].cards[target_slot]
-		players[target].cards[target_slot] = mine
-		_add_log("%s 用 Q 交换了一张牌。" % players[sender].name)
+		swap.swap(sender, own_slot, target, target_slot, "%s 用 Q 交换了一张牌。" % players[sender].name)
 	else:
 		_add_log("%s 用 Q 放弃了交换。" % players[sender].name)
 	q_context.clear()
@@ -511,38 +478,7 @@ func server_slap(target_player: int, slot: int, action_id: String) -> void:
 		_server_slap(multiplayer.get_remote_sender_id(), target_player, slot, action_id)
 
 func _server_slap(sender: int, target_player: int, slot: int, action_id := "") -> void:
-	if phase != Phase.SLAP_WINDOW:
-		_reject(sender, RejectCode.INVALID_PHASE, action_id)
-		return
-	if not players.has(sender):
-		return
-	if slap_attempted.has(sender):
-		_reject(sender, RejectCode.ALREADY_ATTEMPTED_SLAP, action_id)
-		return
-	if not _check_action_id(sender, action_id):
-		_reject(sender, RejectCode.DUPLICATE_OR_EXPIRED_ACTION, action_id)
-		return
-	if not _valid_slot(target_player, slot):
-		_reject(sender, RejectCode.INVALID_TARGET, action_id)
-		return
-	slap_attempted[sender] = true
-	var target_card: String = players[target_player].cards[slot]
-	if cards[target_card].rank != slap_rank:
-		_add_penalty_card(sender)
-		_add_log("%s 贴错了，罚抽一张牌。" % players[sender].name)
-		_broadcast_state()
-		return
-	if target_player == sender:
-		players[sender].cards.remove_at(slot)
-		discard_pile.append(target_card)
-		_add_log("%s 成功贴出自己的 %s。" % [players[sender].name, slap_rank])
-		_finish_slap()
-		return
-	slap_timer.stop()
-	phase = Phase.SLAP_EXCHANGE
-	slap_exchange = {"actor": sender, "target": target_player, "target_slot": slot, "target_card": target_card}
-	_add_log("%s 贴中了 %s 的牌，等待交出一张自己的牌。" % [players[sender].name, players[target_player].name])
-	_broadcast_state()
+	slap.attempt(sender, target_player, slot, action_id)
 
 func request_slap_exchange(own_slot: int, action_id := "") -> void:
 	if multiplayer.is_server():
@@ -556,29 +492,7 @@ func server_slap_exchange(own_slot: int, action_id: String) -> void:
 		_server_slap_exchange(multiplayer.get_remote_sender_id(), own_slot, action_id)
 
 func _server_slap_exchange(sender: int, own_slot: int, action_id := "") -> void:
-	if phase != Phase.SLAP_EXCHANGE:
-		_reject(sender, RejectCode.INVALID_PHASE, action_id)
-		return
-	if sender != int(slap_exchange.get("actor", 0)):
-		_reject(sender, RejectCode.NOT_CURRENT_PLAYER, action_id)
-		return
-	if not _check_action_id(sender, action_id):
-		_reject(sender, RejectCode.DUPLICATE_OR_EXPIRED_ACTION, action_id)
-		return
-	if not _valid_slot(sender, own_slot):
-		_reject(sender, RejectCode.INVALID_SLOT, action_id)
-		return
-	var target := int(slap_exchange.target)
-	var target_slot := int(slap_exchange.target_slot)
-	if not _valid_slot(target, target_slot):
-		return
-	var gift: String = players[sender].cards[own_slot]
-	var pasted: String = players[target].cards[target_slot]
-	players[sender].cards.remove_at(own_slot)
-	players[target].cards[target_slot] = gift
-	discard_pile.append(pasted)
-	_add_log("%s 成功贴牌并将一张牌交给 %s。" % [players[sender].name, players[target].name])
-	_finish_slap()
+	slap.exchange(sender, own_slot, action_id)
 
 func request_kongbaya(action_id := "") -> void:
 	if multiplayer.is_server():
@@ -592,20 +506,7 @@ func server_kongbaya(action_id: String) -> void:
 		_server_kongbaya(multiplayer.get_remote_sender_id(), action_id)
 
 func _server_kongbaya(sender: int, action_id := "") -> void:
-	if phase != Phase.TURN_DRAW:
-		_reject(sender, RejectCode.INVALID_PHASE, action_id)
-		return
-	if sender != current_player_id:
-		_reject(sender, RejectCode.NOT_CURRENT_PLAYER, action_id)
-		return
-	if not _check_action_id(sender, action_id):
-		_reject(sender, RejectCode.DUPLICATE_OR_EXPIRED_ACTION, action_id)
-		return
-	kong_caller = sender
-	kong_called_first_turn = not bool(players[sender].has_acted)
-	final_queue = TurnSystem.build_final_queue(turn_order, sender)
-	_add_log("%s 喊出了 Kongbaya！其他玩家各有最后一次行动。" % players[sender].name)
-	_advance_turn(true)
+	kongbaya.declare(sender, action_id)
 
 func _discard_pending_and_open_slap(resume: String) -> void:
 	var card_id: String = pending_draw.card_id
@@ -618,28 +519,13 @@ func _discard(card_id: String) -> void:
 	slap_rank = cards[card_id].rank
 
 func _open_slap(resume: String) -> void:
-	slap_resume = resume
-	slap_attempted.clear()
-	slap_exchange.clear()
-	phase = Phase.SLAP_WINDOW
-	slap_timer.start(KongRules.SLAP_WINDOW_SECONDS)
-	_broadcast_state()
+	slap.open_slap(resume)
 
 func _on_slap_timeout() -> void:
-	if multiplayer.is_server() and phase == Phase.SLAP_WINDOW:
-		_add_log("贴牌时间结束。")
-		_finish_slap()
+	slap.on_timeout()
 
 func _finish_slap() -> void:
-	slap_timer.stop()
-	slap_rank = ""
-	slap_attempted.clear()
-	slap_exchange.clear()
-	if slap_resume == "advance":
-		_advance_turn()
-	else:
-		phase = Phase.TURN_DRAW
-		_broadcast_state()
+	slap.finish_slap()
 
 func _advance_turn(final_mode := false) -> void:
 	if players.has(current_player_id):
@@ -666,11 +552,6 @@ func _advance_turn(final_mode := false) -> void:
 			phase = Phase.TURN_DRAW
 			_add_log("轮到 %s 行动。" % players[current_player_id].name)
 			_broadcast_state()
-
-func _add_penalty_card(peer_id: int) -> void:
-	var penalty := _draw_from_deck()
-	if not penalty.is_empty():
-		players[peer_id].cards.append(penalty)
 
 func _finish_game(reason := "") -> void:
 	slap_timer.stop()
@@ -754,10 +635,10 @@ func _broadcast_abort(code: int, message := "") -> void:
 			receive_match_aborted.rpc_id(int(peer_id), code, message)
 
 func _send_reveal(peer_id: int, title: String, revealed_cards: Array, target: Dictionary = {}) -> void:
-	if peer_id == 1:
-		_receive_reveal(title, revealed_cards, target)
+	if peek != null:
+		peek.send_reveal(peer_id, title, revealed_cards, target)
 	else:
-		receive_reveal.rpc_id(peer_id, title, revealed_cards, target)
+		_receive_reveal(title, revealed_cards, target)
 
 func _send_toast(peer_id: int, message: String) -> void:
 	if peer_id == 1:
