@@ -1,6 +1,7 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/card_view.gd" id="1"]
+[ext_resource type="Texture2D" path="res://assets/Cards/back07.png" id="2_back"]
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_1"]
 
@@ -22,20 +23,11 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 
-[node name="BackCard" type="Control" parent="Back"]
+[node name="BackTexture" type="TextureRect" parent="Back"]
 layout_mode = 2
-mouse_filter = 2
-
-[node name="BackLabel" type="Label" parent="Back/BackCard"]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-text = "🂠"
-horizontal_alignment = 1
-vertical_alignment = 1
+texture = ExtResource("2_back")
+expand_mode = 1
+stretch_mode = 5
 mouse_filter = 2
 
 [node name="Front" type="PanelContainer" parent="."]
@@ -47,52 +39,8 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 
-[node name="FrontCard" type="Control" parent="Front"]
+[node name="FrontTexture" type="TextureRect" parent="Front"]
 layout_mode = 2
-mouse_filter = 2
-
-[node name="RankLabel" type="Label" parent="Front/FrontCard"]
-layout_mode = 1
-anchors_preset = 0
-offset_left = 5.0
-offset_top = 1.0
-offset_right = 40.0
-offset_bottom = 30.0
-text = "A"
-mouse_filter = 2
-
-[node name="SuitLabel" type="Label" parent="Front/FrontCard"]
-layout_mode = 1
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -20.0
-offset_top = -20.0
-offset_right = 20.0
-offset_bottom = 20.0
-grow_horizontal = 2
-grow_vertical = 2
-text = "♠"
-horizontal_alignment = 1
-vertical_alignment = 1
-mouse_filter = 2
-
-[node name="ValueLabel" type="Label" parent="Front/FrontCard"]
-layout_mode = 1
-anchors_preset = 3
-anchor_left = 1.0
-anchor_top = 1.0
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = -30.0
-offset_top = -20.0
-offset_right = -5.0
-offset_bottom = -2.0
-grow_horizontal = 0
-grow_vertical = 0
-text = "0"
-horizontal_alignment = 2
-vertical_alignment = 2
+expand_mode = 1
+stretch_mode = 5
 mouse_filter = 2
