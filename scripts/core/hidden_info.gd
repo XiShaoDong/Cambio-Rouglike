@@ -24,7 +24,7 @@ static func snapshot_for(state: Node, viewer_id: int) -> Dictionary:
 		"match_id": state.match_id,
 		"state_revision": state.state_revision,
 		"phase": phase,
-		"phase_name": _phase_name(state, phase),
+		"phase_name": _phase_name(phase),
 		"viewer_id": viewer_id,
 		"current_player": state.current_player_id,
 		"current_name": players.get(state.current_player_id, {}).get("name", ""),
@@ -65,7 +65,7 @@ static func public_card(state: Node, card_id: String) -> Dictionary:
 	var card: Dictionary = state.cards[card_id]
 	return {"id": card.id, "rank": card.rank, "suit": card.suit, "value": card.value, "label": KongRules.display_name(card)}
 
-static func _phase_name(state: Node, phase: int) -> String:
+static func _phase_name(phase: int) -> String:
 	match phase:
 		GameState.Phase.LOBBY: return "大厅"
 		GameState.Phase.INITIAL_PEEK: return "开局记忆"

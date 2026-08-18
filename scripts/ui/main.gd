@@ -105,6 +105,7 @@ var background: ColorRect
 var is_dev_join := false
 var _ready_clicked := false
 var start_button: Button = null
+var _cards := CardFactory.new()
 
 func _ready() -> void:
 	_build_interface()
@@ -664,36 +665,10 @@ func _card_actionable(player_id: int, _slot: int) -> bool:
 	return false
 
 func _highlight(button: Button, on: bool) -> void:
-	if button is CardView:
-		button.set_highlight(on)
-		return
-	var base: StyleBoxFlat = button.get_meta("base_style", null) as StyleBoxFlat
-	if on:
-		var style := (base.duplicate() if base else StyleBoxFlat.new()) as StyleBoxFlat
-		style.shadow_color = UITheme.color("highlight_glow")
-		style.shadow_size = 10
-		button.add_theme_stylebox_override("normal", style)
-		button.add_theme_stylebox_override("hover", style)
-		button.add_theme_stylebox_override("pressed", style)
-	else:
-		button.add_theme_stylebox_override("normal", base)
-		button.add_theme_stylebox_override("hover", base)
-		button.add_theme_stylebox_override("pressed", base)
-
-var _card_scene_cache: PackedScene = null
-
-func _card_scene() -> PackedScene:
-	if _card_scene_cache == null:
-		_card_scene_cache = load("res://scenes/ui/card.tscn")
-	return _card_scene_cache
+	_cards.highlight(button, on)
 
 func _make_card_button(card: Dictionary, card_size: Vector2) -> Button:
-	var btn: Button = _card_scene().instantiate()
-	btn.custom_minimum_size = card_size
-	btn.size = card_size
-	if btn is CardView:
-		(btn as CardView).setup(card)
-	return btn
+	return _cards.make_card(card, card_size)
 
 func _render_log() -> void:
 	var accent_html := UITheme.color("accent").to_html(false)

@@ -729,7 +729,7 @@ func _snapshot_for(viewer_id: int) -> Dictionary:
 	return HiddenInfo.snapshot_for(self, viewer_id)
 
 func _phase_name() -> String:
-	return HiddenInfo._phase_name(self, phase)
+	return HiddenInfo._phase_name(phase)
 
 func _lobby_snapshot() -> Dictionary:
 	var entries: Array = []
