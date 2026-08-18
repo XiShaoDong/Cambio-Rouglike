@@ -692,29 +692,13 @@ func _finish_game(reason := "") -> void:
 	_broadcast_state()
 
 func _calculate_ranking() -> Array:
-	var ranking: Array = []
-	for peer_id in turn_order:
-		var values: Array[int] = []
-		for card_id in players[peer_id].cards:
-			values.append(int(cards[card_id].value))
-		values.sort()
-		var total := 0
-		for value in values: total += value
-		ranking.append({"id": peer_id, "name": players[peer_id].name, "score": total, "count": values.size(), "values": values})
-	ranking.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return _is_lower_score(a, b))
-	return ranking
+	return ScoreSystem.calculate_ranking(players, cards, turn_order)
 
 func _is_lower_score(a: Dictionary, b: Dictionary) -> bool:
-	if int(a.score) != int(b.score): return int(a.score) < int(b.score)
-	if int(a.count) != int(b.count): return int(a.count) < int(b.count)
-	var a_values: Array = a.values
-	var b_values: Array = b.values
-	for index in range(min(a_values.size(), b_values.size())):
-		if int(a_values[index]) != int(b_values[index]): return int(a_values[index]) < int(b_values[index])
-	return int(a.id) < int(b.id)
+	return ScoreSystem._is_lower_score(a, b)
 
 func _same_score(a: Dictionary, b: Dictionary) -> bool:
-	return int(a.score) == int(b.score) and int(a.count) == int(b.count) and a.values == b.values
+	return ScoreSystem.same_score(a, b)
 
 func _valid_slot(peer_id: int, slot: int) -> bool:
 	return players.has(peer_id) and slot >= 0 and slot < players[peer_id].cards.size()
