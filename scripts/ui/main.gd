@@ -250,13 +250,6 @@ func _build_game() -> void:
 		GameState.request_initial_ready())
 	ready_button.visible = false
 	top_bar.add_child(ready_button)
-	log_box = RichTextLabel.new()
-	log_box.bbcode_enabled = true
-	log_box.custom_minimum_size = Vector2(360, 54)
-	log_box.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	log_box.add_theme_font_size_override("normal_font_size", 12)
-	log_box.add_theme_color_override("default_color", UITheme.color("text_secondary"))
-	top_unit.add_child(log_box)
 	center_hint = Label.new()
 	center_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	center_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -362,6 +355,17 @@ func _build_game() -> void:
 	controls_box = HBoxContainer.new()
 	controls_box.add_theme_constant_override("separation", 8)
 	controls_row.add_child(controls_box)
+	# ── 右下角：对局记录 ──
+	var log_row := HBoxContainer.new()
+	log_row.alignment = BoxContainer.ALIGNMENT_END
+	log_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	game_panel.add_child(log_row)
+	log_box = RichTextLabel.new()
+	log_box.bbcode_enabled = true
+	log_box.custom_minimum_size = Vector2(340, 130)
+	log_box.add_theme_font_size_override("normal_font_size", 12)
+	log_box.add_theme_color_override("default_color", UITheme.color("text_secondary"))
+	log_row.add_child(log_box)
 
 func _on_deck_pressed() -> void:
 	GameState.request_take("draw", _next_action_id())
@@ -859,19 +863,54 @@ func _mode_instruction(fallback: String) -> String:
 	return fallback
 
 func _show_private_reveal(title: String, revealed_cards: Array) -> void:
-	var labels: Array[String] = []
 	for card in revealed_cards:
-		labels.append("%s（%d 分）" % [str(card.label), int(card.value)])
-	var dialog := AcceptDialog.new()
-	dialog.title = title
-	dialog.dialog_text = "\n".join(labels) + "\n\n请记住牌面；关闭后它会再次盖住。"
-	dialog.get_ok_button().text = "记住了"
-	dialog.confirmed.connect(func(): dialog.queue_free())
-	add_child(dialog)
-	dialog.popup_centered(Vector2i(370, 210))
-	if is_dev_join:
-		dialog.confirmed.emit()
-		dialog.queue_free()
+		_flip_card_show(title, card)
+
+func _flip_card_show(title: String, card: Dictionary) -> void:
+	var layer := Panel.new()
+	layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	layer.mouse_filter = Control.MOUSE_FILTER_STOP
+	var dim := StyleBoxFlat.new()
+	dim.bg_color = Color(0, 0, 0, 0.55)
+	layer.add_theme_stylebox_override("panel", dim)
+	add_child(layer)
+	var title_label := Label.new()
+	title_label.text = title
+	title_label.add_theme_font_size_override("font_size", 20)
+	title_label.add_theme_color_override("font_color", UITheme.color("accent"))
+	title_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	title_label.offset_top = -150
+	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(title_label)
+	var card_face := _make_card_button(card, Vector2(114, 178))
+	card_face.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	card_face.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(card_face)
+	card_face.pivot_offset = card_face.size / 2.0
+	var flip := layer.create_tween()
+	flip.set_trans(Tween.TRANS_QUAD)
+	flip.set_ease(Tween.EASE_IN)
+	flip.tween_property(card_face, "scale:x", 0.05, 0.28)
+	flip.tween_callback(func():
+		card_face.visible = false
+		var back := _make_card_button({}, Vector2(114, 178))
+		back.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+		back.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		layer.add_child(back)
+		back.scale = Vector2(0.05, 1.0)
+		back.pivot_offset = back.size / 2.0
+		flip.set_ease(Tween.EASE_OUT)
+		flip.tween_property(back, "scale:x", 1.0, 0.28)
+		flip.tween_interval(1.8)
+		flip.set_ease(Tween.EASE_IN)
+		flip.tween_property(back, "scale:x", 0.05, 0.28)
+		flip.tween_callback(func():
+			back.queue_free()
+			card_face.visible = true
+			flip.set_ease(Tween.EASE_OUT)
+			flip.tween_property(card_face, "scale:x", 1.0, 0.28)
+			flip.tween_callback(layer.queue_free)))
 
 func _show_toast(message: String) -> void:
 	_set_status(message)
