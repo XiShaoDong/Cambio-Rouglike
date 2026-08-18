@@ -720,67 +720,16 @@ func _valid_slot(peer_id: int, slot: int) -> bool:
 	return players.has(peer_id) and slot >= 0 and slot < players[peer_id].cards.size()
 
 func _card_public(card_id: String) -> Dictionary:
-	var card: Dictionary = cards[card_id]
-	return {"id": card.id, "rank": card.rank, "suit": card.suit, "value": card.value, "label": KongRules.display_name(card)}
+	return HiddenInfo.public_card(self, card_id)
 
 func _player_snapshot(peer_id: int, reveal_all: bool, viewer_id := 0, peek_slots: Array[int] = []) -> Dictionary:
-	var player: Dictionary = players[peer_id]
-	var slots: Array = []
-	for index in player.cards.size():
-		var card_id: String = player.cards[index]
-		var slot := {"card_id": card_id}
-		if reveal_all or (peer_id == viewer_id and peek_slots.has(index)):
-			slot["card"] = _card_public(card_id)
-		slots.append(slot)
-	return {"id": peer_id, "name": player.name, "count": player.cards.size(), "health": player.health,
-		"ready": initial_confirmed.has(peer_id), "slots": slots}
+	return HiddenInfo._player_snapshot(self, peer_id, reveal_all, viewer_id, peek_slots)
 
 func _snapshot_for(viewer_id: int) -> Dictionary:
-	var snapshot_players: Array = []
-	for peer_id in turn_order:
-		var peek_slots: Array[int] = []
-		if phase == Phase.INITIAL_PEEK:
-			peek_slots = [2, 3]
-		snapshot_players.append(_player_snapshot(peer_id, phase == Phase.GAME_OVER, viewer_id, peek_slots))
-	var snapshot := {
-		"protocol_version": PROTOCOL_VERSION,
-		"match_id": match_id,
-		"state_revision": state_revision,
-		"phase": int(phase),
-		"phase_name": _phase_name(),
-		"viewer_id": viewer_id,
-		"current_player": current_player_id,
-		"current_name": players.get(current_player_id, {}).get("name", ""),
-		"players": snapshot_players,
-		"draw_count": deck.size(),
-		"discard": _card_public(discard_pile.back()) if not discard_pile.is_empty() else {},
-		"slap_rank": slap_rank,
-		"slap_seconds": KongRules.SLAP_WINDOW_SECONDS if phase == Phase.SLAP_WINDOW else 0.0,
-		"slap_exchange_actor": int(slap_exchange.get("actor", 0)),
-		"kong_caller": kong_caller,
-		"match_number": match_number,
-		"ready_count": initial_confirmed.size() if phase == Phase.INITIAL_PEEK else 0,
-		"event_log": event_log.duplicate(),
-		"result": last_result.duplicate(),
-		"run": run_state.duplicate(),
-	}
-	if viewer_id == current_player_id and (phase == Phase.TURN_DECISION or phase == Phase.Q_DECISION) and not pending_draw.is_empty():
-		var pending: Dictionary = _card_public(pending_draw.card_id)
-		pending["source"] = str(pending_draw.get("source", "draw"))
-		snapshot["pending"] = pending
-	return snapshot
+	return HiddenInfo.snapshot_for(self, viewer_id)
 
 func _phase_name() -> String:
-	match phase:
-		Phase.LOBBY: return "大厅"
-		Phase.INITIAL_PEEK: return "开局记忆"
-		Phase.TURN_DRAW: return "抽牌"
-		Phase.TURN_DECISION: return "处理抽到的牌"
-		Phase.Q_DECISION: return "Q：决定交换"
-		Phase.SLAP_WINDOW: return "贴牌抢答"
-		Phase.SLAP_EXCHANGE: return "贴中他人：交出一张牌"
-		Phase.GAME_OVER: return "结算"
-	return ""
+	return HiddenInfo._phase_name(self, phase)
 
 func _lobby_snapshot() -> Dictionary:
 	var entries: Array = []
