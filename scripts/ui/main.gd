@@ -71,9 +71,6 @@ const PHASE_GAME_OVER := 7
 
 var latest_lobby: Dictionary = {}
 var latest_state: Dictionary = {}
-var action_mode := ""
-var selected_target := 0
-var selected_own_slot := -1
 var last_phase := -1
 
 var status_label: Label
@@ -106,12 +103,16 @@ var is_dev_join := false
 var _ready_clicked := false
 var start_button: Button = null
 var _cards := CardFactory.new()
+var interaction: GameInteraction
+var lobby: LobbyView
 var _card_slots: Dictionary = {}
 var _pending_flips: Array = []
 
 func _ready() -> void:
+	interaction = GameInteraction.new(self)
+	lobby = LobbyView.new(self)
 	_build_interface()
-	GameState.lobby_updated.connect(_on_lobby_updated)
+	GameState.lobby_updated.connect(func(l: Dictionary): lobby.update_lobby(l))
 	GameState.state_updated.connect(_on_state_updated)
 	GameState.private_reveal_received.connect(_show_private_reveal)
 	GameState.toast_received.connect(_show_toast)
@@ -123,7 +124,6 @@ func _ready() -> void:
 	_set_status("输入昵称后创建或加入局域网房间。默认端口 7007。")
 
 var _action_counter := 0
-
 func _next_action_id() -> String:
 	_action_counter += 1
 	return "%d-%d-%d" % [multiplayer.get_unique_id(), Time.get_ticks_usec(), _action_counter]
@@ -134,9 +134,10 @@ func _on_command_rejected(_code: int, message: String) -> void:
 func _on_match_aborted(_code: int, message: String) -> void:
 	latest_state.clear()
 	last_phase = -1
-	action_mode = ""
-	selected_target = 0
-	selected_own_slot = -1
+	if interaction != null:
+		interaction.action_mode = ""
+		interaction.selected_target = 0
+		interaction.selected_own_slot = -1
 	lobby_panel.visible = true
 	game_panel.visible = false
 	_set_status("对局中止：%s" % message)
@@ -184,48 +185,7 @@ func _build_interface() -> void:
 	_build_game()
 
 func _build_lobby() -> void:
-	var intro := Label.new()
-	intro.text = "房主的电脑负责裁定全部规则；同一 Wi‑Fi 下的朋友输入房主的局域网 IP 即可加入。"
-	intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	lobby_panel.add_child(intro)
-	var inputs := HBoxContainer.new()
-	inputs.add_theme_constant_override("separation", 10)
-	lobby_panel.add_child(inputs)
-	name_input = LineEdit.new()
-	name_input.placeholder_text = "昵称"
-	name_input.text = "玩家"
-	name_input.custom_minimum_size = Vector2(190, 42)
-	inputs.add_child(name_input)
-	address_input = LineEdit.new()
-	address_input.placeholder_text = "房主 IP（加入时填写）"
-	address_input.text = "127.0.0.1"
-	address_input.custom_minimum_size = Vector2(240, 42)
-	inputs.add_child(address_input)
-	port_input = LineEdit.new()
-	port_input.placeholder_text = "端口"
-	port_input.text = str(KongNetwork.DEFAULT_PORT)
-	port_input.custom_minimum_size = Vector2(105, 42)
-	port_input.alignment = HORIZONTAL_ALIGNMENT_CENTER
-	inputs.add_child(port_input)
-	var host := _button("创建房间")
-	host.pressed.connect(_host_game)
-	host.disabled = is_dev_join
-	inputs.add_child(host)
-	var join := _button("加入房间")
-	join.pressed.connect(_join_game)
-	join.disabled = is_dev_join
-	inputs.add_child(join)
-	var dev := _button("开发者：本机双开测试")
-	dev.pressed.connect(_dev_launch_second)
-	dev.add_theme_color_override("font_color", UITheme.color("success"))
-	dev.disabled = is_dev_join
-	inputs.add_child(dev)
-	lobby_members = RichTextLabel.new()
-	lobby_members.bbcode_enabled = true
-	lobby_members.fit_content = true
-	lobby_members.custom_minimum_size = Vector2(0, 140)
-	lobby_members.add_theme_font_size_override("normal_font_size", 18)
-	lobby_panel.add_child(lobby_members)
+	lobby.build()
 
 func _build_game() -> void:
 	game_panel.add_theme_constant_override("separation", 14)
@@ -390,45 +350,16 @@ func _animate_draw() -> void:
 		pending_card_box.scale = Vector2.ONE)
 
 func _host_game() -> void:
-	var port := _entered_port()
-	Network.host_game({"name": _entered_name()}, port)
+	lobby.host_game()
 
 func _join_game() -> void:
-	var address := address_input.text.strip_edges()
-	if address.is_empty():
-		_show_toast("请输入房主的局域网 IP。")
-		return
-	Network.join_game(address, {"name": _entered_name()}, _entered_port())
+	lobby.join_game()
 
 func _dev_launch_second() -> void:
-	var executable := OS.get_executable_path()
-	var project_dir := ProjectSettings.globalize_path("res://")
-	var port := _entered_port()
-	var args := PackedStringArray(["--path", project_dir, "--", "--dev-join", "127.0.0.1:%d" % port])
-	var pid := OS.create_process(executable, args)
-	if pid == 0:
-		_show_toast("启动第二个实例失败，请直接手动运行：%s --path %s" % [executable, project_dir])
-	else:
-		_set_status("已启动本机第二实例（PID %d），它会在 %d 秒内自动加入 127.0.0.1:%d。" % [pid, 2, port])
+	lobby.dev_launch_second()
 
 func _apply_dev_join() -> void:
-	var args := OS.get_cmdline_user_args()
-	var target := ""
-	for index in range(args.size()):
-		if args[index] == "--dev-join" and index + 1 < args.size():
-			target = args[index + 1]
-			break
-	if target.is_empty():
-		return
-	is_dev_join = true
-	var parts := target.rsplit(":", true, 1)
-	var address := parts[0] if parts.size() == 2 else "127.0.0.1"
-	var port := int(parts[1]) if parts.size() == 2 else KongNetwork.DEFAULT_PORT
-	name_input.text = "开发者2"
-	address_input.text = address
-	port_input.text = str(port)
-	Network.join_game(address, {"name": "开发者2"}, port)
-	_set_status("开发者模式：正在自动加入 %s:%d…" % [address, port])
+	lobby.apply_dev_join()
 
 func _request_kongbaya() -> void:
 	GameState.request_kongbaya(_next_action_id())
@@ -441,33 +372,12 @@ func _entered_port() -> int:
 	var parsed := int(port_input.text)
 	return parsed if parsed > 0 and parsed < 65536 else KongNetwork.DEFAULT_PORT
 
-func _on_lobby_updated(lobby: Dictionary) -> void:
-	latest_lobby = lobby
-	lobby_panel.visible = true
-	game_panel.visible = false
-	var lines := ["[color=#f6d77a]房间玩家（%d/%d）[/color]" % [lobby.players.size(), lobby.max_players]]
-	for entry in lobby.players:
-		var host_mark := "  [房主]" if int(entry.id) == int(lobby.host_id) else ""
-		lines.append("• %s%s" % [entry.name, host_mark])
-	if Network.is_host:
-		lines.append("\n[房主] 至少 2 人后可开始。")
-		if start_button == null:
-			start_button = _button("开始对局")
-			start_button.name = "StartMatch"
-			start_button.pressed.connect(GameState.request_start_match)
-			lobby_panel.add_child(start_button)
-		start_button.disabled = lobby.players.size() < int(lobby.min_players)
-	lobby_members.text = "\n".join(lines)
-
 func _on_state_updated(state: Dictionary) -> void:
 	latest_state = state
+	if interaction != null:
+		interaction.reset_for_phase(state)
 	if int(state.phase) != last_phase:
-		action_mode = ""
-		selected_target = 0
-		selected_own_slot = -1
 		last_phase = int(state.phase)
-		if int(state.phase) == PHASE_TURN_DECISION and int(state.viewer_id) == int(state.current_player):
-			action_mode = "replace"
 	lobby_panel.visible = false
 	game_panel.visible = true
 	_render_game()
@@ -573,7 +483,7 @@ func _render_controls(phase: int, is_current: bool) -> void:
 		keep.pressed.connect(func(): GameState.request_q_decision(false, -1, _next_action_id()))
 		controls_box.add_child(keep)
 		var exchange := _button("Q：交换（再点自己一张牌）")
-		exchange.pressed.connect(func(): action_mode = "q_exchange"; _render_game())
+		exchange.pressed.connect(func(): interaction.action_mode = "q_exchange"; _render_game())
 		controls_box.add_child(exchange)
 	elif phase == PHASE_GAME_OVER:
 		var result: Dictionary = latest_state.result
@@ -662,28 +572,8 @@ func _render_player_section(box: VBoxContainer, player: Dictionary, viewer: int,
 	name_panel.add_child(name_label)
 	section.add_child(name_panel)
 
-func _card_actionable(player_id: int, _slot: int) -> bool:
-	var phase := int(latest_state.phase)
-	var viewer := int(latest_state.viewer_id)
-	var is_current := viewer == int(latest_state.current_player)
-	if phase == PHASE_SLAP_WINDOW:
-		return true
-	if phase == PHASE_SLAP_EXCHANGE:
-		return player_id == viewer and int(latest_state.slap_exchange_actor) == viewer
-	if not is_current:
-		return false
-	match action_mode:
-		"replace", "peek_own", "q_exchange":
-			return player_id == viewer
-		"peek_other", "queen_target":
-			return player_id != viewer
-		"jack_target":
-			return player_id != viewer
-		"jack_own":
-			return player_id == viewer
-		"jack_their":
-			return player_id == selected_target
-	return false
+func _card_actionable(player_id: int, slot: int) -> bool:
+	return interaction.card_actionable(player_id, slot)
 
 func _highlight(button: Button, on: bool) -> void:
 	_cards.highlight(button, on)
@@ -706,49 +596,10 @@ func _render_log() -> void:
 	log_box.text = "\n".join(lines)
 
 func _begin_ability() -> void:
-	var pending: Dictionary = latest_state.get("pending", {})
-	match str(pending.get("rank", "")):
-		"7", "8": action_mode = "peek_own"
-		"9", "10": action_mode = "peek_other"
-		"J": action_mode = "jack_target"
-		"Q": action_mode = "queen_target"
-	_render_game()
+	interaction.begin_ability()
 
 func _on_card_pressed(player_id: int, slot: int) -> void:
-	if latest_state.is_empty(): return
-	var phase := int(latest_state.phase)
-	var viewer := int(latest_state.viewer_id)
-	if phase == PHASE_SLAP_WINDOW:
-		GameState.request_slap(player_id, slot, _next_action_id())
-		return
-	if phase == PHASE_SLAP_EXCHANGE and player_id == viewer and int(latest_state.slap_exchange_actor) == viewer:
-		GameState.request_slap_exchange(slot, _next_action_id())
-		return
-	if int(latest_state.current_player) != viewer: return
-	match action_mode:
-		"replace":
-			if player_id == viewer: GameState.request_replace(slot, _next_action_id())
-		"peek_own":
-			if player_id == viewer: GameState.request_use_ability({"slot": slot}, _next_action_id())
-		"peek_other":
-			if player_id != viewer: GameState.request_use_ability({"target": player_id, "target_slot": slot}, _next_action_id())
-		"queen_target":
-			if player_id != viewer: GameState.request_use_ability({"target": player_id, "target_slot": slot}, _next_action_id())
-		"q_exchange":
-			if player_id == viewer: GameState.request_q_decision(true, slot, _next_action_id())
-		"jack_target":
-			if player_id != viewer:
-				selected_target = player_id
-				action_mode = "jack_own"
-				_render_game()
-		"jack_own":
-			if player_id == viewer:
-				selected_own_slot = slot
-				action_mode = "jack_their"
-				_render_game()
-		"jack_their":
-			if player_id == selected_target:
-				GameState.request_use_ability({"target": selected_target, "own_slot": selected_own_slot, "target_slot": slot}, _next_action_id())
+	interaction.on_card_pressed(player_id, slot)
 
 func _hint_for(phase: int, is_current: bool) -> String:
 	if phase == PHASE_INITIAL_PEEK: return "记住下方两张牌，点 Ready 等待。"
@@ -763,16 +614,7 @@ func _hint_for(phase: int, is_current: bool) -> String:
 	return "等待其他玩家行动。"
 
 func _mode_instruction(fallback: String) -> String:
-	match action_mode:
-		"replace": return "请选择自己要被替换的手牌。"
-		"peek_own": return "7 / 8：请选择自己要查看的手牌。"
-		"peek_other": return "9 / 10：请选择其他玩家的一张牌。"
-		"queen_target": return "Q：请选择其他玩家的一张牌查看。"
-		"q_exchange": return "Q：请选择自己交出去的牌。"
-		"jack_target": return "J：先点击任意一张对方的牌以选择交换对象。"
-		"jack_own": return "J：请选择自己要盲换出去的牌。"
-		"jack_their": return "J：请选择对方要盲换的牌。"
-	return fallback
+	return interaction.mode_instruction(fallback)
 
 func _show_private_reveal(title: String, revealed_cards: Array, target: Dictionary = {}) -> void:
 	print("[PEEK] title=%s cards=%d target=%s slots=%s" % [title, revealed_cards.size(), str(target), str(_card_slots.keys())])
