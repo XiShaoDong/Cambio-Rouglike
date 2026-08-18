@@ -21,6 +21,7 @@ var enabled_hover := true
 var _base_back_style: StyleBoxFlat
 var _base_front_style: StyleBoxFlat
 var _pending_setup := false
+var _pending_highlight := false
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -29,6 +30,9 @@ func _ready() -> void:
 	_refresh()
 	if _pending_setup:
 		_pending_setup = false
+	if _pending_highlight:
+		_pending_highlight = false
+		set_highlight(true)
 
 func _build_styles() -> void:
 	var back_style := StyleBoxFlat.new()
@@ -87,6 +91,9 @@ func _resize_labels() -> void:
 
 ## 高亮（金色光晕）；关闭时恢复基础样式。
 func set_highlight(on: bool) -> void:
+	_pending_highlight = on
+	if not is_inside_tree() or not is_instance_valid(front) or not is_instance_valid(back):
+		return
 	var target := front if front.visible else back
 	if on:
 		var glow := UITheme.color("highlight_glow")
