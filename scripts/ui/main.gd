@@ -3,17 +3,6 @@ extends Control
 ## Deliberately code-built MVP interface: it keeps the visual layer small while
 ## the game rules and networking remain independently testable.
 
-class DashedBorder:
-	extends Control
-	var color := Color("ffffff")
-	func _draw() -> void:
-		var rect := Rect2(Vector2.ZERO, size)
-		var c: Color = UITheme.color("card_back_border")
-		draw_dashed_line(rect.position, Vector2(rect.end.x, rect.position.y), c, 2.0, 5.0, true)
-		draw_dashed_line(Vector2(rect.end.x, rect.position.y), rect.end, c, 2.0, 5.0, true)
-		draw_dashed_line(rect.end, Vector2(rect.position.x, rect.end.y), c, 2.0, 5.0, true)
-		draw_dashed_line(Vector2(rect.position.x, rect.end.y), rect.position, c, 2.0, 5.0, true)
-
 var _layout_debug := false
 var _theme_index := 0
 
@@ -105,12 +94,14 @@ var start_button: Button = null
 var _cards := CardFactory.new()
 var interaction: GameInteraction
 var lobby: LobbyView
+var game_view: GameView
 var _card_slots: Dictionary = {}
 var _pending_flips: Array = []
 
 func _ready() -> void:
 	interaction = GameInteraction.new(self)
 	lobby = LobbyView.new(self)
+	game_view = GameView.new(self)
 	_build_interface()
 	GameState.lobby_updated.connect(func(l: Dictionary): lobby.update_lobby(l))
 	GameState.state_updated.connect(_on_state_updated)
@@ -383,41 +374,8 @@ func _on_state_updated(state: Dictionary) -> void:
 	_render_game()
 
 func _render_game() -> void:
-	if latest_state.is_empty(): return
-	var phase := int(latest_state.phase)
-	var viewer := int(latest_state.viewer_id)
-	var is_current := viewer == int(latest_state.current_player)
-	game_header.text = "%s  ·  %s" % [latest_state.phase_name, "轮到你" if is_current else "轮到 %s" % latest_state.current_name]
-	var total_players: int = latest_state.players.size()
-	if phase == PHASE_INITIAL_PEEK:
-		var ready_count: int = int(latest_state.get("ready_count", 0))
-		ready_button.visible = true
-		ready_button.disabled = ready_count >= total_players or _ready_clicked
-		if _ready_clicked:
-			ready_button.text = "已准备（%d/%d）" % [ready_count, total_players]
-		else:
-			ready_button.text = "Ready（%d/%d）" % [ready_count, total_players]
-	else:
-		ready_button.visible = false
-		_ready_clicked = false
-	center_hint.text = _hint_for(phase, is_current)
-	round_label.text = "第 %d 局" % int(latest_state.get("match_number", 1))
-	bell_button.disabled = not (phase == PHASE_TURN_DRAW and is_current)
-	bell_button.tooltip_text = "轮到你抽牌时，按下铃铛宣布 KONGBAYA！其他人各有一次最后行动。"
-	_update_pending_card(phase, is_current)
-	_clear(controls_box)
-	var can_take := phase == PHASE_TURN_DRAW and is_current
-	deck_button.disabled = not can_take
-	_highlight(deck_button, can_take)
-	var discard := latest_state.discard as Dictionary
-	var discard_available := can_take and not discard.is_empty()
-	_update_discard_button(discard, discard_available)
-	_render_controls(phase, is_current)
-	_render_players(viewer)
-	_render_log()
-	_flush_pending_flips()
+	game_view.render(latest_state)
 
-## 处理因渲染未完成而挂起的看牌翻转。
 func _flush_pending_flips() -> void:
 	if _pending_flips.is_empty():
 		return
@@ -431,146 +389,12 @@ func _flush_pending_flips() -> void:
 			remaining.append(entry)
 	_pending_flips = remaining
 
-func _update_discard_button(discard: Dictionary, available: bool) -> void:
-	discard_button.disabled = not available
-	if discard_button is CardView:
-		discard_button.setup(discard)
-		if discard.is_empty():
-			if not discard_button.has_node("DiscardDashed"):
-				var dashed := DashedBorder.new()
-				dashed.name = "DiscardDashed"
-				dashed.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-				dashed.mouse_filter = Control.MOUSE_FILTER_IGNORE
-				discard_button.add_child(dashed)
-			discard_button.get_node("DiscardDashed").visible = true
-		elif discard_button.has_node("DiscardDashed"):
-			discard_button.get_node("DiscardDashed").visible = false
-	_highlight(discard_button, available)
-
-func _update_pending_card(phase: int, is_current: bool) -> void:
-	var should_show := phase == PHASE_TURN_DECISION and is_current and latest_state.has("pending")
-	pending_card_box.visible = should_show
-	if not should_show:
-		return
-	var pending: Dictionary = latest_state.pending
-	pending_card_button.queue_free()
-	pending_card_button = _make_card_button(pending, Vector2(68, 107))
-	pending_card_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	pending_card_box.add_child(pending_card_button)
-	pending_card_button.move_to_front()
-	var from_discard := str(pending.get("source", "draw")) == "discard"
-	if from_discard:
-		pending_action_button.visible = false
-		return
-	pending_action_button.visible = true
-	if KongRules.has_ability(str(pending.get("rank", ""))):
-		pending_action_button.text = "Use Power"
-		pending_action_button.add_theme_color_override("font_color", UITheme.color("accent"))
-	else:
-		pending_action_button.text = "弃牌"
-		pending_action_button.add_theme_color_override("font_color", UITheme.color("text_secondary"))
-
 func _on_pending_action() -> void:
 	var pending: Dictionary = latest_state.get("pending", {})
 	if KongRules.has_ability(str(pending.get("rank", ""))):
 		_begin_ability()
 	else:
 		GameState.request_discard_draw(_next_action_id())
-
-func _render_controls(phase: int, is_current: bool) -> void:
-	if phase == PHASE_Q_DECISION and is_current:
-		var keep := _button("Q：不交换")
-		keep.pressed.connect(func(): GameState.request_q_decision(false, -1, _next_action_id()))
-		controls_box.add_child(keep)
-		var exchange := _button("Q：交换（再点自己一张牌）")
-		exchange.pressed.connect(func(): interaction.action_mode = "q_exchange"; _render_game())
-		controls_box.add_child(exchange)
-	elif phase == PHASE_GAME_OVER:
-		var result: Dictionary = latest_state.result
-		var summary := Label.new()
-		if result.has("reason"):
-			summary.text = str(result.reason)
-		else:
-			var winners: Array = result.get("winners", [])
-			var winner_names: Array[String] = []
-			for player in latest_state.players:
-				if int(player.id) in winners: winner_names.append(str(player.name))
-			summary.text = "获胜：%s" % "、".join(winner_names)
-		summary.add_theme_font_size_override("font_size", 20)
-		summary.add_theme_color_override("font_color", UITheme.color("success"))
-		controls_box.add_child(summary)
-
-func _render_players(viewer: int) -> void:
-	_clear(top_player_box)
-	_clear(left_player_box)
-	_clear(right_player_box)
-	_clear(bottom_player_box)
-	var players: Array = latest_state.players
-	var others: Array = []
-	var me: Dictionary = {}
-	for player in players:
-		if int(player.id) == viewer:
-			me = player
-		else:
-			others.append(player)
-	# 位置分配：左右优先，最后才是上方（参考图）
-	var opponent_slots: Array = []
-	for player in others:
-		opponent_slots.append(player)
-	if opponent_slots.size() >= 1:
-		_render_player_section(left_player_box, opponent_slots[0], viewer, false)
-	if opponent_slots.size() >= 2:
-		_render_player_section(right_player_box, opponent_slots[1], viewer, false)
-	if opponent_slots.size() >= 3:
-		_render_player_section(top_player_box, opponent_slots[2], viewer, true)
-	if not me.is_empty():
-		_render_player_section(bottom_player_box, me, viewer, false)
-
-func _render_player_section(box: VBoxContainer, player: Dictionary, viewer: int, is_top: bool) -> void:
-	var is_me := int(player.id) == viewer
-	var card_size := Vector2(57, 89) if is_me else Vector2(34, 53)
-	var font_size := 16 if is_me else 12
-	var section := VBoxContainer.new()
-	section.add_theme_constant_override("separation", 4)
-	box.add_child(section)
-	var hand := GridContainer.new()
-	hand.columns = 2
-	hand.add_theme_constant_override("h_separation", 6)
-	hand.add_theme_constant_override("v_separation", 6)
-	hand.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	section.add_child(hand)
-	for slot_index in player.slots.size():
-		var slot: Dictionary = player.slots[slot_index]
-		var card_button := _make_card_button(slot.get("card", {}), card_size)
-		card_button.tooltip_text = "记忆牌面后，点击以执行当前操作"
-		card_button.pressed.connect(_on_card_pressed.bind(int(player.id), slot_index))
-		_highlight(card_button, _card_actionable(int(player.id), slot_index))
-		hand.add_child(card_button)
-		if not _card_slots.has(int(player.id)):
-			_card_slots[int(player.id)] = {}
-		_card_slots[int(player.id)][slot_index] = card_button
-	var name_panel := PanelContainer.new()
-	var name_style := StyleBoxFlat.new()
-	name_style.bg_color = UITheme.color("player_self_bg") if is_me else UITheme.color("player_other_bg")
-	name_style.set_corner_radius_all(6)
-	name_style.set_content_margin_all(6)
-	name_panel.add_theme_stylebox_override("panel", name_style)
-	name_panel.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	var name_label := Label.new()
-	var suffix := "（你）" if is_me else ""
-	var ready_mark := ""
-	if int(latest_state.phase) == PHASE_INITIAL_PEEK:
-		ready_mark = "  [✓已准备]" if bool(player.get("ready", false)) else "  [等待]"
-	name_label.text = "%s%s%s" % [player.name, suffix, ready_mark]
-	name_label.add_theme_font_size_override("font_size", font_size)
-	name_label.add_theme_color_override("font_color", UITheme.color("player_self_text") if is_me else UITheme.color("player_other_text"))
-	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	if is_top:
-		name_label.text = "▲ " + name_label.text
-	if is_me:
-		name_label.text = "▼ " + name_label.text
-	name_panel.add_child(name_label)
-	section.add_child(name_panel)
 
 func _card_actionable(player_id: int, slot: int) -> bool:
 	return interaction.card_actionable(player_id, slot)
@@ -580,20 +404,6 @@ func _highlight(button: Button, on: bool) -> void:
 
 func _make_card_button(card: Dictionary, card_size: Vector2) -> Button:
 	return _cards.make_card(card, card_size)
-
-func _render_log() -> void:
-	var accent_html := UITheme.color("accent").to_html(false)
-	var lines := ["[color=#%s]对局记录[/color]" % accent_html]
-	for entry in latest_state.event_log:
-		lines.append("• %s" % str(entry))
-	if int(latest_state.phase) == PHASE_GAME_OVER:
-		var ranking: Array = (latest_state.result as Dictionary).get("ranking", [])
-		if not ranking.is_empty():
-			lines.append("\n[color=#f6d77a]排名[/color]")
-			for index in ranking.size():
-				var entry: Dictionary = ranking[index]
-				lines.append("%d. %s：%d 分，%d 张" % [index + 1, entry.name, int(entry.score), int(entry.count)])
-	log_box.text = "\n".join(lines)
 
 func _begin_ability() -> void:
 	interaction.begin_ability()
