@@ -93,7 +93,7 @@ func build() -> void:
 	main.right_player_box.alignment = BoxContainer.ALIGNMENT_CENTER
 	main.right_player_box.add_theme_constant_override("separation", 4)
 	opponents_row.add_child(main.right_player_box)
-	# 抽到的牌（大牌）覆盖层
+	# 抽到的牌（大牌）：位于抽牌堆/弃牌堆上方、与之平行的位置
 	main.pending_overlay = Control.new()
 	main.pending_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	main.pending_overlay.mouse_filter = Control.MOUSE_FILTER_PASS
@@ -104,8 +104,8 @@ func build() -> void:
 	main.pending_card_box.add_theme_constant_override("separation", 10)
 	main.pending_card_box.anchor_left = 0.5
 	main.pending_card_box.anchor_right = 0.5
-	main.pending_card_box.anchor_top = 0.5
-	main.pending_card_box.anchor_bottom = 0.5
+	main.pending_card_box.anchor_top = 0.0
+	main.pending_card_box.anchor_bottom = 0.0
 	main.pending_card_box.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	main.pending_card_box.grow_vertical = Control.GROW_DIRECTION_BOTH
 	main.pending_card_box.visible = false

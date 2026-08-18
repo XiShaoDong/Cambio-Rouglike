@@ -36,6 +36,11 @@ func attempt(sender: int, target_player: int, slot: int, action_id := "") -> voi
 		return
 	game.slap_attempted[sender] = true
 	var target_card: String = game.players[target_player].cards[slot]
+	# 贴牌尝试：无论对错，把被贴的牌翻给所有玩家看
+	var card_public: Dictionary = game.peek.public_card(target_card)
+	var target_name: String = game.players[target_player].name
+	for pid in game.players:
+		game._send_reveal(int(pid), "贴牌：翻出 %s 的牌" % target_name, [card_public], {"player_id": target_player, "slot": slot})
 	if game.cards[target_card].rank != game.slap_rank:
 		add_penalty(sender)
 		game._add_log("%s 贴错了，罚抽一张牌。" % game.players[sender].name)
