@@ -20,14 +20,14 @@ func animate_replace(actor: int, slot: int) -> void:
 		return
 	var old_rect: Rect2 = old_card.get_global_rect()
 	var old_data: Dictionary = _card_data_of(old_card)
-	# 玩家旧牌 → 弃牌堆：翻出后移动
+	# 玩家旧牌 → 弃牌堆：翻面成正面，移动到弃牌堆并缩放到牌堆大小
 	if is_instance_valid(main.discard_button):
-		_fly(old_rect.position, main.discard_button.get_global_rect().position, old_data, true)
-	# 大牌 → 玩家 slot：移动并翻到背面
+		_fly(old_rect, main.discard_button.get_global_rect(), old_data, true)
+	# 大牌 → 玩家 slot：移动到玩家牌位置并缩放到手牌大小，翻到背面
 	if is_instance_valid(main.pending_card_button):
 		var big_rect: Rect2 = main.pending_card_button.get_global_rect()
 		var big_data: Dictionary = _card_data_of(main.pending_card_button)
-		_fly(big_rect.position, old_rect.position, big_data, false)
+		_fly(big_rect, old_rect, big_data, false)
 
 ## 场景1：玩家间交换（J/Q）。a 换 a_slot，b 换 b_slot。
 func animate_swap(a: int, a_slot: int, b: int, b_slot: int) -> void:
@@ -41,9 +41,9 @@ func animate_swap(a: int, a_slot: int, b: int, b_slot: int) -> void:
 		return
 	var rect_a: Rect2 = card_a.get_global_rect()
 	var rect_b: Rect2 = card_b.get_global_rect()
-	# 两张牌背面沿轨迹互换（不翻面）
-	_fly(rect_a.position, rect_b.position, _card_data_of(card_a), false)
-	_fly(rect_b.position, rect_a.position, _card_data_of(card_b), false)
+	# 两张牌背面沿轨迹互换，按目标尺寸缩放（不翻面）
+	_fly(rect_a, rect_b, _card_data_of(card_a), false)
+	_fly(rect_b, rect_a, _card_data_of(card_b), false)
 
 ## 处理 server 广播的交换动画事件（各 client 用自己视角定位）。
 func handle_exchange(data: Dictionary) -> void:
@@ -55,47 +55,56 @@ func handle_exchange(data: Dictionary) -> void:
 		"discard":
 			_animate_discard_pending()
 
-## 弃牌动画：pending 大牌从抽牌堆移动到弃牌堆（翻出）。
+## 弃牌动画：pending 大牌从抽牌堆移动到弃牌堆（翻成正面）。
 func _animate_discard_pending() -> void:
 	if is_instance_valid(main.pending_card_button) and is_instance_valid(main.discard_button):
 		var big_rect: Rect2 = main.pending_card_button.get_global_rect()
 		var big_data: Dictionary = _card_data_of(main.pending_card_button)
-		_fly(big_rect.position, main.discard_button.get_global_rect().position, big_data, true)
+		_fly(big_rect, main.discard_button.get_global_rect(), big_data, true)
 
 func _card_data_of(card: Control) -> Dictionary:
 	if card is CardView:
 		return (card as CardView).card_data
 	return {}
 
-## 在 overlay 上创建一张卡牌副本，从 from 飞到 to。
-## flip_to_face=true 时先显示背面再翻成正面；否则保持背面移动。
-func _fly(from: Vector2, to: Vector2, data: Dictionary, flip_to_face: bool) -> void:
+## 在 overlay 上创建一张卡牌副本，从 from_rect 飞到 to_rect。
+## 按起始/目标尺寸逐步缩放；flip_to_face=true 时先翻成正面，再以正面移动。
+func _fly(from_rect: Rect2, to_rect: Rect2, data: Dictionary, flip_to_face: bool) -> void:
 	var layer := Control.new()
 	layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	main.overlay.add_child(layer)
-	var card_size := Vector2(57, 89)
-	# 背面
-	var back_face: Button = main._make_card_button({}, card_size)
+	var from_size := from_rect.size
+	var to_size := to_rect.size
+	# 背面（起始尺寸，可自由缩放）
+	var back_face: Button = main._make_card_button({}, from_size)
+	back_face.custom_minimum_size = Vector2.ZERO
 	layer.add_child(back_face)
-	back_face.global_position = from
+	back_face.global_position = from_rect.position
 	# 正面（如需要）
 	var front_face: Button = null
 	if flip_to_face or not data.is_empty():
-		front_face = main._make_card_button(data, card_size)
+		front_face = main._make_card_button(data, from_size)
+		front_face.custom_minimum_size = Vector2.ZERO
 		front_face.visible = false
 		layer.add_child(front_face)
-	# 移动轨迹
 	var tween := main.create_tween()
 	tween.set_trans(Tween.TRANS_QUAD)
 	tween.set_ease(Tween.EASE_IN_OUT)
 	if flip_to_face:
-		# 先翻成正面再移动
+		# 翻面：背面收缩 → 切正面 → 展开
 		tween.tween_property(back_face, "scale:x", 0.05, 0.2)
 		tween.tween_callback(_reveal_front.bind(back_face, front_face))
 		tween.tween_property(front_face, "scale:x", 1.0, 0.2)
-		tween.tween_property(front_face, "global_position", to, 0.5)
+		# 正面移动到弃牌堆，同时缩放到目标尺寸
+		tween.set_parallel(true)
+		tween.tween_property(front_face, "global_position", to_rect.position, 0.5)
+		tween.tween_property(front_face, "size", to_size, 0.5)
 	else:
-		tween.tween_property(back_face, "global_position", to, 0.5)
+		# 背面移动 + 缩放（不翻面）
+		tween.set_parallel(true)
+		tween.tween_property(back_face, "global_position", to_rect.position, 0.5)
+		tween.tween_property(back_face, "size", to_size, 0.5)
+	tween.set_parallel(false)
 	tween.tween_callback(layer.queue_free)
 
 func _reveal_front(back_face: Control, front_face: Control) -> void:
