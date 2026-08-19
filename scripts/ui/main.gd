@@ -60,6 +60,18 @@ var _card_slots: Dictionary = {}
 var _pending_flips: Array = []
 var _draw_flip_pending := false
 var _pending_hidden_for_ability := false
+var _anim_slots: Dictionary = {}
+var _discard_anim_lock := false
+
+## 标记某个玩家槽位正在动画（渲染时该槽位显示虚线占位，不显示原卡）。
+func mark_anim_slot(pid: int, slot: int) -> void:
+	_anim_slots["%d_%d" % [pid, slot]] = true
+
+func unmark_anim_slot(pid: int, slot: int) -> void:
+	_anim_slots.erase("%d_%d" % [pid, slot])
+
+func is_anim_slot(pid: int, slot: int) -> bool:
+	return _anim_slots.has("%d_%d" % [pid, slot])
 
 func _ready() -> void:
 	interaction = GameInteraction.new(self)
@@ -206,8 +218,7 @@ func _on_pending_action() -> void:
 	var actor := int(latest_state.get("viewer_id", 0))
 	var big_data: Dictionary = pending.duplicate()
 	big_data.erase("source")
-	# 隐藏棋盘大牌，播副本动画飞向弃牌堆（避免双卡）
-	pending_card_box.visible = false
+	# 隐藏棋盘大牌，播副本动画飞向弃牌堆（落位后弃牌堆显示，大牌不重建）
 	animator._animate_discard_pending(big_data, actor)
 	if KongRules.has_ability(str(pending.get("rank", ""))):
 		_pending_hidden_for_ability = true

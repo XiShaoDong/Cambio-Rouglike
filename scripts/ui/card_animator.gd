@@ -24,14 +24,18 @@ func animate_replace(actor: int, slot: int, old_data: Dictionary, big_data: Dict
 	if not is_instance_valid(old_card):
 		return
 	var old_rect: Rect2 = old_card.get_global_rect()
-	# 玩家旧牌 → 弃牌堆：按各视角旧牌当前面，翻成正面移动到弃牌堆
+	main.mark_anim_slot(actor, slot)
+	# 玩家旧牌 → 弃牌堆：隐藏源卡，副本翻成正面移动到弃牌堆（延迟显示，落位后解锁）
 	if is_instance_valid(main.discard_button):
-		_fly(old_rect, main.discard_button.get_global_rect(), old_data, _face_up_of(old_card), true)
-	# 大牌 → 玩家 slot：按各视角大牌当前面（操作者正面、其他玩家背面），
-	# 从大牌显示位置（两堆中心）移动到玩家牌位置并翻成目标槽位当前面
+		main._discard_anim_lock = true
+		_fly(old_rect, main.discard_button.get_global_rect(), old_data, _face_up_of(old_card), true,
+			old_card, func():
+				main._discard_anim_lock = false
+				main._render_game())
+	# 大牌 → 玩家 slot：隐藏大牌反馈，副本从两堆中心移动到玩家牌位置并翻成目标槽位当前面
 	if is_instance_valid(main.pending_card_button):
 		var big_rect: Rect2 = _big_card_rect()
-		# 大牌起始面：仅操作者(actor)的 client 看到大牌正面，其他玩家看到背面
+		main.pending_card_box.visible = false
 		var big_start_face_up := int(main.latest_state.get("viewer_id", 0)) == actor
 		_fly(big_rect, old_rect, big_data, big_start_face_up, _face_up_of(old_card))
 
@@ -47,9 +51,15 @@ func animate_swap(a: int, a_slot: int, b: int, b_slot: int, a_data: Dictionary, 
 		return
 	var rect_a: Rect2 = card_a.get_global_rect()
 	var rect_b: Rect2 = card_b.get_global_rect()
-	# 两张牌互换，各按对方当前面判断是否翻转
-	_fly(rect_a, rect_b, a_data, _face_up_of(card_a), _face_up_of(card_b))
-	_fly(rect_b, rect_a, b_data, _face_up_of(card_b), _face_up_of(card_a))
+	# 标记动画槽位 + 隐藏源卡，副本互换
+	main.mark_anim_slot(a, a_slot)
+	main.mark_anim_slot(b, b_slot)
+	_fly(rect_a, rect_b, a_data, _face_up_of(card_a), _face_up_of(card_b), card_a, func(): _finish_anim(a, a_slot))
+	_fly(rect_b, rect_a, b_data, _face_up_of(card_b), _face_up_of(card_a), card_b, func(): _finish_anim(b, b_slot))
+
+func _finish_anim(pid: int, slot: int) -> void:
+	main.unmark_anim_slot(pid, slot)
+	main._render_game()
 
 ## 处理 server 广播的交换动画事件（各 client 用自己视角定位）。
 func handle_exchange(data: Dictionary) -> void:
@@ -63,7 +73,7 @@ func handle_exchange(data: Dictionary) -> void:
 		"discard":
 			_animate_discard_pending(data.get("big_data", {}), int(data.get("actor", 0)))
 
-## 弃牌动画：pending 大牌从大牌位置移动到弃牌堆（按各视角起始面，翻成弃牌堆正面）。
+## 弃牌动画：pending 大牌从大牌位置移动到弃牌堆（隐藏源反馈，缩放与弃牌堆一致，落位后显示）。
 func _animate_discard_pending(big_data: Dictionary, actor: int) -> void:
 	# 去重：点击者本地已播，server 事件短时间到达跳过（其他玩家靠事件播）
 	var now := Time.get_ticks_msec()
@@ -72,8 +82,13 @@ func _animate_discard_pending(big_data: Dictionary, actor: int) -> void:
 	_discard_anim_time = now
 	if is_instance_valid(main.discard_button):
 		var big_rect: Rect2 = _big_card_rect()
+		main.pending_card_box.visible = false
+		main._discard_anim_lock = true
 		var big_start_face_up := int(main.latest_state.get("viewer_id", 0)) == actor
-		_fly(big_rect, main.discard_button.get_global_rect(), big_data, big_start_face_up, true)
+		_fly(big_rect, main.discard_button.get_global_rect(), big_data, big_start_face_up, true,
+			null, func():
+				main._discard_anim_lock = false
+				main._render_game())
 
 ## 大牌显示位置（两堆中心，1.5 倍尺寸）。
 func _big_card_rect() -> Rect2:
@@ -95,8 +110,9 @@ func _face_up_of(card: Control) -> bool:
 
 ## 在 overlay 上创建一张卡牌副本，从 from_rect 飞到 to_rect。
 ## 按起始/目标尺寸逐步缩放；start/end_face_up 决定是否纵轴翻转（背↔正）。
-## 时长随移动距离增长。
-func _fly(from_rect: Rect2, to_rect: Rect2, data: Dictionary, start_face_up: bool, end_face_up: bool) -> void:
+## 时长随移动距离增长。source_card 为被移动走的原卡（动画开始时隐藏，避免双卡）。
+## on_finish 在动画结束（副本落位清理）后调用，用于刷新目标位置。
+func _fly(from_rect: Rect2, to_rect: Rect2, data: Dictionary, start_face_up: bool, end_face_up: bool, source_card: Control = null, on_finish: Callable = Callable()) -> void:
 	var layer := Control.new()
 	layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	main.overlay.add_child(layer)
@@ -112,6 +128,9 @@ func _fly(from_rect: Rect2, to_rect: Rect2, data: Dictionary, start_face_up: boo
 	card.pivot_offset = from_size / 2.0
 	layer.add_child(card)
 	card.global_position = from_rect.position
+	# 隐藏源原卡（动画期间源位置不显示）
+	if source_card != null and is_instance_valid(source_card):
+		source_card.visible = false
 	var tween := main.create_tween()
 	tween.set_trans(Tween.TRANS_QUAD)
 	tween.set_ease(Tween.EASE_IN_OUT)
@@ -119,9 +138,7 @@ func _fly(from_rect: Rect2, to_rect: Rect2, data: Dictionary, start_face_up: boo
 		# 需要翻转：纵轴 scale.x 1→0→1，中途切换面
 		var end_data: Dictionary = data if end_face_up else {}
 		tween.tween_property(card, "scale:x", 0.0, dur * 0.35)
-		tween.tween_callback(func():
-			if card is CardView:
-				(card as CardView).setup(end_data))
+		tween.tween_callback(_reveal_data.bind(card, end_data))
 		tween.set_parallel(true)
 		tween.tween_property(card, "scale:x", 1.0, dur * 0.65)
 		tween.tween_property(card, "global_position", to_rect.position, dur)
@@ -132,4 +149,16 @@ func _fly(from_rect: Rect2, to_rect: Rect2, data: Dictionary, start_face_up: boo
 		tween.tween_property(card, "global_position", to_rect.position, dur)
 		tween.tween_property(card, "size", to_size, dur)
 	tween.set_parallel(false)
-	tween.tween_callback(layer.queue_free)
+	tween.tween_callback(_cleanup.bind(layer, on_finish))
+
+## 翻面中途切换牌面数据。
+func _reveal_data(card: Control, end_data: Dictionary) -> void:
+	if card is CardView:
+		(card as CardView).setup(end_data)
+
+## 动画结束：清理副本层，触发完成回调。
+func _cleanup(layer: Control, on_finish: Callable) -> void:
+	if is_instance_valid(layer):
+		layer.queue_free()
+	if on_finish.is_valid():
+		on_finish.call()

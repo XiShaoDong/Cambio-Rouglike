@@ -202,6 +202,9 @@ func render(state: Dictionary) -> void:
 	main._flush_pending_flips()
 
 func _update_discard_button(discard: Dictionary, available: bool) -> void:
+	# 弃牌堆动画中：延迟显示（落位后才更新）
+	if main._discard_anim_lock:
+		return
 	main.discard_button.disabled = not available
 	if main.discard_button is CardView:
 		main.discard_button.setup(discard)
@@ -338,12 +341,28 @@ func _render_player_section(box: VBoxContainer, player: Dictionary, viewer: int,
 	for slot_index in player.slots.size():
 		var slot: Dictionary = player.slots[slot_index]
 		var is_empty_slot := str(slot.get("card_id", "")) == ""
+		var is_anim_slot: bool = main.is_anim_slot(int(player.id), slot_index)
+		if is_empty_slot or is_anim_slot:
+			# 空槽/动画中槽位：透明背景 + 虚线边框占位
+			var empty := PanelContainer.new()
+			empty.custom_minimum_size = card_size
+			empty.size = card_size
+			var ts := StyleBoxFlat.new()
+			ts.bg_color = Color(0, 0, 0, 0)
+			ts.set_corner_radius_all(8)
+			empty.add_theme_stylebox_override("panel", ts)
+			empty.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			var dashed := DashedBorder.new()
+			dashed.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+			dashed.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			empty.add_child(dashed)
+			hand.add_child(empty)
+			if not main._card_slots.has(int(player.id)):
+				main._card_slots[int(player.id)] = {}
+			main._card_slots[int(player.id)][slot_index] = empty
+			continue
 		var card_button: Button = main._make_card_button(slot.get("card", {}), card_size)
-		if is_empty_slot:
-			card_button.disabled = true
-			card_button.modulate = Color(1, 1, 1, 0.25)
-		else:
-			card_button.tooltip_text = "记忆牌面后，点击以执行当前操作"
+		card_button.tooltip_text = "记忆牌面后，点击以执行当前操作"
 		card_button.pressed.connect(main._on_card_pressed.bind(int(player.id), slot_index))
 		main._highlight(card_button, main._card_actionable(int(player.id), slot_index))
 		hand.add_child(card_button)
