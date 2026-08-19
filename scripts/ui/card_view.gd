@@ -104,8 +104,8 @@ func _create_flip(from: Control, to: Control) -> void:
 	var tween := create_tween()
 	tween.set_trans(Tween.TRANS_QUAD)
 	tween.set_ease(Tween.EASE_IN)
-	tween.tween_property(self, "scale:x", 0.05, 0.28)
-	tween.tween_callback(_finish_flip.bind(from, to, 0.28))
+	tween.tween_property(self, "scale:x", 0.05, 0.42)
+	tween.tween_callback(_finish_flip.bind(from, to, 0.42))
 
 ## 纵轴翻转：绕垂直中线 scale.x 1→0→1，中途切换面到指定面。face_up=true 显示正面。
 func flip_to_face(face_up: bool) -> void:
@@ -115,8 +115,8 @@ func flip_to_face(face_up: bool) -> void:
 	var tween := create_tween()
 	tween.set_trans(Tween.TRANS_QUAD)
 	tween.set_ease(Tween.EASE_IN)
-	tween.tween_property(self, "scale:x", 0.0, 0.15)
-	tween.tween_callback(_finish_flip.bind(from, to, 0.15))
+	tween.tween_property(self, "scale:x", 0.0, 0.225)
+	tween.tween_callback(_finish_flip.bind(from, to, 0.225))
 
 ## 翻面后半段：切换面并展开（独立 tween，避免在已启动 tween 内追加）。
 func _finish_flip(from: Control, to: Control, dur: float) -> void:

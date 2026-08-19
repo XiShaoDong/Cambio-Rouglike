@@ -228,15 +228,21 @@ func _update_pending_card(phase: int, is_current: bool) -> void:
 	main.pending_card_button = main._make_card_button(pending, Vector2(68, 107))
 	main.pending_card_box.add_child(main.pending_card_button)
 	main.pending_card_button.move_to_front()
-	# 抽牌翻转：点击抽牌堆后，大牌先背面再纵轴翻正面显示（保持正面）
+	# 棋盘默认 setup：两堆中心 + scale 1.5 + 按钮
+	_apply_pending_setup(pending)
+	# 抽牌动画：点击抽牌堆后，用副本从抽牌堆飞到大牌位置并翻成正面（不改棋盘节点）
 	if main._draw_flip_pending and str(pending.get("source", "draw")) == "draw":
 		main._draw_flip_pending = false
-		if main.pending_card_button is CardView:
-			var big_view := main.pending_card_button as CardView
-			big_view.back.visible = true
-			big_view.front.visible = false
-			big_view.flip_to_face(true)
-	# 大牌定位：中心 = 抽牌堆与弃牌堆的中心，scale 1.5（容器缩放，不干扰翻面动画）
+		if is_instance_valid(main.deck_button) and is_instance_valid(main.discard_button):
+			var deck_rect: Rect2 = main.deck_button.get_global_rect()
+			var disc_rect: Rect2 = main.discard_button.get_global_rect()
+			var mid: Vector2 = (deck_rect.get_center() + disc_rect.get_center()) / 2.0
+			var big_size: Vector2 = deck_rect.size * 1.5
+			var big_rect: Rect2 = Rect2(mid - big_size / 2.0, big_size)
+			main.animator.play_draw(pending, deck_rect, big_rect)
+
+## 棋盘大牌默认 setup：中心 = 两堆中心，scale 1.5，按钮文字/可见性。
+func _apply_pending_setup(pending: Dictionary) -> void:
 	if is_instance_valid(main.deck_button) and is_instance_valid(main.discard_button):
 		var deck_rect: Rect2 = main.deck_button.get_global_rect()
 		var disc_rect: Rect2 = main.discard_button.get_global_rect()

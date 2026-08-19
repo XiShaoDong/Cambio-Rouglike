@@ -7,9 +7,14 @@ extends RefCounted
 ##       同时大牌从抽牌堆移动至玩家牌堆并翻到背面。
 
 var main: Node
+var _discard_anim_time := 0
 
 func _init(owner_node: Node) -> void:
 	main = owner_node
+
+## 抽牌动画：副本从抽牌堆(deck_rect)飞到大牌位置(big_rect)并翻成正面（不改棋盘节点）。
+func play_draw(data: Dictionary, deck_rect: Rect2, big_rect: Rect2) -> void:
+	_fly(deck_rect, big_rect, data, false, true)
 
 ## 场景2：抽牌堆与自己交换。actor 为操作者，slot 为被替换的槽位。
 func animate_replace(actor: int, slot: int, old_data: Dictionary, big_data: Dictionary) -> void:
@@ -60,6 +65,11 @@ func handle_exchange(data: Dictionary) -> void:
 
 ## 弃牌动画：pending 大牌从大牌位置移动到弃牌堆（按各视角起始面，翻成弃牌堆正面）。
 func _animate_discard_pending(big_data: Dictionary, actor: int) -> void:
+	# 去重：点击者本地已播，server 事件短时间到达跳过（其他玩家靠事件播）
+	var now := Time.get_ticks_msec()
+	if now - _discard_anim_time < 1000:
+		return
+	_discard_anim_time = now
 	if is_instance_valid(main.discard_button):
 		var big_rect: Rect2 = _big_card_rect()
 		var big_start_face_up := int(main.latest_state.get("viewer_id", 0)) == actor

@@ -147,21 +147,9 @@ func _build_lobby() -> void:
 func _on_deck_pressed() -> void:
 	_draw_flip_pending = true
 	GameState.request_take("draw", _next_action_id())
-	_animate_draw()
 
 func _on_discard_pressed() -> void:
 	GameState.request_take("discard", _next_action_id())
-
-func _animate_draw() -> void:
-	pending_card_box.modulate.a = 0.0
-	pending_card_box.scale = Vector2(0.5, 0.5)
-	var tween := create_tween()
-	tween.set_parallel(true)
-	tween.tween_property(pending_card_box, "modulate:a", 1.0, 0.3)
-	tween.tween_property(pending_card_box, "scale", Vector2.ONE, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tween.chain().tween_callback(func():
-		pending_card_box.modulate.a = 1.0
-		pending_card_box.scale = Vector2.ONE)
 
 func _host_game() -> void:
 	lobby.host_game()
@@ -214,33 +202,15 @@ func _flush_pending_flips() -> void:
 
 func _on_pending_action() -> void:
 	var pending: Dictionary = latest_state.get("pending", {})
+	var actor := int(latest_state.get("viewer_id", 0))
+	var big_data: Dictionary = pending.duplicate()
+	big_data.erase("source")
+	# 点击瞬间本地播放大牌→弃牌堆动画（副本，不改棋盘节点）；server 事件到达时去重跳过
+	animator._animate_discard_pending(big_data, actor)
 	if KongRules.has_ability(str(pending.get("rank", ""))):
-		_animate_pending_to_discard()
 		_begin_ability()
 	else:
 		GameState.request_discard_draw(_next_action_id())
-
-## 大牌从当前显示位置飞向弃牌堆的动画（Use Power / 弃牌后的视觉反馈）。
-func _animate_pending_to_discard() -> void:
-	if not is_instance_valid(pending_card_button) or not is_instance_valid(discard_button):
-		return
-	var card: Control = pending_card_button
-	var start := card.get_global_rect().get_center()
-	var target := discard_button.get_global_rect().get_center()
-	card.get_parent().remove_child(card)
-	overlay.add_child(card)
-	card.global_position = start - card.size / 2.0
-	card.pivot_offset = card.size / 2.0
-	card.scale = Vector2.ONE
-	card.modulate.a = 1.0
-	var tween := create_tween()
-	tween.set_parallel(true)
-	tween.tween_property(card, "global_position", target - card.size / 2.0, 0.4).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-	tween.tween_property(card, "scale", Vector2(0.3, 0.3), 0.4).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-	tween.tween_property(card, "modulate:a", 0.0, 0.4)
-	await tween.finished
-	if is_instance_valid(card):
-		card.queue_free()
 
 func _card_actionable(player_id: int, slot: int) -> bool:
 	return interaction.card_actionable(player_id, slot)
