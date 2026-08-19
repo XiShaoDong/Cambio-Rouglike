@@ -93,7 +93,7 @@ func build() -> void:
 	main.right_player_box.alignment = BoxContainer.ALIGNMENT_CENTER
 	main.right_player_box.add_theme_constant_override("separation", 4)
 	opponents_row.add_child(main.right_player_box)
-	# 抽到的牌（大牌）：位于抽牌堆/弃牌堆上方、与之平行的位置
+	# 抽到的牌（大牌）：直接反转叠放在抽牌堆（deck_button）上
 	main.pending_overlay = Control.new()
 	main.pending_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	main.pending_overlay.mouse_filter = Control.MOUSE_FILTER_PASS
@@ -235,6 +235,10 @@ func _update_pending_card(phase: int, is_current: bool) -> void:
 	main.pending_card_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	main.pending_card_box.add_child(main.pending_card_button)
 	main.pending_card_button.move_to_front()
+	# 大牌反转叠放在抽牌堆（deck_button）上
+	if is_instance_valid(main.deck_button):
+		var deck_center: Vector2 = main.deck_button.get_global_rect().get_center()
+		main.pending_card_box.global_position = deck_center - main.pending_card_box.size / 2.0
 	var from_discard := str(pending.get("source", "draw")) == "discard"
 	if from_discard:
 		main.pending_action_button.visible = false
