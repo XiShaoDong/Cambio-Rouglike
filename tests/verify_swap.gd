@@ -51,3 +51,17 @@ func _run() -> void:
 	var slot_b = main_node._card_slots.get(2, {}).get(1, null)
 	_check("A slot0 是卡牌(CardView)", slot_a is CardView)
 	_check("B slot1 是卡牌(CardView)", slot_b is CardView)
+
+	# replace 测试：A slot1 与抽牌堆大牌交换
+	main_node.latest_state.pending = {"rank": "10", "suit": "♠", "value": 10, "source": "draw"}
+	main_node._render_game()
+	await get_tree().process_frame
+	anim.animate_replace(1, 1, {"rank": "8", "suit": "♠", "value": 8}, {"rank": "10", "suit": "♠", "value": 10})
+	_check("replace 标记 A slot1", main_node.is_anim_slot(1, 1))
+	await get_tree().create_timer(2.0).timeout
+	_check("replace 后 A slot1 标记已清除", not main_node.is_anim_slot(1, 1))
+	_check("replace 后弃牌堆锁已清除", not main_node._discard_anim_lock)
+	main_node._render_game()
+	await get_tree().process_frame
+	var slot_rep = main_node._card_slots.get(1, {}).get(1, null)
+	_check("replace 后 A slot1 是卡牌(CardView)", slot_rep is CardView)
