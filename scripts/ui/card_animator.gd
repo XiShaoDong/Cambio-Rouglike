@@ -85,6 +85,7 @@ func _fly(from_rect: Rect2, to_rect: Rect2, data: Dictionary, flip_to_face: bool
 	if flip_to_face or not data.is_empty():
 		front_face = main._make_card_button(data, from_size)
 		front_face.custom_minimum_size = Vector2.ZERO
+		front_face.global_position = from_rect.position
 		front_face.visible = false
 		layer.add_child(front_face)
 	var tween := main.create_tween()
