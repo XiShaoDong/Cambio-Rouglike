@@ -235,7 +235,7 @@ func _update_pending_card(phase: int, is_current: bool) -> void:
 		return
 	var pending: Dictionary = main.latest_state.pending
 	main.pending_card_button.queue_free()
-	main.pending_card_button = main._make_card_button(pending, Vector2(68, 107))
+	main.pending_card_button = main._make_card_button(pending, Vector2(102, 160))
 	main.pending_card_box.add_child(main.pending_card_button)
 	main.pending_card_button.move_to_front()
 	# 棋盘默认 setup：两堆中心 + scale 1.5 + 按钮
@@ -253,20 +253,20 @@ func _update_pending_card(phase: int, is_current: bool) -> void:
 			main.animator.play_draw(pending, deck_rect, big_rect, func():
 				main.pending_card_box.visible = true)
 
-## 棋盘大牌默认 setup：中心 = 两堆中心，scale 1.5，按钮文字/可见性。
+## 棋盘大牌默认 setup：中心 = 两堆中心，大牌实际 1.5 倍尺寸（不用 scale，避免位移）。
 func _apply_pending_setup(pending: Dictionary) -> void:
 	if is_instance_valid(main.deck_button) and is_instance_valid(main.discard_button):
 		var deck_rect: Rect2 = main.deck_button.get_global_rect()
 		var disc_rect: Rect2 = main.discard_button.get_global_rect()
 		var mid: Vector2 = (deck_rect.get_center() + disc_rect.get_center()) / 2.0
-		var big_size: Vector2 = deck_rect.size
+		var big_size: Vector2 = deck_rect.size * 1.5
 		main.pending_card_box.global_position = mid - big_size / 2.0
 		main.pending_card_box.size = big_size
-		main.pending_card_box.pivot_offset = big_size / 2.0
-		main.pending_card_box.scale = Vector2(1.5, 1.5)
-		# Use Power/弃牌按钮放在大牌内部下方（大牌放大后底部内侧）
-		main.pending_action_button.custom_minimum_size = Vector2(big_size.x * 1.5 - 8, 26)
-		main.pending_action_button.global_position = mid - Vector2(big_size.x * 1.5 / 2.0, 0) + Vector2(4, big_size.y * 1.5 / 2.0 - 28)
+		main.pending_card_box.pivot_offset = Vector2.ZERO
+		main.pending_card_box.scale = Vector2.ONE
+		# Use Power/弃牌按钮放在大牌内部下方
+		main.pending_action_button.custom_minimum_size = Vector2(big_size.x - 8, 26)
+		main.pending_action_button.global_position = mid - Vector2(big_size.x / 2.0, 0) + Vector2(4, big_size.y / 2.0 - 28)
 	var from_discard := str(pending.get("source", "draw")) == "discard"
 	if from_discard:
 		return
