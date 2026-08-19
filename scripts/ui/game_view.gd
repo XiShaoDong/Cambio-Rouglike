@@ -240,7 +240,7 @@ func _update_pending_card(phase: int, is_current: bool) -> void:
 	main.pending_card_button.move_to_front()
 	# 棋盘默认 setup：两堆中心 + scale 1.5 + 按钮
 	_apply_pending_setup(pending)
-	# 抽牌动画：点击抽牌堆后，用副本从抽牌堆飞到大牌位置并翻成正面（不改棋盘节点）
+	# 抽牌动画：点击抽牌堆后，隐藏棋盘大牌，用副本从抽牌堆飞到大牌位置并翻成正面
 	if main._draw_flip_pending and str(pending.get("source", "draw")) == "draw":
 		main._draw_flip_pending = false
 		if is_instance_valid(main.deck_button) and is_instance_valid(main.discard_button):
@@ -249,7 +249,9 @@ func _update_pending_card(phase: int, is_current: bool) -> void:
 			var mid: Vector2 = (deck_rect.get_center() + disc_rect.get_center()) / 2.0
 			var big_size: Vector2 = deck_rect.size * 1.5
 			var big_rect: Rect2 = Rect2(mid - big_size / 2.0, big_size)
-			main.animator.play_draw(pending, deck_rect, big_rect)
+			main.pending_card_box.visible = false
+			main.animator.play_draw(pending, deck_rect, big_rect, func():
+				main.pending_card_box.visible = true)
 
 ## 棋盘大牌默认 setup：中心 = 两堆中心，scale 1.5，按钮文字/可见性。
 func _apply_pending_setup(pending: Dictionary) -> void:

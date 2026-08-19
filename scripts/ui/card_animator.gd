@@ -13,8 +13,9 @@ func _init(owner_node: Node) -> void:
 	main = owner_node
 
 ## 抽牌动画：副本从抽牌堆(deck_rect)飞到大牌位置(big_rect)并翻成正面（不改棋盘节点）。
-func play_draw(data: Dictionary, deck_rect: Rect2, big_rect: Rect2) -> void:
-	_fly(deck_rect, big_rect, data, false, true)
+## on_finish 在副本落位后调用（用于显示棋盘大牌 setup）。
+func play_draw(data: Dictionary, deck_rect: Rect2, big_rect: Rect2, on_finish: Callable = Callable()) -> void:
+	_fly(deck_rect, big_rect, data, false, true, null, on_finish)
 
 ## 场景2：抽牌堆与自己交换。actor 为操作者，slot 为被替换的槽位。
 func animate_replace(actor: int, slot: int, old_data: Dictionary, big_data: Dictionary) -> void:
