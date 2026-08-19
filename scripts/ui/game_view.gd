@@ -109,6 +109,7 @@ func build() -> void:
 	main.pending_action_button.custom_minimum_size = Vector2(90, 30)
 	main.pending_action_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	main.pending_action_button.add_theme_font_size_override("font_size", 13)
+	main.pending_action_button.z_index = 20
 	main.pending_action_button.pressed.connect(main._on_pending_action)
 	main.pending_overlay.add_child(main.pending_action_button)
 	# 当前玩家（底部）
@@ -234,13 +235,15 @@ func _update_pending_card(phase: int, is_current: bool) -> void:
 			big_view.back.visible = true
 			big_view.front.visible = false
 			big_view.flip_to_face(true)
-	# 大牌完全贴合抽牌堆（deck_button）
+	# 大牌定位：贴抽牌堆并向弃牌堆方向平移 2/3 卡牌宽度
 	if is_instance_valid(main.deck_button):
 		var deck_rect: Rect2 = main.deck_button.get_global_rect()
-		main.pending_card_box.global_position = deck_rect.position
+		var big_pos: Vector2 = deck_rect.position + Vector2(deck_rect.size.x * 2.0 / 3.0, 0)
+		main.pending_card_box.global_position = big_pos
 		main.pending_card_box.size = deck_rect.size
-		# Use Power 按钮定位在大牌正下方
-		main.pending_action_button.global_position = deck_rect.position + Vector2(0, deck_rect.size.y + 4)
+		# Use Power 按钮放在大牌内部下方
+		main.pending_action_button.custom_minimum_size = Vector2(deck_rect.size.x - 8, 26)
+		main.pending_action_button.global_position = big_pos + Vector2(4, deck_rect.size.y - 30)
 	var from_discard := str(pending.get("source", "draw")) == "discard"
 	if from_discard:
 		main.pending_action_button.visible = false
