@@ -58,6 +58,7 @@ var reveal: RevealController
 var animator: CardAnimator
 var _card_slots: Dictionary = {}
 var _pending_flips: Array = []
+var _draw_flip_pending := false
 
 func _ready() -> void:
 	interaction = GameInteraction.new(self)
@@ -144,6 +145,7 @@ func _build_lobby() -> void:
 	lobby.build()
 
 func _on_deck_pressed() -> void:
+	_draw_flip_pending = true
 	GameState.request_take("draw", _next_action_id())
 	_animate_draw()
 

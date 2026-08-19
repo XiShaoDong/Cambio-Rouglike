@@ -111,6 +111,21 @@ func _create_flip(from: Control, to: Control) -> void:
 		tween.set_ease(Tween.EASE_OUT)
 		tween.tween_property(self, "scale:x", 1.0, 0.28))
 
+## 纵轴翻转：绕垂直中线 scale.x 1→0→1，中途切换面到指定面。face_up=true 显示正面。
+func flip_to_face(face_up: bool) -> void:
+	pivot_offset = size / 2.0
+	var from := front if front.visible else back
+	var to := front if face_up else back
+	var tween := create_tween()
+	tween.set_trans(Tween.TRANS_QUAD)
+	tween.set_ease(Tween.EASE_IN)
+	tween.tween_property(self, "scale:x", 0.0, 0.15)
+	tween.tween_callback(func():
+		from.visible = false
+		to.visible = true
+		tween.set_ease(Tween.EASE_OUT)
+		tween.tween_property(self, "scale:x", 1.0, 0.15))
+
 ## 发牌/移动动画：从 from_pos 飞到当前位置。
 func animate_from(from_pos: Vector2) -> void:
 	global_position = from_pos

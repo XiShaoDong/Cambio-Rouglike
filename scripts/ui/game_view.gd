@@ -226,6 +226,13 @@ func _update_pending_card(phase: int, is_current: bool) -> void:
 	main.pending_card_button = main._make_card_button(pending, Vector2(68, 107))
 	main.pending_card_box.add_child(main.pending_card_button)
 	main.pending_card_button.move_to_front()
+	# 抽牌翻转：点击抽牌堆后，大牌先背面再纵轴翻正面显示（保持正面）
+	if main._draw_flip_pending and str(pending.get("source", "draw")) == "draw":
+		main._draw_flip_pending = false
+		if main.pending_card_button is CardView:
+			var big_view := main.pending_card_button as CardView
+			big_view.setup({})
+			big_view.flip_to_face(true)
 	# 大牌完全贴合抽牌堆（deck_button）
 	if is_instance_valid(main.deck_button):
 		var deck_rect: Rect2 = main.deck_button.get_global_rect()
