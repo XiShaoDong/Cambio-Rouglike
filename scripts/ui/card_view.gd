@@ -105,11 +105,7 @@ func _create_flip(from: Control, to: Control) -> void:
 	tween.set_trans(Tween.TRANS_QUAD)
 	tween.set_ease(Tween.EASE_IN)
 	tween.tween_property(self, "scale:x", 0.05, 0.28)
-	tween.tween_callback(func():
-		from.visible = false
-		to.visible = true
-		tween.set_ease(Tween.EASE_OUT)
-		tween.tween_property(self, "scale:x", 1.0, 0.28))
+	tween.tween_callback(_finish_flip.bind(from, to, 0.28))
 
 ## 纵轴翻转：绕垂直中线 scale.x 1→0→1，中途切换面到指定面。face_up=true 显示正面。
 func flip_to_face(face_up: bool) -> void:
@@ -120,11 +116,18 @@ func flip_to_face(face_up: bool) -> void:
 	tween.set_trans(Tween.TRANS_QUAD)
 	tween.set_ease(Tween.EASE_IN)
 	tween.tween_property(self, "scale:x", 0.0, 0.15)
-	tween.tween_callback(func():
-		from.visible = false
-		to.visible = true
-		tween.set_ease(Tween.EASE_OUT)
-		tween.tween_property(self, "scale:x", 1.0, 0.15))
+	tween.tween_callback(_finish_flip.bind(from, to, 0.15))
+
+## 翻面后半段：切换面并展开（独立 tween，避免在已启动 tween 内追加）。
+func _finish_flip(from: Control, to: Control, dur: float) -> void:
+	if not is_instance_valid(from) or not is_instance_valid(to):
+		return
+	from.visible = false
+	to.visible = true
+	var tween := create_tween()
+	tween.set_trans(Tween.TRANS_QUAD)
+	tween.set_ease(Tween.EASE_OUT)
+	tween.tween_property(self, "scale:x", 1.0, dur)
 
 ## 发牌/移动动画：从 from_pos 飞到当前位置。
 func animate_from(from_pos: Vector2) -> void:
