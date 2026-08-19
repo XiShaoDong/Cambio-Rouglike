@@ -49,6 +49,7 @@ func _blind_swap(sender: int, data: Dictionary, action_id := "") -> void:
 		game._reject(sender, game.RejectCode.INVALID_TARGET, action_id)
 		return
 	game.swap.swap(sender, own_swap_slot, swap_target, their_swap_slot, "%s 与 %s 盲换了一张牌。" % [game.players[sender].name, game.players[swap_target].name])
+	game._broadcast_exchange({"kind": "swap", "a": sender, "a_slot": own_swap_slot, "b": swap_target, "b_slot": their_swap_slot})
 	game._discard_pending_and_open_slap("advance")
 
 func _start_queen(sender: int, data: Dictionary, action_id := "") -> void:

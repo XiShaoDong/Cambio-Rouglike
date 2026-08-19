@@ -11,27 +11,22 @@ var main: Node
 func _init(owner_node: Node) -> void:
 	main = owner_node
 
-## 场景2：抽牌堆与自己交换。slot 为玩家点击的槽位。
-func animate_replace(slot: int) -> void:
-	var viewer := int(main.latest_state.get("viewer_id", 0))
-	if not main._card_slots.has(viewer) or not main._card_slots[viewer].has(slot):
+## 场景2：抽牌堆与自己交换。actor 为操作者，slot 为被替换的槽位。
+func animate_replace(actor: int, slot: int) -> void:
+	if not main._card_slots.has(actor) or not main._card_slots[actor].has(slot):
 		return
-	var old_card: Control = main._card_slots[viewer][slot]
+	var old_card: Control = main._card_slots[actor][slot]
 	if not is_instance_valid(old_card):
 		return
 	var old_rect: Rect2 = old_card.get_global_rect()
-	var old_data: Dictionary = {}
-	if old_card is CardView:
-		old_data = (old_card as CardView).card_data
+	var old_data: Dictionary = _card_data_of(old_card)
 	# 玩家旧牌 → 弃牌堆：翻出后移动
 	if is_instance_valid(main.discard_button):
 		_fly(old_rect.position, main.discard_button.get_global_rect().position, old_data, true)
 	# 大牌 → 玩家 slot：移动并翻到背面
 	if is_instance_valid(main.pending_card_button):
 		var big_rect: Rect2 = main.pending_card_button.get_global_rect()
-		var big_data: Dictionary = {}
-		if main.pending_card_button is CardView:
-			big_data = (main.pending_card_button as CardView).card_data
+		var big_data: Dictionary = _card_data_of(main.pending_card_button)
 		_fly(big_rect.position, old_rect.position, big_data, false)
 
 ## 场景1：玩家间交换（J/Q）。a 换 a_slot，b 换 b_slot。
@@ -49,6 +44,23 @@ func animate_swap(a: int, a_slot: int, b: int, b_slot: int) -> void:
 	# 两张牌背面沿轨迹互换（不翻面）
 	_fly(rect_a.position, rect_b.position, _card_data_of(card_a), false)
 	_fly(rect_b.position, rect_a.position, _card_data_of(card_b), false)
+
+## 处理 server 广播的交换动画事件（各 client 用自己视角定位）。
+func handle_exchange(data: Dictionary) -> void:
+	match str(data.get("kind", "")):
+		"replace":
+			animate_replace(int(data.get("actor", 0)), int(data.get("slot", -1)))
+		"swap":
+			animate_swap(int(data.get("a", 0)), int(data.get("a_slot", -1)), int(data.get("b", 0)), int(data.get("b_slot", -1)))
+		"discard":
+			_animate_discard_pending()
+
+## 弃牌动画：pending 大牌从抽牌堆移动到弃牌堆（翻出）。
+func _animate_discard_pending() -> void:
+	if is_instance_valid(main.pending_card_button) and is_instance_valid(main.discard_button):
+		var big_rect: Rect2 = main.pending_card_button.get_global_rect()
+		var big_data: Dictionary = _card_data_of(main.pending_card_button)
+		_fly(big_rect.position, main.discard_button.get_global_rect().position, big_data, true)
 
 func _card_data_of(card: Control) -> Dictionary:
 	if card is CardView:

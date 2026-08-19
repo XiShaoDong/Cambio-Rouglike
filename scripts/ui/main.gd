@@ -70,6 +70,7 @@ func _ready() -> void:
 	GameState.lobby_updated.connect(func(l: Dictionary): lobby.update_lobby(l))
 	GameState.state_updated.connect(_on_state_updated)
 	GameState.private_reveal_received.connect(_show_private_reveal)
+	GameState.card_exchange_animated.connect(func(data: Dictionary): animator.handle_exchange(data))
 	GameState.toast_received.connect(_show_toast)
 	GameState.command_rejected.connect(_on_command_rejected)
 	GameState.match_aborted.connect(_on_match_aborted)
@@ -159,14 +160,6 @@ func _animate_draw() -> void:
 	tween.chain().tween_callback(func():
 		pending_card_box.modulate.a = 1.0
 		pending_card_box.scale = Vector2.ONE)
-
-## 抽牌堆与自己交换的轨迹动画（replace）。
-func _animate_replace(slot: int) -> void:
-	animator.animate_replace(slot)
-
-## 玩家间交换的轨迹动画（J/Q）。
-func _animate_swap(a: int, a_slot: int, b: int, b_slot: int) -> void:
-	animator.animate_swap(a, a_slot, b, b_slot)
 
 func _host_game() -> void:
 	lobby.host_game()

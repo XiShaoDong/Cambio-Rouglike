@@ -11,6 +11,7 @@ signal private_reveal_received(title: String, cards: Array, target: Dictionary)
 signal toast_received(message: String)
 signal command_rejected(code: int, message: String)
 signal match_aborted(code: int, message: String)
+signal card_exchange_animated(data: Dictionary)
 
 enum Phase { LOBBY, INITIAL_PEEK, TURN_DRAW, TURN_DECISION, Q_DECISION, SLAP_WINDOW, SLAP_EXCHANGE, GAME_OVER }
 
@@ -374,6 +375,7 @@ func _server_replace(sender: int, slot: int, action_id := "") -> void:
 	pending_draw.clear()
 	_discard(outgoing)
 	_add_log("%s 替换了一张手牌。" % players[sender].name)
+	_broadcast_exchange({"kind": "replace", "actor": sender, "slot": slot})
 	_open_slap("advance")
 
 func request_discard_draw(action_id := "") -> void:
@@ -400,6 +402,7 @@ func _server_discard_draw(sender: int, action_id := "") -> void:
 	if not _check_action_id(sender, action_id):
 		_reject(sender, RejectCode.DUPLICATE_OR_EXPIRED_ACTION, action_id)
 		return
+	_broadcast_exchange({"kind": "discard", "actor": sender})
 	_discard_pending_and_open_slap("advance")
 	_add_log("%s 弃掉了抽到的牌。" % players[sender].name)
 
@@ -461,6 +464,7 @@ func _server_q_decision(sender: int, exchange: bool, own_slot: int, action_id :=
 			_reject(sender, RejectCode.INVALID_SLOT, action_id)
 			return
 		swap.swap(sender, own_slot, target, target_slot, "%s 用 Q 交换了一张牌。" % players[sender].name)
+		_broadcast_exchange({"kind": "swap", "a": sender, "a_slot": own_slot, "b": target, "b_slot": target_slot})
 	else:
 		_add_log("%s 用 Q 放弃了交换。" % players[sender].name)
 	q_context.clear()
@@ -640,6 +644,14 @@ func _send_reveal(peer_id: int, title: String, revealed_cards: Array, target: Di
 	else:
 		_receive_reveal(title, revealed_cards, target)
 
+## 广播交换动画事件到所有玩家（在 _broadcast_state 之前调用，保证 client 先用旧布局定位）。
+func _broadcast_exchange(data: Dictionary) -> void:
+	for peer_id in players.keys():
+		if int(peer_id) == 1:
+			_receive_exchange_animated(data)
+		else:
+			receive_exchange_animated.rpc_id(int(peer_id), data)
+
 func _send_toast(peer_id: int, message: String) -> void:
 	if peer_id == 1:
 		toast_received.emit(message)
@@ -664,6 +676,9 @@ func _receive_state(snapshot: Dictionary) -> void:
 func _receive_reveal(title: String, revealed_cards: Array, target: Dictionary = {}) -> void:
 	private_reveal_received.emit(title, revealed_cards, target)
 
+func _receive_exchange_animated(data: Dictionary) -> void:
+	card_exchange_animated.emit(data)
+
 @rpc("authority", "call_remote", "reliable")
 func receive_lobby(lobby: Dictionary) -> void:
 	_receive_lobby(lobby)
@@ -675,6 +690,10 @@ func receive_state(snapshot: Dictionary) -> void:
 @rpc("authority", "call_remote", "reliable")
 func receive_reveal(title: String, revealed_cards: Array, target: Dictionary = {}) -> void:
 	_receive_reveal(title, revealed_cards, target)
+
+@rpc("authority", "call_remote", "reliable")
+func receive_exchange_animated(data: Dictionary) -> void:
+	_receive_exchange_animated(data)
 
 @rpc("authority", "call_remote", "reliable")
 func receive_toast(message: String) -> void:
