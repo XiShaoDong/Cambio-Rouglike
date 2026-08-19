@@ -52,15 +52,20 @@ func animate_swap(a: int, a_slot: int, b: int, b_slot: int, a_data: Dictionary, 
 		return
 	var rect_a: Rect2 = card_a.get_global_rect()
 	var rect_b: Rect2 = card_b.get_global_rect()
-	# 标记动画槽位 + 隐藏源卡，副本互换
+	# 标记动画槽位 + 隐藏源卡，副本互换（两个动画都完成后才清除标记并重建）
 	main.mark_anim_slot(a, a_slot)
 	main.mark_anim_slot(b, b_slot)
-	_fly(rect_a, rect_b, a_data, _face_up_of(card_a), _face_up_of(card_b), card_a, func(): _finish_anim(a, a_slot))
-	_fly(rect_b, rect_a, b_data, _face_up_of(card_b), _face_up_of(card_a), card_b, func(): _finish_anim(b, b_slot))
+	var counter := {"remaining": 2}
+	_fly(rect_a, rect_b, a_data, _face_up_of(card_a), _face_up_of(card_b), card_a, _swap_done.bind(counter, a, a_slot, b, b_slot))
+	_fly(rect_b, rect_a, b_data, _face_up_of(card_b), _face_up_of(card_a), card_b, _swap_done.bind(counter, a, a_slot, b, b_slot))
 
-func _finish_anim(pid: int, slot: int) -> void:
-	main.unmark_anim_slot(pid, slot)
-	main._render_game()
+## 交换动画完成回调：两个副本都完成后清除标记并重建。
+func _swap_done(counter: Dictionary, a: int, a_slot: int, b: int, b_slot: int) -> void:
+	counter["remaining"] = int(counter["remaining"]) - 1
+	if int(counter["remaining"]) <= 0:
+		main.unmark_anim_slot(a, a_slot)
+		main.unmark_anim_slot(b, b_slot)
+		main._render_game()
 
 ## 处理 server 广播的交换动画事件（各 client 用自己视角定位）。
 func handle_exchange(data: Dictionary) -> void:
