@@ -231,7 +231,8 @@ func _update_pending_card(phase: int, is_current: bool) -> void:
 		main._draw_flip_pending = false
 		if main.pending_card_button is CardView:
 			var big_view := main.pending_card_button as CardView
-			big_view.setup({})
+			big_view.back.visible = true
+			big_view.front.visible = false
 			big_view.flip_to_face(true)
 	# 大牌完全贴合抽牌堆（deck_button）
 	if is_instance_valid(main.deck_button):

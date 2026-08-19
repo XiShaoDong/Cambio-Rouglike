@@ -12,25 +12,23 @@ func _init(owner_node: Node) -> void:
 	main = owner_node
 
 ## 场景2：抽牌堆与自己交换。actor 为操作者，slot 为被替换的槽位。
-func animate_replace(actor: int, slot: int) -> void:
+func animate_replace(actor: int, slot: int, old_data: Dictionary, big_data: Dictionary) -> void:
 	if not main._card_slots.has(actor) or not main._card_slots[actor].has(slot):
 		return
 	var old_card: Control = main._card_slots[actor][slot]
 	if not is_instance_valid(old_card):
 		return
 	var old_rect: Rect2 = old_card.get_global_rect()
-	var old_data: Dictionary = _card_data_of(old_card)
 	# 玩家旧牌 → 弃牌堆：按各视角旧牌当前面，翻成正面移动到弃牌堆
 	if is_instance_valid(main.discard_button):
 		_fly(old_rect, main.discard_button.get_global_rect(), old_data, _face_up_of(old_card), true)
 	# 大牌 → 玩家 slot：从正面，移动到玩家牌位置并翻成目标槽位当前面
 	if is_instance_valid(main.pending_card_button):
 		var big_rect: Rect2 = main.pending_card_button.get_global_rect()
-		var big_data: Dictionary = _card_data_of(main.pending_card_button)
 		_fly(big_rect, old_rect, big_data, true, _face_up_of(old_card))
 
 ## 场景1：玩家间交换（J/Q）。a 换 a_slot，b 换 b_slot。
-func animate_swap(a: int, a_slot: int, b: int, b_slot: int) -> void:
+func animate_swap(a: int, a_slot: int, b: int, b_slot: int, a_data: Dictionary, b_data: Dictionary) -> void:
 	if not main._card_slots.has(a) or not main._card_slots[a].has(a_slot):
 		return
 	if not main._card_slots.has(b) or not main._card_slots[b].has(b_slot):
@@ -42,30 +40,26 @@ func animate_swap(a: int, a_slot: int, b: int, b_slot: int) -> void:
 	var rect_a: Rect2 = card_a.get_global_rect()
 	var rect_b: Rect2 = card_b.get_global_rect()
 	# 两张牌互换，各按对方当前面判断是否翻转
-	_fly(rect_a, rect_b, _card_data_of(card_a), _face_up_of(card_a), _face_up_of(card_b))
-	_fly(rect_b, rect_a, _card_data_of(card_b), _face_up_of(card_b), _face_up_of(card_a))
+	_fly(rect_a, rect_b, a_data, _face_up_of(card_a), _face_up_of(card_b))
+	_fly(rect_b, rect_a, b_data, _face_up_of(card_b), _face_up_of(card_a))
 
 ## 处理 server 广播的交换动画事件（各 client 用自己视角定位）。
 func handle_exchange(data: Dictionary) -> void:
 	match str(data.get("kind", "")):
 		"replace":
-			animate_replace(int(data.get("actor", 0)), int(data.get("slot", -1)))
+			animate_replace(int(data.get("actor", 0)), int(data.get("slot", -1)),
+				data.get("old_data", {}), data.get("big_data", {}))
 		"swap":
-			animate_swap(int(data.get("a", 0)), int(data.get("a_slot", -1)), int(data.get("b", 0)), int(data.get("b_slot", -1)))
+			animate_swap(int(data.get("a", 0)), int(data.get("a_slot", -1)), int(data.get("b", 0)), int(data.get("b_slot", -1)),
+				data.get("a_data", {}), data.get("b_data", {}))
 		"discard":
-			_animate_discard_pending()
+			_animate_discard_pending(data.get("big_data", {}))
 
 ## 弃牌动画：pending 大牌从抽牌堆移动到弃牌堆（正面→正面，不翻转）。
-func _animate_discard_pending() -> void:
+func _animate_discard_pending(big_data: Dictionary) -> void:
 	if is_instance_valid(main.pending_card_button) and is_instance_valid(main.discard_button):
 		var big_rect: Rect2 = main.pending_card_button.get_global_rect()
-		var big_data: Dictionary = _card_data_of(main.pending_card_button)
 		_fly(big_rect, main.discard_button.get_global_rect(), big_data, true, true)
-
-func _card_data_of(card: Control) -> Dictionary:
-	if card is CardView:
-		return (card as CardView).card_data
-	return {}
 
 ## 读取控件当前显示的面（各 client 自己视角）。
 func _face_up_of(card: Control) -> bool:

@@ -375,7 +375,8 @@ func _server_replace(sender: int, slot: int, action_id := "") -> void:
 	pending_draw.clear()
 	_discard(outgoing)
 	_add_log("%s 替换了一张手牌。" % players[sender].name)
-	_broadcast_exchange({"kind": "replace", "actor": sender, "slot": slot})
+	_broadcast_exchange({"kind": "replace", "actor": sender, "slot": slot,
+		"old_data": _card_public(outgoing), "big_data": _card_public(incoming)})
 	_open_slap("advance")
 
 func request_discard_draw(action_id := "") -> void:
@@ -402,7 +403,7 @@ func _server_discard_draw(sender: int, action_id := "") -> void:
 	if not _check_action_id(sender, action_id):
 		_reject(sender, RejectCode.DUPLICATE_OR_EXPIRED_ACTION, action_id)
 		return
-	_broadcast_exchange({"kind": "discard", "actor": sender})
+	_broadcast_exchange({"kind": "discard", "actor": sender, "big_data": _card_public(pending_draw.card_id)})
 	_discard_pending_and_open_slap("advance")
 	_add_log("%s 弃掉了抽到的牌。" % players[sender].name)
 
@@ -464,7 +465,9 @@ func _server_q_decision(sender: int, exchange: bool, own_slot: int, action_id :=
 			_reject(sender, RejectCode.INVALID_SLOT, action_id)
 			return
 		swap.swap(sender, own_slot, target, target_slot, "%s 用 Q 交换了一张牌。" % players[sender].name)
-		_broadcast_exchange({"kind": "swap", "a": sender, "a_slot": own_slot, "b": target, "b_slot": target_slot})
+		var a_data: Dictionary = _card_public(players[target].cards[target_slot])
+		var b_data: Dictionary = _card_public(players[sender].cards[own_slot])
+		_broadcast_exchange({"kind": "swap", "a": sender, "a_slot": own_slot, "b": target, "b_slot": target_slot, "a_data": a_data, "b_data": b_data})
 	else:
 		_add_log("%s 用 Q 放弃了交换。" % players[sender].name)
 	q_context.clear()
