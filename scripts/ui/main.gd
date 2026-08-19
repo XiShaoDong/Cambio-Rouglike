@@ -59,6 +59,7 @@ var animator: CardAnimator
 var _card_slots: Dictionary = {}
 var _pending_flips: Array = []
 var _draw_flip_pending := false
+var _pending_hidden_for_ability := false
 
 func _ready() -> void:
 	interaction = GameInteraction.new(self)
@@ -205,9 +206,11 @@ func _on_pending_action() -> void:
 	var actor := int(latest_state.get("viewer_id", 0))
 	var big_data: Dictionary = pending.duplicate()
 	big_data.erase("source")
-	# 点击瞬间本地播放大牌→弃牌堆动画（副本，不改棋盘节点）；server 事件到达时去重跳过
+	# 隐藏棋盘大牌，播副本动画飞向弃牌堆（避免双卡）
+	pending_card_box.visible = false
 	animator._animate_discard_pending(big_data, actor)
 	if KongRules.has_ability(str(pending.get("rank", ""))):
+		_pending_hidden_for_ability = true
 		_begin_ability()
 	else:
 		GameState.request_discard_draw(_next_action_id())

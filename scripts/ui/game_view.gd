@@ -218,6 +218,13 @@ func _update_discard_button(discard: Dictionary, available: bool) -> void:
 	main._highlight(main.discard_button, available)
 
 func _update_pending_card(phase: int, is_current: bool) -> void:
+	# 能力选择中：棋盘大牌隐藏（已用副本飞向弃牌堆），pending 弃掉后清除标记
+	if main._pending_hidden_for_ability:
+		main.pending_card_box.visible = false
+		main.pending_action_button.visible = false
+		if not (phase == PHASE_TURN_DECISION and is_current and main.latest_state.has("pending")):
+			main._pending_hidden_for_ability = false
+		return
 	var should_show: bool = phase == PHASE_TURN_DECISION and is_current and main.latest_state.has("pending")
 	main.pending_card_box.visible = should_show
 	main.pending_action_button.visible = false
