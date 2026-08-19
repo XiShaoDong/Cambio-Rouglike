@@ -28,7 +28,9 @@ func animate_replace(actor: int, slot: int, old_data: Dictionary, big_data: Dict
 		var big_rect: Rect2 = main.pending_card_button.get_global_rect()
 		if is_instance_valid(main.deck_button):
 			big_rect = main.deck_button.get_global_rect()
-		_fly(big_rect, old_rect, big_data, _face_up_of(main.pending_card_button), _face_up_of(old_card))
+		# 大牌起始面：仅操作者(actor)的 client 看到大牌正面，其他玩家看到背面
+		var big_start_face_up := int(main.latest_state.get("viewer_id", 0)) == actor
+		_fly(big_rect, old_rect, big_data, big_start_face_up, _face_up_of(old_card))
 
 ## 场景1：玩家间交换（J/Q）。a 换 a_slot，b 换 b_slot。
 func animate_swap(a: int, a_slot: int, b: int, b_slot: int, a_data: Dictionary, b_data: Dictionary) -> void:
@@ -56,15 +58,16 @@ func handle_exchange(data: Dictionary) -> void:
 			animate_swap(int(data.get("a", 0)), int(data.get("a_slot", -1)), int(data.get("b", 0)), int(data.get("b_slot", -1)),
 				data.get("a_data", {}), data.get("b_data", {}))
 		"discard":
-			_animate_discard_pending(data.get("big_data", {}))
+			_animate_discard_pending(data.get("big_data", {}), int(data.get("actor", 0)))
 
 ## 弃牌动画：pending 大牌从抽牌堆移动到弃牌堆（按各视角起始面，翻成弃牌堆正面）。
-func _animate_discard_pending(big_data: Dictionary) -> void:
+func _animate_discard_pending(big_data: Dictionary, actor: int) -> void:
 	if is_instance_valid(main.pending_card_button) and is_instance_valid(main.discard_button):
 		var big_rect: Rect2 = main.pending_card_button.get_global_rect()
 		if is_instance_valid(main.deck_button):
 			big_rect = main.deck_button.get_global_rect()
-		_fly(big_rect, main.discard_button.get_global_rect(), big_data, _face_up_of(main.pending_card_button), true)
+		var big_start_face_up := int(main.latest_state.get("viewer_id", 0)) == actor
+		_fly(big_rect, main.discard_button.get_global_rect(), big_data, big_start_face_up, true)
 
 ## 读取控件当前显示的面（各 client 自己视角）。
 func _face_up_of(card: Control) -> bool:
