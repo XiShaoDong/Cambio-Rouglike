@@ -220,6 +220,7 @@ func _update_discard_button(discard: Dictionary, available: bool) -> void:
 func _update_pending_card(phase: int, is_current: bool) -> void:
 	var should_show: bool = phase == PHASE_TURN_DECISION and is_current and main.latest_state.has("pending")
 	main.pending_card_box.visible = should_show
+	main.pending_action_button.visible = false
 	if not should_show:
 		return
 	var pending: Dictionary = main.latest_state.pending
@@ -235,18 +236,21 @@ func _update_pending_card(phase: int, is_current: bool) -> void:
 			big_view.back.visible = true
 			big_view.front.visible = false
 			big_view.flip_to_face(true)
-	# 大牌定位：贴抽牌堆并向弃牌堆方向平移 2/3 卡牌宽度
-	if is_instance_valid(main.deck_button):
+	# 大牌定位：中心 = 抽牌堆与弃牌堆的中心，scale 1.5（容器缩放，不干扰翻面动画）
+	if is_instance_valid(main.deck_button) and is_instance_valid(main.discard_button):
 		var deck_rect: Rect2 = main.deck_button.get_global_rect()
-		var big_pos: Vector2 = deck_rect.position + Vector2(deck_rect.size.x * 2.0 / 3.0, 0)
-		main.pending_card_box.global_position = big_pos
-		main.pending_card_box.size = deck_rect.size
-		# Use Power 按钮放在大牌内部下方
-		main.pending_action_button.custom_minimum_size = Vector2(deck_rect.size.x - 8, 26)
-		main.pending_action_button.global_position = big_pos + Vector2(4, deck_rect.size.y - 30)
+		var disc_rect: Rect2 = main.discard_button.get_global_rect()
+		var mid: Vector2 = (deck_rect.get_center() + disc_rect.get_center()) / 2.0
+		var big_size: Vector2 = deck_rect.size
+		main.pending_card_box.global_position = mid - big_size / 2.0
+		main.pending_card_box.size = big_size
+		main.pending_card_box.pivot_offset = big_size / 2.0
+		main.pending_card_box.scale = Vector2(1.5, 1.5)
+		# Use Power/弃牌按钮放在大牌内部下方（大牌放大后底部内侧）
+		main.pending_action_button.custom_minimum_size = Vector2(big_size.x * 1.5 - 8, 26)
+		main.pending_action_button.global_position = mid - Vector2(big_size.x * 1.5 / 2.0, 0) + Vector2(4, big_size.y * 1.5 / 2.0 - 28)
 	var from_discard := str(pending.get("source", "draw")) == "discard"
 	if from_discard:
-		main.pending_action_button.visible = false
 		return
 	main.pending_action_button.visible = true
 	if KongRules.has_ability(str(pending.get("rank", ""))):

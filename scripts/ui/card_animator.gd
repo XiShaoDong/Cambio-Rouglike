@@ -23,11 +23,9 @@ func animate_replace(actor: int, slot: int, old_data: Dictionary, big_data: Dict
 	if is_instance_valid(main.discard_button):
 		_fly(old_rect, main.discard_button.get_global_rect(), old_data, _face_up_of(old_card), true)
 	# 大牌 → 玩家 slot：按各视角大牌当前面（操作者正面、其他玩家背面），
-	# 从抽牌堆位置移动到玩家牌位置并翻成目标槽位当前面
+	# 从大牌显示位置（两堆中心）移动到玩家牌位置并翻成目标槽位当前面
 	if is_instance_valid(main.pending_card_button):
-		var big_rect: Rect2 = main.pending_card_button.get_global_rect()
-		if is_instance_valid(main.deck_button):
-			big_rect = main.deck_button.get_global_rect()
+		var big_rect: Rect2 = _big_card_rect()
 		# 大牌起始面：仅操作者(actor)的 client 看到大牌正面，其他玩家看到背面
 		var big_start_face_up := int(main.latest_state.get("viewer_id", 0)) == actor
 		_fly(big_rect, old_rect, big_data, big_start_face_up, _face_up_of(old_card))
@@ -60,14 +58,24 @@ func handle_exchange(data: Dictionary) -> void:
 		"discard":
 			_animate_discard_pending(data.get("big_data", {}), int(data.get("actor", 0)))
 
-## 弃牌动画：pending 大牌从抽牌堆移动到弃牌堆（按各视角起始面，翻成弃牌堆正面）。
+## 弃牌动画：pending 大牌从大牌位置移动到弃牌堆（按各视角起始面，翻成弃牌堆正面）。
 func _animate_discard_pending(big_data: Dictionary, actor: int) -> void:
-	if is_instance_valid(main.pending_card_button) and is_instance_valid(main.discard_button):
-		var big_rect: Rect2 = main.pending_card_button.get_global_rect()
-		if is_instance_valid(main.deck_button):
-			big_rect = main.deck_button.get_global_rect()
+	if is_instance_valid(main.discard_button):
+		var big_rect: Rect2 = _big_card_rect()
 		var big_start_face_up := int(main.latest_state.get("viewer_id", 0)) == actor
 		_fly(big_rect, main.discard_button.get_global_rect(), big_data, big_start_face_up, true)
+
+## 大牌显示位置（两堆中心，1.5 倍尺寸）。
+func _big_card_rect() -> Rect2:
+	if is_instance_valid(main.deck_button) and is_instance_valid(main.discard_button):
+		var deck_r: Rect2 = main.deck_button.get_global_rect()
+		var disc_r: Rect2 = main.discard_button.get_global_rect()
+		var mid: Vector2 = (deck_r.get_center() + disc_r.get_center()) / 2.0
+		var big_size: Vector2 = deck_r.size * 1.5
+		return Rect2(mid - big_size / 2.0, big_size)
+	if is_instance_valid(main.pending_card_button):
+		return main.pending_card_button.get_global_rect()
+	return Rect2()
 
 ## 读取控件当前显示的面（各 client 自己视角）。
 func _face_up_of(card: Control) -> bool:
