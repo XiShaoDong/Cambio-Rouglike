@@ -40,7 +40,7 @@ var left_player_box: VBoxContainer
 var right_player_box: VBoxContainer
 var bottom_player_box: VBoxContainer
 var center_hint: Label
-var pending_card_box: VBoxContainer
+var pending_card_box: Control
 var pending_card_button: Button
 var pending_action_button: Button
 var controls_box: HBoxContainer
@@ -55,6 +55,7 @@ var interaction: GameInteraction
 var lobby: LobbyView
 var game_view: GameView
 var reveal: RevealController
+var animator: CardAnimator
 var _card_slots: Dictionary = {}
 var _pending_flips: Array = []
 
@@ -63,6 +64,7 @@ func _ready() -> void:
 	lobby = LobbyView.new(self)
 	game_view = GameView.new(self)
 	reveal = RevealController.new(self)
+	animator = CardAnimator.new(self)
 	dev = DevTools.new(self)
 	_build_interface()
 	GameState.lobby_updated.connect(func(l: Dictionary): lobby.update_lobby(l))
@@ -157,6 +159,14 @@ func _animate_draw() -> void:
 	tween.chain().tween_callback(func():
 		pending_card_box.modulate.a = 1.0
 		pending_card_box.scale = Vector2.ONE)
+
+## 抽牌堆与自己交换的轨迹动画（replace）。
+func _animate_replace(slot: int) -> void:
+	animator.animate_replace(slot)
+
+## 玩家间交换的轨迹动画（J/Q）。
+func _animate_swap(a: int, a_slot: int, b: int, b_slot: int) -> void:
+	animator.animate_swap(a, a_slot, b, b_slot)
 
 func _host_game() -> void:
 	lobby.host_game()

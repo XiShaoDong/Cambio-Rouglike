@@ -93,32 +93,24 @@ func build() -> void:
 	main.right_player_box.alignment = BoxContainer.ALIGNMENT_CENTER
 	main.right_player_box.add_theme_constant_override("separation", 4)
 	opponents_row.add_child(main.right_player_box)
-	# 抽到的牌（大牌）：直接反转叠放在抽牌堆（deck_button）上
+	# 抽到的牌（大牌）：完全贴合叠放在抽牌堆（deck_button）上
 	main.pending_overlay = Control.new()
 	main.pending_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	main.pending_overlay.mouse_filter = Control.MOUSE_FILTER_PASS
 	main.pending_overlay.z_index = 10
 	center_unit.add_child(main.pending_overlay)
-	main.pending_card_box = VBoxContainer.new()
-	main.pending_card_box.alignment = BoxContainer.ALIGNMENT_CENTER
-	main.pending_card_box.add_theme_constant_override("separation", 10)
-	main.pending_card_box.anchor_left = 0.5
-	main.pending_card_box.anchor_right = 0.5
-	main.pending_card_box.anchor_top = 0.0
-	main.pending_card_box.anchor_bottom = 0.0
-	main.pending_card_box.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	main.pending_card_box.grow_vertical = Control.GROW_DIRECTION_BOTH
+	main.pending_card_box = Control.new()
+	main.pending_card_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	main.pending_card_box.visible = false
 	main.pending_overlay.add_child(main.pending_card_box)
 	main.pending_card_button = main._make_card_button({}, Vector2(68, 107))
-	main.pending_card_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	main.pending_card_box.add_child(main.pending_card_button)
 	main.pending_action_button = main._button("Use Power")
-	main.pending_action_button.custom_minimum_size = Vector2(0, 30)
+	main.pending_action_button.custom_minimum_size = Vector2(90, 30)
 	main.pending_action_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	main.pending_action_button.add_theme_font_size_override("font_size", 13)
 	main.pending_action_button.pressed.connect(main._on_pending_action)
-	main.pending_card_box.add_child(main.pending_action_button)
+	main.pending_overlay.add_child(main.pending_action_button)
 	# 当前玩家（底部）
 	var spacer := Control.new()
 	spacer.custom_minimum_size = Vector2(0, 80)
@@ -232,13 +224,15 @@ func _update_pending_card(phase: int, is_current: bool) -> void:
 	var pending: Dictionary = main.latest_state.pending
 	main.pending_card_button.queue_free()
 	main.pending_card_button = main._make_card_button(pending, Vector2(68, 107))
-	main.pending_card_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	main.pending_card_box.add_child(main.pending_card_button)
 	main.pending_card_button.move_to_front()
-	# 大牌反转叠放在抽牌堆（deck_button）上
+	# 大牌完全贴合抽牌堆（deck_button）
 	if is_instance_valid(main.deck_button):
-		var deck_center: Vector2 = main.deck_button.get_global_rect().get_center()
-		main.pending_card_box.global_position = deck_center - main.pending_card_box.size / 2.0
+		var deck_rect: Rect2 = main.deck_button.get_global_rect()
+		main.pending_card_box.global_position = deck_rect.position
+		main.pending_card_box.size = deck_rect.size
+		# Use Power 按钮定位在大牌正下方
+		main.pending_action_button.global_position = deck_rect.position + Vector2(0, deck_rect.size.y + 4)
 	var from_discard := str(pending.get("source", "draw")) == "discard"
 	if from_discard:
 		main.pending_action_button.visible = false

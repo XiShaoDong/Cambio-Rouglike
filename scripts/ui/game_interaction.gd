@@ -34,6 +34,7 @@ func on_card_pressed(player_id: int, slot: int) -> void:
 	match action_mode:
 		"replace":
 			if player_id == viewer:
+				main._animate_replace(slot)
 				GameState.request_replace(slot, main._next_action_id())
 		"peek_own":
 			if player_id == viewer:
@@ -59,6 +60,7 @@ func on_card_pressed(player_id: int, slot: int) -> void:
 				main._render_game()
 		"jack_their":
 			if player_id == selected_target:
+				main._animate_swap(viewer, selected_own_slot, selected_target, slot)
 				GameState.request_use_ability({"target": selected_target, "own_slot": selected_own_slot, "target_slot": slot}, main._next_action_id())
 
 ## 根据抽到的能力牌设置交互模式。
