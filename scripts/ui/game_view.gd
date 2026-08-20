@@ -50,6 +50,8 @@ func build() -> void:
 	main.center_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	main.center_hint.max_lines_visible = 3
 	main.center_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	main.center_hint.custom_minimum_size = Vector2(400, 0)
+	main.center_hint.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	main.center_hint.add_theme_color_override("font_color", UITheme.color("accent"))
 	top_unit.add_child(main.center_hint)
 	main._hint_actions = HBoxContainer.new()
