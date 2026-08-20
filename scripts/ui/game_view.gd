@@ -47,10 +47,9 @@ func build() -> void:
 	top_bar.add_child(main.ready_button)
 	main.center_hint = RichTextLabel.new()
 	main.center_hint.bbcode_enabled = true
-	main.center_hint.fit_content = true
 	main.center_hint.scroll_active = false
 	main.center_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	main.center_hint.custom_minimum_size = Vector2(0, 24)
+	main.center_hint.custom_minimum_size = Vector2(0, 72)
 	main.center_hint.add_theme_color_override("default_color", UITheme.color("accent"))
 	top_unit.add_child(main.center_hint)
 	main._hint_actions = HBoxContainer.new()

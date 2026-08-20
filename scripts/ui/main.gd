@@ -243,16 +243,73 @@ func _on_card_pressed(player_id: int, slot: int) -> void:
 	interaction.on_card_pressed(player_id, slot)
 
 func _hint_for(phase: int, is_current: bool) -> String:
-	if phase == PHASE_INITIAL_PEEK: return "记住下方两张牌，点 Ready 等待。"
-	if phase == PHASE_SLAP_WINDOW: return "贴牌：记到同点数就点它，贴错罚抽。"
-	if phase == PHASE_SLAP_EXCHANGE:
-		return "贴中他人：选一张自己的牌交给对方。"
-	if phase == PHASE_TURN_DRAW and is_current: return "抽牌堆或弃牌顶取牌；弃牌顶只能替换。"
-	if phase == PHASE_TURN_DECISION and is_current:
-		return _mode_instruction("处理抽到的牌：替换或使用大牌下按钮。")
-	if phase == PHASE_Q_DECISION and is_current: return _mode_instruction("Q 已看过目标牌：不换或点自己一张交换。")
-	if phase == PHASE_GAME_OVER: return "按总分、牌数、最高单牌判定。"
-	return "等待 [b]%s[/b] 行动。" % str(latest_state.get("current_name", ""))
+	var name := str(latest_state.get("current_name", ""))
+	match phase:
+		PHASE_INITIAL_PEEK:
+			return "Remember your two bottom cards, then click Ready"
+		PHASE_TURN_DRAW:
+			if is_current:
+				return "Draw from the deck or the discard pile (discard top only replaces)"
+			return "Waiting for [b]%s[/b] to draw a card" % name
+		PHASE_TURN_DECISION:
+			return _decision_hint(is_current, name)
+		PHASE_Q_DECISION:
+			if is_current:
+				return "Swap or not? Pick your own card to exchange, or choose not to"
+			return "Waiting for [b]%s[/b] to decide" % name
+		PHASE_SLAP_WINDOW:
+			return "Slap: click a card of the same rank. Wrong slap draws a penalty"
+		PHASE_SLAP_EXCHANGE:
+			if is_current:
+				return "Choose one of your cards to give to the slapped player"
+			return "Waiting for [b]%s[/b] to give a card" % name
+		PHASE_GAME_OVER:
+			return "Ranked by total score, then card count, then highest single card"
+	return "Waiting for [b]%s[/b] to act" % name
+
+## 处理抽到的牌阶段的细分 hint（按来源/能力/操作模式，区分当前玩家与其他玩家）。
+func _decision_hint(is_current: bool, name: String) -> String:
+	var pending: Dictionary = latest_state.get("pending", {})
+	var rank := str(pending.get("rank", ""))
+	var source := str(pending.get("source", "draw"))
+	if not is_current:
+		# 其他玩家看到的提示
+		if source == "discard":
+			return "[b]%s[/b] took a card from the Discard" % name
+		if rank == "J":
+			return "[b]%s[/b] drew a card and is choosing cards to swap" % name
+		if rank in ["7", "8", "9", "10", "Q"]:
+			return "[b]%s[/b] drew a card and is choosing a card to look at" % name
+		return "[b]%s[/b] drew a card from the Deck" % name
+	# 当前玩家看到的提示
+	if source == "discard":
+		return "Replace one of your cards with the drawn card"
+	match interaction.action_mode:
+		"replace":
+			return "Replace one of your cards, or discard the drawn card"
+		"peek_own":
+			return "Choose one of your own cards to peek"
+		"peek_other":
+			return "Choose another player's card to peek"
+		"queen_target":
+			return "Peek another player's card, then decide to swap"
+		"q_exchange":
+			return "Choose your own card to exchange"
+		"jack_target":
+			return "Choose another player's card to swap"
+		"jack_own":
+			return "Choose your own card to swap"
+		"jack_their":
+			return "Choose the other player's card to swap"
+	if rank == "J":
+		return "Discard to swap two cards, or replace one of your cards"
+	if rank in ["7", "8"]:
+		return "Discard to peek your own card, or replace one of your cards"
+	if rank in ["9", "10"]:
+		return "Discard to peek someone's card, or replace one of your cards"
+	if rank == "Q":
+		return "Discard to peek and decide to swap, or replace one of your cards"
+	return "Discard the drawn card, or replace one of your cards"
 
 func _mode_instruction(fallback: String) -> String:
 	return interaction.mode_instruction(fallback)
