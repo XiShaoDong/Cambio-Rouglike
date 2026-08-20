@@ -39,7 +39,7 @@ var top_player_box: VBoxContainer
 var left_player_box: VBoxContainer
 var right_player_box: VBoxContainer
 var bottom_player_box: VBoxContainer
-var center_hint: RichTextLabel
+var center_hint: Label
 var _hint_actions: HBoxContainer
 var pending_card_box: Control
 var pending_card_button: Button
@@ -250,22 +250,22 @@ func _hint_for(phase: int, is_current: bool) -> String:
 		PHASE_TURN_DRAW:
 			if is_current:
 				return "Draw from the deck or the discard pile (discard top only replaces)"
-			return "Waiting for [b]%s[/b] to draw a card" % name
+			return "Waiting for %s to draw a card" % name
 		PHASE_TURN_DECISION:
 			return _decision_hint(is_current, name)
 		PHASE_Q_DECISION:
 			if is_current:
 				return "Swap or not? Pick your own card to exchange, or choose not to"
-			return "Waiting for [b]%s[/b] to decide" % name
+			return "Waiting for %s to decide" % name
 		PHASE_SLAP_WINDOW:
 			return "Slap: click a card of the same rank. Wrong slap draws a penalty"
 		PHASE_SLAP_EXCHANGE:
 			if is_current:
 				return "Choose one of your cards to give to the slapped player"
-			return "Waiting for [b]%s[/b] to give a card" % name
+			return "Waiting for %s to give a card" % name
 		PHASE_GAME_OVER:
 			return "Ranked by total score, then card count, then highest single card"
-	return "Waiting for [b]%s[/b] to act" % name
+	return "Waiting for %s to act" % name
 
 ## 处理抽到的牌阶段的细分 hint（按来源/能力/操作模式，区分当前玩家与其他玩家）。
 func _decision_hint(is_current: bool, name: String) -> String:
@@ -275,12 +275,12 @@ func _decision_hint(is_current: bool, name: String) -> String:
 	if not is_current:
 		# 其他玩家看到的提示
 		if source == "discard":
-			return "[b]%s[/b] took a card from the Discard" % name
+			return "%s took a card from the Discard" % name
 		if rank == "J":
-			return "[b]%s[/b] drew a card and is choosing cards to swap" % name
+			return "%s drew a card and is choosing cards to swap" % name
 		if rank in ["7", "8", "9", "10", "Q"]:
-			return "[b]%s[/b] drew a card and is choosing a card to look at" % name
-		return "[b]%s[/b] drew a card from the Deck" % name
+			return "%s drew a card and is choosing a card to look at" % name
+		return "%s drew a card from the Deck" % name
 	# 当前玩家看到的提示
 	if source == "discard":
 		return "Replace one of your cards with the drawn card"

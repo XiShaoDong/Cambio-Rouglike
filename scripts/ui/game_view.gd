@@ -46,12 +46,11 @@ func build() -> void:
 		GameState.request_initial_ready())
 	main.ready_button.visible = false
 	top_bar.add_child(main.ready_button)
-	main.center_hint = RichTextLabel.new()
-	main.center_hint.bbcode_enabled = true
-	main.center_hint.scroll_active = false
+	main.center_hint = Label.new()
 	main.center_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	main.center_hint.custom_minimum_size = Vector2(0, 72)
-	main.center_hint.add_theme_color_override("default_color", UITheme.color("accent"))
+	main.center_hint.max_lines_visible = 3
+	main.center_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	main.center_hint.add_theme_color_override("font_color", UITheme.color("accent"))
 	top_unit.add_child(main.center_hint)
 	main._hint_actions = HBoxContainer.new()
 	main._hint_actions.alignment = BoxContainer.ALIGNMENT_CENTER
