@@ -51,6 +51,10 @@ func build() -> void:
 	main.center_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	main.center_hint.add_theme_color_override("font_color", UITheme.color("accent"))
 	top_unit.add_child(main.center_hint)
+	main._hint_actions = HBoxContainer.new()
+	main._hint_actions.alignment = BoxContainer.ALIGNMENT_CENTER
+	main._hint_actions.add_theme_constant_override("separation", 8)
+	top_unit.add_child(main._hint_actions)
 	# 上方对手
 	main.top_player_box = VBoxContainer.new()
 	main.top_player_box.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -279,13 +283,16 @@ func _apply_pending_setup(pending: Dictionary) -> void:
 		main.pending_action_button.add_theme_color_override("font_color", UITheme.color("text_secondary"))
 
 func _render_controls(phase: int, is_current: bool) -> void:
+	# 清空 hint 区域的操作按钮
+	for child in main._hint_actions.get_children():
+		child.queue_free()
 	if phase == PHASE_Q_DECISION and is_current:
 		var keep: Button = main._button("Q：不交换")
 		keep.pressed.connect(func(): GameState.request_q_decision(false, -1, main._next_action_id()))
-		main.controls_box.add_child(keep)
+		main._hint_actions.add_child(keep)
 		var exchange: Button = main._button("Q：交换（再点自己一张牌）")
 		exchange.pressed.connect(func(): main.interaction.action_mode = "q_exchange"; main._render_game())
-		main.controls_box.add_child(exchange)
+		main._hint_actions.add_child(exchange)
 	elif phase == PHASE_GAME_OVER:
 		var result: Dictionary = main.latest_state.result
 		var summary := Label.new()

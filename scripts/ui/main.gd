@@ -40,6 +40,7 @@ var left_player_box: VBoxContainer
 var right_player_box: VBoxContainer
 var bottom_player_box: VBoxContainer
 var center_hint: Label
+var _hint_actions: HBoxContainer
 var pending_card_box: Control
 var pending_card_button: Button
 var pending_action_button: Button
