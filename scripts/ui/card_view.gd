@@ -18,6 +18,7 @@ var enabled_hover := true
 @onready var back_texture: TextureRect = $Back/BackTexture
 @onready var front: PanelContainer = $Front
 @onready var front_texture: TextureRect = $Front/FrontTexture
+@onready var glow: PanelContainer = $Glow
 
 var _pending_setup := false
 var _pending_highlight := false
@@ -26,12 +27,24 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	pressed.connect(func(): card_clicked.emit(self))
 	back_texture.texture = load(BACK_TEXTURE)
+	_build_glow()
 	_refresh()
 	if _pending_setup:
 		_pending_setup = false
 	if _pending_highlight:
 		_pending_highlight = false
 		set_highlight(true)
+
+## 构建外发光样式（沿边缘向外发光，非整牌提亮）。
+func _build_glow() -> void:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0, 0, 0, 0)
+	style.set_corner_radius_all(8)
+	style.shadow_color = Color(1.0, 0.84, 0.48, 0.9)
+	style.shadow_size = 10
+	style.shadow_offset = Vector2.ZERO
+	glow.add_theme_stylebox_override("panel", style)
+	glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 ## 设置卡牌数据；card 为空则显示背面。
 func setup(data: Dictionary) -> void:
@@ -81,17 +94,12 @@ func _rank_file(rank: String) -> String:
 		"10": return "10"
 		_: return "0" + rank
 
-## 高亮（金色提亮 + 边框）；关闭时恢复。
+## 高亮：沿卡牌边缘向外发光（不整牌提亮）。
 func set_highlight(on: bool) -> void:
 	_pending_highlight = on
-	if not is_inside_tree() or not is_instance_valid(front) or not is_instance_valid(back):
+	if not is_inside_tree() or not is_instance_valid(glow):
 		return
-	if on:
-		modulate = Color(1.25, 1.18, 0.9, 1.0)
-		scale = Vector2(1.05, 1.05)
-	else:
-		modulate = Color.WHITE
-		scale = Vector2.ONE
+	glow.visible = on
 
 ## 翻牌动画：当前面翻到另一面（scale.x 收缩→切面→展开）。
 func flip_show() -> void:
