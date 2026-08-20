@@ -1,5 +1,7 @@
 # KONG UI 主题规范
 
+> **本文档职责**：主题令牌（dark/light）规范，**给开发者**。对应实现 `scripts/ui/ui_theme.gd`。Agent 需改 UI 配色时参考。
+
 状态：v1（dark/light 双主题已接入）  
 关联：[light_theme.css](light_theme.css)（浅色配色来源）、`scripts/ui/ui_theme.gd`
 
