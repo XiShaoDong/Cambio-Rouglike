@@ -39,7 +39,7 @@ var top_player_box: VBoxContainer
 var left_player_box: VBoxContainer
 var right_player_box: VBoxContainer
 var bottom_player_box: VBoxContainer
-var center_hint: Label
+var center_hint: RichTextLabel
 var _hint_actions: HBoxContainer
 var pending_card_box: Control
 var pending_card_button: Button
@@ -252,7 +252,7 @@ func _hint_for(phase: int, is_current: bool) -> String:
 		return _mode_instruction("处理抽到的牌：替换或使用大牌下按钮。")
 	if phase == PHASE_Q_DECISION and is_current: return _mode_instruction("Q 已看过目标牌：不换或点自己一张交换。")
 	if phase == PHASE_GAME_OVER: return "按总分、牌数、最高单牌判定。"
-	return "等待其他玩家行动。"
+	return "等待 [b]%s[/b] 行动。" % str(latest_state.get("current_name", ""))
 
 func _mode_instruction(fallback: String) -> String:
 	return interaction.mode_instruction(fallback)
