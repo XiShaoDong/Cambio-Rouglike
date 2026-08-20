@@ -35,6 +35,7 @@ func build() -> void:
 	main.game_header.add_theme_font_size_override("font_size", 18)
 	main.game_header.add_theme_color_override("font_color", UITheme.color("text_primary"))
 	main.game_header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	main.game_header.visible = false
 	top_bar.add_child(main.game_header)
 	main.ready_button = main._button("Ready（0/0）")
 	main.ready_button.custom_minimum_size = Vector2(180, 40)
@@ -176,7 +177,6 @@ func render(state: Dictionary) -> void:
 	var phase := int(state.phase)
 	var viewer := int(state.viewer_id)
 	var is_current := viewer == int(state.current_player)
-	main.game_header.text = "%s  ·  %s" % [state.phase_name, "轮到你" if is_current else "轮到 %s" % state.current_name]
 	var total_players: int = state.players.size()
 	if phase == PHASE_INITIAL_PEEK:
 		var ready_count: int = int(state.get("ready_count", 0))
