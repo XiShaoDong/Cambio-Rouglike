@@ -213,6 +213,9 @@ func _update_discard_button(discard: Dictionary, available: bool) -> void:
 	if main.discard_button is CardView:
 		main.discard_button.setup(discard)
 		if discard.is_empty():
+			# 弃牌堆为空：隐藏卡面，只留虚线空位
+			main.discard_button.back.visible = false
+			main.discard_button.front.visible = false
 			if not main.discard_button.has_node("DiscardDashed"):
 				var dashed: DashedBorder = DashedBorder.new()
 				dashed.name = "DiscardDashed"
