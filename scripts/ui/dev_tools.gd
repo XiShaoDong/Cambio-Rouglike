@@ -23,6 +23,10 @@ func handle_input(event: InputEvent) -> bool:
 			UITheme.switch_theme(str(names[_theme_index]))
 			_rebuild_theme()
 			return true
+		elif event.keycode == KEY_O:
+			GameState.debug_duel = not GameState.debug_duel
+			main._show_toast("调试贴牌 %s：不判正确性，双贴即比拼" % ("ON" if GameState.debug_duel else "OFF"))
+			return true
 	return false
 
 func _apply_layout_debug() -> void:

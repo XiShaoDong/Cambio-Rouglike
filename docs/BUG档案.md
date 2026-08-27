@@ -73,3 +73,59 @@
 **诊断方法**：
 1. 若翻面动画中途失败 → 检查是否在已启动 tween 内追加步骤
 2. 改用独立 tween 或回调方法
+
+---
+
+## B6：大牌被容器裁剪 / “看得见点不到”
+
+**现象**：抽到的大牌（pending_card）放进容器内被裁剪显示不全；Use Power/弃牌按钮看得见但点不到。
+
+**根因**：大牌挂在 `center_unit`（固定尺寸容器）内部的 `pending_overlay` 里，超出容器边界被裁剪；按钮被上层 Control 拦截点击事件。
+
+**修复**：`main.pending_overlay = main.board`（大牌移到 GameBoard 顶层，不再受容器约束）；`GameBoard.mouse_filter = PASS`（放行下层点击）、大牌卡 `pending_card_button.mouse_filter = IGNORE`（不挡按钮）。
+
+**诊断方法**：
+1. 大牌/弹层被裁剪 → 检查是否挂在带尺寸约束的容器内，移到场景顶层
+2. 元素可看不可点 → 检查上层控件 `mouse_filter` 是否 `STOP` 拦截；设 `PASS` 放行 / 目标元素设 `IGNORE`
+
+---
+
+## B7：贴牌揭示露出默认背面
+
+**现象**：贴牌（slap）翻牌揭示期间，槽位底下原卡或默认背面可见，视觉露馅。
+
+**根因**：揭示翻牌只在 overlay 播动画，底层槽位原卡未隐藏；render 重建时槽位仍渲染原卡。
+
+**修复**：`_play_flip_at` 揭示期间 `anchor.visible = false` + `mark_anim_slot(target_id, slot)`（渲染为空占位），动画结束 `unmark_anim_slot` + `_render_game` + 恢复原卡可见。
+
+**诊断方法**：
+1. 翻牌揭示露底 → 检查是否隐藏了底层原卡并标记槽位为动画中
+2. 揭示期间用 `mark_anim_slot` 让 render 重建时槽位显示空占位，动画后清除
+
+---
+
+## B8：比拼无人 STOP 崩溃（best=0 越界）
+
+**现象**：贴牌比拼（SLAP_DUEL）全员未按 STOP，`duel_timeout` 结算时报 `Invalid access to property or key '0' on a base object of type 'Dictionary'`。
+
+**根因**：`resolve_duel` 里 `var best := 0`，若没有候选人按 STOP，循环内 `best` 不被更新，随后 `duel.correct[best]`（即 `correct[0]`）访问不存在的键。
+
+**修复**：结算循环后加 `if best == 0: best = int(duel.correct.keys()[0])`（兜底选第一个候选人，保证比拼总能解决）。
+
+**诊断方法**：
+1. 比拼结算报 `correct[0]` 越界 → 检查无人 STOP 时 `best` 是否仍为初值 0
+2. 兜底选第一个候选人（或规定"无人 STOP 则全败/重赛"）
+
+---
+
+## B9：DuelBar 比拼弹窗不可见（根节点尺寸 0）
+
+**现象**：比拼弹层添加到 overlay 后，全屏遮罩与居中窗口完全看不见（此前浮层版可见但不明显）。
+
+**根因**：`DuelBar` 作为 `Control` 被 `add_child` 到 `overlay` 时，自身锚点默认左上、尺寸 0；内部 `set_anchors_and_offsets_preset(PRESET_FULL_RECT)` 的子节点（遮罩/居中容器）以父节点（0 尺寸）为基准 → 全部 0 尺寸不可见。
+
+**修复**：`_build_ui` 开头 `set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)`，让 DuelBar 根节点铺满 overlay。
+
+**诊断方法**：
+1. 覆盖层子节点不可见 → 检查根 Control 是否铺满父级（锚点 FULL_RECT）
+2. 加进普通 Control（非容器）的弹层都要先设锚点，否则内部相对布局全失效

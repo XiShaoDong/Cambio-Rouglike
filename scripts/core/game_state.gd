@@ -12,8 +12,9 @@ signal toast_received(message: String)
 signal command_rejected(code: int, message: String)
 signal match_aborted(code: int, message: String)
 signal card_exchange_animated(data: Dictionary)
+signal peek_highlighted(data: Dictionary)
 
-enum Phase { LOBBY, INITIAL_PEEK, TURN_DRAW, TURN_DECISION, Q_DECISION, SLAP_WINDOW, SLAP_EXCHANGE, GAME_OVER }
+enum Phase { LOBBY, INITIAL_PEEK, TURN_DRAW, TURN_DECISION, Q_DECISION, SLAP_WINDOW, SLAP_EXCHANGE, GAME_OVER, SLAP_DUEL }
 
 const PROTOCOL_VERSION := 1
 const MAX_ACTION_HISTORY := 64
@@ -32,10 +33,12 @@ enum RejectCode {
 	INVALID_SOURCE,
 	ABILITY_FORBIDDEN,
 	DRAW_UNAVAILABLE,
-	ALREADY_ATTEMPTED_SLAP,
+	ALREADY_ATTEMPTED_SLAP,  # 已弃用：贴牌不限次数，不再返回该错误（保留枚举值避免位移）
 	DUPLICATE_OR_EXPIRED_ACTION,
 	MATCH_ABORTED_PLAYER_LEFT,
 	HOST_DISCONNECTED,
+	NOT_DUEL_CONTESTANT,
+	ALREADY_STOPPED,
 }
 
 var phase: Phase = Phase.LOBBY
@@ -52,9 +55,11 @@ var final_queue: Array[int] = []
 var kong_caller := 0
 var kong_called_first_turn := false
 var slap_rank := ""
-var slap_resume := ""
-var slap_attempted: Dictionary = {}
+var slap_open := false
 var slap_exchange: Dictionary = {}
+var slap_collect: Dictionary = {}
+var slap_duel: Dictionary = {}
+var debug_duel := false
 var last_result: Dictionary = {}
 var event_log: Array[String] = []
 var run_state: Dictionary = KongRules.new_default_run()
@@ -64,12 +69,13 @@ var state_revision := 0
 var action_history: Dictionary = {}
 var last_seen_revision := -1
 
-var slap_timer := Timer.new()
 var peek: PeekSystem
 var effects: EffectSystem
 var swap: SwapSystem
 var slap: SlapSystem
 var kongbaya: KongbayaSystem
+var slap_collect_timer := Timer.new()
+var slap_duel_timer := Timer.new()
 
 func _ready() -> void:
 	peek = PeekSystem.new(self)
@@ -77,9 +83,12 @@ func _ready() -> void:
 	swap = SwapSystem.new(self)
 	slap = SlapSystem.new(self)
 	kongbaya = KongbayaSystem.new(self)
-	slap_timer.one_shot = true
-	add_child(slap_timer)
-	slap_timer.timeout.connect(_on_slap_timeout)
+	slap_collect_timer.one_shot = true
+	slap_duel_timer.one_shot = true
+	add_child(slap_collect_timer)
+	add_child(slap_duel_timer)
+	slap_collect_timer.timeout.connect(slap.collection_timeout)
+	slap_duel_timer.timeout.connect(slap.duel_timeout)
 	Network.host_started.connect(_on_host_started)
 	Network.joined_server.connect(_on_joined_server)
 	Network.peer_left.connect(_on_peer_left)
@@ -128,9 +137,12 @@ func _reset_match() -> void:
 	kong_caller = 0
 	kong_called_first_turn = false
 	slap_rank = ""
-	slap_resume = ""
-	slap_attempted.clear()
+	slap_open = false
 	slap_exchange.clear()
+	slap_collect.clear()
+	slap_duel.clear()
+	slap_collect_timer.stop()
+	slap_duel_timer.stop()
 	last_result.clear()
 	event_log.clear()
 	run_state = KongRules.new_default_run()
@@ -138,7 +150,6 @@ func _reset_match() -> void:
 	match_id = ""
 	state_revision = 0
 	action_history.clear()
-	slap_timer.stop()
 
 func _new_match_id() -> String:
 	return "m_%08x_%s" % [randi(), Time.get_unix_time_from_system()]
@@ -162,6 +173,8 @@ func _reject_code_message(code: int) -> String:
 		RejectCode.DUPLICATE_OR_EXPIRED_ACTION: return "该操作已处理或已过期。"
 		RejectCode.MATCH_ABORTED_PLAYER_LEFT: return "其他玩家中途断线，对局已中止。"
 		RejectCode.HOST_DISCONNECTED: return "房主已经断开。"
+		RejectCode.NOT_DUEL_CONTESTANT: return "你不是比拼候选人。"
+		RejectCode.ALREADY_STOPPED: return "你已经在比拼中按过 STOP。"
 	return "操作被拒绝。"
 
 func _check_action_id(sender: int, action_id: String) -> bool:
@@ -341,6 +354,7 @@ func _server_take(sender: int, source: String, action_id := "") -> void:
 		_reject(sender, RejectCode.DRAW_UNAVAILABLE, action_id)
 		return
 	pending_draw = {"card_id": card_id, "source": source}
+	slap_open = false
 	phase = Phase.TURN_DECISION
 	_add_log("%s 取了一张牌。" % players[sender].name)
 	_broadcast_state()
@@ -377,7 +391,8 @@ func _server_replace(sender: int, slot: int, action_id := "") -> void:
 	_add_log("%s 替换了一张手牌。" % players[sender].name)
 	_broadcast_exchange({"kind": "replace", "actor": sender, "slot": slot,
 		"old_data": _card_public(outgoing), "big_data": _card_public(incoming)})
-	_open_slap("advance")
+	_open_slap("")
+	_advance_turn()
 
 func request_discard_draw(action_id := "") -> void:
 	if multiplayer.is_server():
@@ -501,6 +516,20 @@ func server_slap_exchange(own_slot: int, action_id: String) -> void:
 func _server_slap_exchange(sender: int, own_slot: int, action_id := "") -> void:
 	slap.exchange(sender, own_slot, action_id)
 
+func request_slap_duel_stop(action_id := "") -> void:
+	if multiplayer.is_server():
+		_server_slap_duel_stop(1, action_id)
+	else:
+		server_slap_duel_stop.rpc_id(1, action_id)
+
+@rpc("any_peer", "reliable")
+func server_slap_duel_stop(action_id: String) -> void:
+	if multiplayer.is_server():
+		_server_slap_duel_stop(multiplayer.get_remote_sender_id(), action_id)
+
+func _server_slap_duel_stop(sender: int, action_id := "") -> void:
+	slap.duel_stop(sender, action_id)
+
 func request_kongbaya(action_id := "") -> void:
 	if multiplayer.is_server():
 		_server_kongbaya(1, action_id)
@@ -515,21 +544,20 @@ func server_kongbaya(action_id: String) -> void:
 func _server_kongbaya(sender: int, action_id := "") -> void:
 	kongbaya.declare(sender, action_id)
 
-func _discard_pending_and_open_slap(resume: String) -> void:
+func _discard_pending_and_open_slap(_resume: String) -> void:
 	var card_id: String = pending_draw.card_id
 	pending_draw.clear()
 	_discard(card_id)
-	_open_slap(resume)
+	_open_slap("")
+	_advance_turn()
 
 func _discard(card_id: String) -> void:
 	discard_pile.append(card_id)
 	slap_rank = cards[card_id].rank
 
-func _open_slap(resume: String) -> void:
-	slap.open_slap(resume)
-
-func _on_slap_timeout() -> void:
-	slap.on_timeout()
+func _open_slap(_resume: String) -> void:
+	slap_open = true
+	slap.open_slap()
 
 func _finish_slap() -> void:
 	slap.finish_slap()
@@ -561,7 +589,11 @@ func _advance_turn(final_mode := false) -> void:
 			_broadcast_state()
 
 func _finish_game(reason := "") -> void:
-	slap_timer.stop()
+	slap_open = false
+	slap_collect.clear()
+	slap_duel.clear()
+	slap_collect_timer.stop()
+	slap_duel_timer.stop()
 	phase = Phase.GAME_OVER
 	if not reason.is_empty():
 		last_result = {"reason": reason, "ranking": []}
@@ -655,6 +687,17 @@ func _broadcast_exchange(data: Dictionary) -> void:
 		else:
 			receive_exchange_animated.rpc_id(int(peer_id), data)
 
+## 广播查看高亮事件给除 viewer 外的所有玩家（不含牌面，仅标记被查看牌的位置）。
+func _broadcast_peek_highlight(viewer: int, data: Dictionary) -> void:
+	print("[peek_glow] server broadcast viewer=%d -> %s" % [viewer, str(data)])
+	for peer_id in players.keys():
+		if int(peer_id) == viewer:
+			continue
+		if int(peer_id) == 1:
+			_receive_peek_highlight(data)
+		else:
+			receive_peek_highlight.rpc_id(int(peer_id), data)
+
 func _send_toast(peer_id: int, message: String) -> void:
 	if peer_id == 1:
 		toast_received.emit(message)
@@ -682,6 +725,9 @@ func _receive_reveal(title: String, revealed_cards: Array, target: Dictionary = 
 func _receive_exchange_animated(data: Dictionary) -> void:
 	card_exchange_animated.emit(data)
 
+func _receive_peek_highlight(data: Dictionary) -> void:
+	peek_highlighted.emit(data)
+
 @rpc("authority", "call_remote", "reliable")
 func receive_lobby(lobby: Dictionary) -> void:
 	_receive_lobby(lobby)
@@ -697,6 +743,10 @@ func receive_reveal(title: String, revealed_cards: Array, target: Dictionary = {
 @rpc("authority", "call_remote", "reliable")
 func receive_exchange_animated(data: Dictionary) -> void:
 	_receive_exchange_animated(data)
+
+@rpc("authority", "call_remote", "reliable")
+func receive_peek_highlight(data: Dictionary) -> void:
+	_receive_peek_highlight(data)
 
 @rpc("authority", "call_remote", "reliable")
 func receive_toast(message: String) -> void:

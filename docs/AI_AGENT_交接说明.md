@@ -29,6 +29,8 @@
 - 当前目标：先验证 2–4 人纯基础牌局；Roguelike 尚未启用（`enable_relics = false`）。
 - 联网：ENet/UDP，房主权威，默认端口 `7007`。
 - 状态：大厅、对局界面、服务器权威状态机、规则、动效系统均已实现；已有自动化验证（见第 8 节）。
+- 当前工作分支：`refactor/ui-scene-board`（未合入 main）。已含：对局棋盘**场景实体化**（`game_board.tscn`/`player_area.tscn`）、大牌顶层定位、peek_highlight 查看高亮、能力弃牌本地显示。设计见 `docs/superpowers/specs/2026-08-20-ui-scene-board-design.md`。
+- **贴牌系统（本会话重构）**：固定 2.5s 窗口 → `slap_open` 标志（弃牌/用技能后开启，下一玩家抽牌关闭）；同一窗口**不限次数**尝试（贴错每次罚牌，贴对先到者胜）；多人同时贴中 → 400ms 收集 → `SLAP_DUEL` 比拼 bar（随机加粗区中心红心，服务器到达时间判最近者）；调试开关 **O 键**切换 `debug_duel`（不判正确性 + 双贴即比拼，便于手动触发）。
 - Git：仓库 `git@github.com:XiShaoDong/Cambio-Rouglike.git`，分支 `main`。
 - 项目路径：`~/dev/gameDev/cambio-rouglike/`。
 
@@ -38,7 +40,7 @@
 2. 客户端只能调 `request_*` 意图方法；服务器收到 RPC 后再校验调用者、阶段、目标。
 3. `HiddenInfo._snapshot_for(viewer_id)` 按接收者生成状态；结算前普通手牌槽位不含 `rank/suit/value`。
 4. 看牌走 `receive_reveal` 定向消息，一次性展示；不要把已知牌写入公共状态。
-5. 贴牌胜负以服务器收到第一条有效请求为准。
+5. 贴牌窗口无固定时长：弃牌/用技能后 `slap_open=true` 并推进回合，**下一玩家抽牌时关闭**；同一窗口内可**多次**尝试，正确且先到者立即关窗，贴错每次罚牌，判定翻牌期间客户端锁点击。多人同时贴中 → 400ms 收集 → `SLAP_DUEL` 比拼（`slap_system.resolve_duel`，服务器到达时间判最近红心）。
 6. 规则层不依赖 IP/UI 节点/房主画面；未来 Headless VPS 复用 `GameState`。
 7. `run_state`/`RunModifier` 是扩展缝，默认不启用。
 
@@ -55,7 +57,7 @@
 | `effect_system.gd` | 卡牌能力执行（7/8/9/10/J/Q） |
 | `peek_system.gd` | 看牌揭示 |
 | `swap_system.gd` | J/Q 交换 |
-| `slap_system.gd` | 贴牌窗口 |
+| `slap_system.gd` | 贴牌窗口（`slap_open`）+ 400ms 收集 + 比拼（`SLAP_DUEL` 裁决） |
 | `kongbaya_system.gd` | Kongbaya 最终轮 |
 | `network.gd` | ENet 连接/大厅/断线 |
 
@@ -69,9 +71,12 @@ UI 层已拆分（main.gd 是组合根）：
 | `game_view.gd` | 对局构建 + 状态投影渲染 |
 | `reveal_controller.gd` | 看牌翻转动画 |
 | `card_animator.gd` | 卡牌移动/交换/落位动画（副本 + 隐藏源卡 + 虚线占位） |
-| `dev_tools.gd` | F12 布局调试 / T 主题切换 |
+| `dev_tools.gd` | F12 布局调试 / T 主题切换 / O 调试贴牌开关 |
+| `duel_bar.gd` | 比拼 bar（全屏遮罩+居中弹窗；随机加粗区+中心红心+扫动标记+STOP；空格停止由 main 转发） |
 | `card_view.gd` / `card_factory.gd` | 卡牌视图节点 / 构建 |
-| `dashed_border.gd` | 虚线边框占位 |
+| `dashed_border.gd` | 虚线边框占位（当前对局空槽已改透明占位，不用虚线） |
+| `scenes/ui/game_board.tscn` | 对局棋盘静态骨架（锚点+容器，布局可在编辑器拖拽）：TitleBar/HintArea/4×PlayerArea/MiddleRow·PileArea/Corner |
+| `scenes/ui/player_area.tscn` + `scripts/ui/player_area.gd` | 玩家区域模板，`@export var card_size`（默认 62×90），名字在卡牌正下方；GameBoard 直接子节点，运行时复用填充 |
 
 ## 5. 状态机（`GameState.Phase` 数值不可随意变更，需同步 UI 与测试）
 
@@ -79,18 +84,21 @@ UI 层已拆分（main.gd 是组合根）：
 | ---: | --- | --- |
 | 0 | LOBBY | 注册、房主开始 |
 | 1 | INITIAL_PEEK | 玩家确认记住开局两张牌 |
-| 2 | TURN_DRAW | 当前玩家抽牌/取弃牌顶/喊 Kongbaya |
+| 2 | TURN_DRAW | 当前玩家抽牌/取弃牌顶/喊 Kongbaya；`slap_open` 时也允许所有人贴牌 |
 | 3 | TURN_DECISION | 替换、弃抽到的牌、发动技能 |
 | 4 | Q_DECISION | Q 操作者决定不换或交换 |
-| 5 | SLAP_WINDOW | 所有人尝试贴任意一张牌 |
+| 5 | SLAP_WINDOW | 已弃用（不再进入）；贴牌窗口改为 `slap_open` 标志 |
 | 6 | SLAP_EXCHANGE | 贴中他人者交出一个槽位 |
 | 7 | GAME_OVER | 公开所有牌并显示结果 |
+| 8 | SLAP_DUEL | 多人同时贴中 → 比拼 bar，比谁最接近随机加粗区中心红心 |
 
 ## 6. 网络与隐私契约（详见 `网络协议_V1.md`）
 
 - 房主 `Network.host_game`（ENet peer ID = 1）；客户端 `Network.join_game` + 注册昵称。
 - 命令进入 server `server_*` RPC → 私有 `_server_*` 验证。
-- 状态消息：`receive_lobby`/`receive_state`/`receive_reveal`/`receive_toast`，牌面仅允许在弃牌顶、行动者的待处理抽牌、结算牌中出现。
+- 状态消息：`receive_lobby`/`receive_state`/`receive_reveal`/`receive_toast`/`receive_peek_highlight`，牌面仅允许在弃牌顶、行动者的待处理抽牌、结算牌中出现。
+- 请求方向：`slap`（`TURN_DRAW` 且 `slap_open`）、`slap_exchange`（`SLAP_EXCHANGE`）、`slap_duel_stop`（`SLAP_DUEL`，仅候选人）。快照 `slap_duel` 仅在 `SLAP_DUEL` 存在（`contestants`/`duration_ms`/`deadline_server_ms`/`target`，均公开）。
+- 查看高亮 `peek_highlight`：仅含 `{player_id, slot}` 位置、**不含牌面**（详见 `网络协议_V1.md` 4.6）。非当前玩家看到的大牌为**背面**（`pending.hidden=true`，Feature0）。
 - 交换动画：server 广播 `card_exchange_animated` 事件，各 client 用**自己视角的 `_card_slots`** 定位播放。
 
 ## 7. 关键 bug 档案（已解决，复现时按诊断方法修复）
@@ -100,24 +108,30 @@ UI 层已拆分（main.gd 是组合根）：
 - **B1 大牌位移**：`Control.scale`+`pivot_offset`+`global_position` 组合位置漂移 → 用**实际尺寸定位**，不用 scale。
 - **B2 槽位永久虚线**：GDScript lambda 捕获 int 计数器不累积 → 用**字典计数器 + bind**。
 - **B3/B4 hint 问题**：RichTextLabel 不显示 → 回退 Label；每字一行 → 设固定宽度。
+- **B6 大牌被裁剪 / “看得见点不到”**：大牌在容器内被裁剪、点击被上层拦截 → 大牌挂 **GameBoard 顶层**（`pending_overlay = board`），board `mouse_filter=PASS`、大牌卡 `IGNORE`。
+- **B7 贴牌揭示露默认背面**：翻牌期间底层原卡暴露 → 揭示期间 `mark_anim_slot` + 隐藏原卡，结束后恢复。
+- **B8 比拼无人 STOP 崩溃**：`resolve_duel` 里 `best` 初值 0，全员未按 STOP 时访问 `slap_duel.correct[0]` 报错 → 结算后 `best==0` 时兜底选第一个候选人。
+- **B9 DuelBar 弹窗不可见**：弹层加进 `overlay` 时自身尺寸为 0（默认锚点），内部全屏遮罩/居中容器随之 0 尺寸 → `_build_ui` 开头 `set_anchors_and_offsets_preset(PRESET_FULL_RECT)`。
 
 ## 8. 验证命令（headless 单元测试，不启动 GUI）
 
 ```bash
 # 编译检查
 /Applications/Godot.app/Contents/MacOS/Godot --headless --path . --quit-after 5
-# 协议测试（27/27）
+# 协议测试（36/36）
 ... --headless --path . res://tests/verify_protocol.tscn
 # 交换动画测试（10/10）
 ... --headless --path . res://tests/verify_swap.tscn
-# hint 生成测试
+# 贴牌比拼测试（23/23：单正确/双正确比拼/超时/无人 STOP/调试模式/错误码）
+... --headless --path . res://tests/verify_duel.tscn
+# hint 生成测试（7/8；既有失败：断言 "replace" 大小写敏感，main 分支同样失败，非本次引入）
 ... --headless --path . res://tests/verify_hint.tscn
 # 双实例网络回归（host + client 各跑，均 exit 0）
 ... --headless --path . res://tests/verify_net.tscn -- -role host
 ... --headless --path . res://tests/verify_net.tscn -- -role client
 ```
 
-> **开发约定**：按用户的指示**不启动 GUI**，用上述 unit test 验证后总结。每次改动后跑 `verify_protocol` + `verify_swap` + 双实例 `verify_net`。
+> **开发约定**：按用户的指示**不启动 GUI**，用上述 unit test 验证后总结。每次改动后跑 `verify_protocol` + `verify_swap` + `verify_duel` + 双实例 `verify_net`。
 
 ## 9. 给后续 Agent 的工作方式
 

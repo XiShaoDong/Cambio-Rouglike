@@ -1,55 +1,61 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene format=3 uid="uid://cm5v06dp4rmf8"]
 
-[ext_resource type="Script" path="res://scripts/ui/card_view.gd" id="1"]
-[ext_resource type="Texture2D" path="res://assets/Cards/back07.png" id="2_back"]
+[ext_resource type="Script" uid="uid://bqi80f542jay5" path="res://scripts/ui/card_view.gd" id="1"]
+[ext_resource type="Texture2D" uid="uid://b6c1to7oc5vl3" path="res://assets/Cards/back07.png" id="2_back"]
+[ext_resource type="AudioStream" uid="uid://bmg6a2iwsdasp" path="res://assets/Sounds/card-flip.wav" id="3_mli0n"]
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_1"]
 
-[node name="Card" type="Button"]
+[node name="Card" type="Button" unique_id=2072840457]
 custom_minimum_size = Vector2(57, 89)
+offset_right = 57.0
+offset_bottom = 89.0
 focus_mode = 0
 mouse_default_cursor_shape = 2
 theme_override_styles/normal = SubResource("StyleBoxEmpty_1")
-theme_override_styles/hover = SubResource("StyleBoxEmpty_1")
 theme_override_styles/pressed = SubResource("StyleBoxEmpty_1")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_1")
 theme_override_styles/disabled = SubResource("StyleBoxEmpty_1")
 script = ExtResource("1")
 
-[node name="Glow" type="PanelContainer" parent="."]
+[node name="Glow" type="PanelContainer" parent="." unique_id=1876888474]
 visible = false
-anchors_preset = 15
+layout_mode = 0
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 
-[node name="Back" type="PanelContainer" parent="."]
-anchors_preset = 15
+[node name="Back" type="PanelContainer" parent="." unique_id=960641345]
+layout_mode = 0
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 
-[node name="BackTexture" type="TextureRect" parent="Back"]
+[node name="BackTexture" type="TextureRect" parent="Back" unique_id=1841766202]
 layout_mode = 2
+mouse_filter = 2
 texture = ExtResource("2_back")
 expand_mode = 1
 stretch_mode = 5
-mouse_filter = 2
 
-[node name="Front" type="PanelContainer" parent="."]
+[node name="Front" type="PanelContainer" parent="." unique_id=657326255]
 visible = false
-anchors_preset = 15
+layout_mode = 0
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 
-[node name="FrontTexture" type="TextureRect" parent="Front"]
+[node name="FrontTexture" type="TextureRect" parent="Front" unique_id=1817255641]
 layout_mode = 2
+mouse_filter = 2
 expand_mode = 1
 stretch_mode = 5
-mouse_filter = 2
+
+[node name="AudioStreamPlayer" type="AudioStreamPlayer" parent="." unique_id=1016856903]
+stream = ExtResource("3_mli0n")

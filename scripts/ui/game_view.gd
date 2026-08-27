@@ -13,6 +13,12 @@ const PHASE_SLAP_WINDOW := 5
 const PHASE_SLAP_EXCHANGE := 6
 const PHASE_GAME_OVER := 7
 
+## 卡牌图片 352x512 比例，所有卡牌尺寸遵循该比例（图片 KEEP_ASPECT_CENTERED 正好填满）。
+const CARD_ASPECT := 0.6875
+const CARD_SELF_SIZE := Vector2(62, 90)
+const CARD_PILE_SIZE := Vector2(74, 107)
+const CARD_BIG_SIZE := Vector2(110, 160)
+
 var main: Node
 var _ready_clicked := false
 
@@ -21,96 +27,49 @@ func _init(owner_node: Node) -> void:
 
 func build() -> void:
 	main.game_panel.add_theme_constant_override("separation", 14)
-	# 顶部：标题 + 提示 + Ready
-	var top_unit := VBoxContainer.new()
-	top_unit.alignment = BoxContainer.ALIGNMENT_CENTER
-	top_unit.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	top_unit.add_theme_constant_override("separation", 6)
-	main.game_panel.add_child(top_unit)
-	var top_bar := HBoxContainer.new()
-	top_bar.alignment = BoxContainer.ALIGNMENT_CENTER
-	top_bar.add_theme_constant_override("separation", 24)
-	top_unit.add_child(top_bar)
-	main.game_header = Label.new()
-	main.game_header.add_theme_font_size_override("font_size", 18)
-	main.game_header.add_theme_color_override("font_color", UITheme.color("text_primary"))
-	main.game_header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	main.game_header.visible = false
-	top_bar.add_child(main.game_header)
-	main.ready_button = main._button("Ready（0/0）")
-	main.ready_button.custom_minimum_size = Vector2(180, 40)
-	main.ready_button.add_theme_font_size_override("font_size", 16)
+	var board_scene: PackedScene = load("res://scenes/ui/game_board.tscn")
+	var board: Control = board_scene.instantiate()
+	board.name = "GameBoard"
+	board.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	board.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	main.game_panel.add_child(board)
+	main.board = board
+	# 顶部标题栏（TitleBar 场景）：标题 + 状态信息
+	main.status_label = board.get_node("TitleBar/StatusLabel")
+	main.status_label.add_theme_color_override("font_color", UITheme.color("text_secondary"))
+	var title_label: Label = board.get_node("TitleBar/Title")
+	title_label.add_theme_color_override("font_color", UITheme.color("accent"))
+	# 顶部：提示 + Ready（HintArea 场景）
+	main.ready_button = board.get_node("HintArea/TopBar/ReadyButton")
 	main.ready_button.add_theme_color_override("font_color", UITheme.color("success"))
 	main.ready_button.pressed.connect(func():
 		_ready_clicked = true
 		GameState.request_initial_ready())
-	main.ready_button.visible = false
-	top_bar.add_child(main.ready_button)
-	main.center_hint = Label.new()
-	main.center_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	main.center_hint.max_lines_visible = 3
-	main.center_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	main.center_hint.custom_minimum_size = Vector2(400, 0)
-	main.center_hint.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	main.center_hint = board.get_node("HintArea/CenterHint")
 	main.center_hint.add_theme_color_override("font_color", UITheme.color("accent"))
-	top_unit.add_child(main.center_hint)
-	main._hint_actions = HBoxContainer.new()
-	main._hint_actions.alignment = BoxContainer.ALIGNMENT_CENTER
-	main._hint_actions.add_theme_constant_override("separation", 8)
-	top_unit.add_child(main._hint_actions)
-	# 上方对手
-	main.top_player_box = VBoxContainer.new()
-	main.top_player_box.alignment = BoxContainer.ALIGNMENT_CENTER
-	main.top_player_box.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	main.top_player_box.add_theme_constant_override("separation", 4)
-	main.game_panel.add_child(main.top_player_box)
-	# 中部行：左对手 | 中央牌堆 | 右对手
-	var opponents_row := HBoxContainer.new()
-	opponents_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	opponents_row.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	opponents_row.add_theme_constant_override("separation", 36)
-	main.game_panel.add_child(opponents_row)
-	main.left_player_box = VBoxContainer.new()
-	main.left_player_box.alignment = BoxContainer.ALIGNMENT_CENTER
-	main.left_player_box.add_theme_constant_override("separation", 4)
-	opponents_row.add_child(main.left_player_box)
-	var center_unit := VBoxContainer.new()
-	center_unit.alignment = BoxContainer.ALIGNMENT_CENTER
-	center_unit.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	center_unit.add_theme_constant_override("separation", 12)
-	opponents_row.add_child(center_unit)
-	var pile_row := HBoxContainer.new()
-	pile_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	pile_row.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	pile_row.add_theme_constant_override("separation", 28)
-	center_unit.add_child(pile_row)
-	main.deck_button = main._make_card_button({}, Vector2(68, 107))
+	main._hint_actions = board.get_node("HintArea/HintActions")
+	# 四个玩家区域（GameBoard 直接子节点，锚点自由定位，可拖拽）
+	main.top_player_box = board.get_node("PlayerTop")
+	main.left_player_box = board.get_node("PlayerLeft")
+	main.right_player_box = board.get_node("PlayerRight")
+	main.bottom_player_box = board.get_node("PlayerBottom")
+	# 中部：中央牌堆
+	var pile_area := board.get_node("MiddleRow/PileArea")
+	var pile_row: HBoxContainer = pile_area.get_node("PileRow")
+	main.deck_button = main._make_card_button({}, CARD_PILE_SIZE)
 	main.deck_button.pressed.connect(main._on_deck_pressed)
 	pile_row.add_child(main.deck_button)
-	main.discard_button = main._make_card_button({}, Vector2(68, 107))
+	main.discard_button = main._make_card_button({}, CARD_PILE_SIZE)
 	main.discard_button.pressed.connect(main._on_discard_pressed)
 	pile_row.add_child(main.discard_button)
-	var pile_hint := Label.new()
-	pile_hint.text = "抽牌堆          弃牌堆"
-	pile_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	pile_hint.add_theme_font_size_override("font_size", 12)
-	pile_hint.add_theme_color_override("font_color", UITheme.color("text_muted"))
-	center_unit.add_child(pile_hint)
-	main.right_player_box = VBoxContainer.new()
-	main.right_player_box.alignment = BoxContainer.ALIGNMENT_CENTER
-	main.right_player_box.add_theme_constant_override("separation", 4)
-	opponents_row.add_child(main.right_player_box)
-	# 抽到的牌（大牌）：完全贴合叠放在抽牌堆（deck_button）上
-	main.pending_overlay = Control.new()
-	main.pending_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	main.pending_overlay.mouse_filter = Control.MOUSE_FILTER_PASS
-	main.pending_overlay.z_index = 10
-	center_unit.add_child(main.pending_overlay)
+	# 抽到的牌（大牌）：放到 GameBoard 顶层，绝对定位不被容器裁剪，按钮可点击
+	main.pending_overlay = main.board
 	main.pending_card_box = Control.new()
 	main.pending_card_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	main.pending_card_box.visible = false
+	main.pending_card_box.z_index = 10
 	main.pending_overlay.add_child(main.pending_card_box)
-	main.pending_card_button = main._make_card_button({}, Vector2(68, 107))
+	main.pending_card_button = main._make_card_button({}, CARD_PILE_SIZE)
 	main.pending_card_box.add_child(main.pending_card_button)
 	main.pending_action_button = main._button("Use Power")
 	main.pending_action_button.custom_minimum_size = Vector2(90, 30)
@@ -119,57 +78,18 @@ func build() -> void:
 	main.pending_action_button.z_index = 20
 	main.pending_action_button.pressed.connect(main._on_pending_action)
 	main.pending_overlay.add_child(main.pending_action_button)
-	# 当前玩家（底部）
-	var spacer := Control.new()
-	spacer.custom_minimum_size = Vector2(0, 80)
-	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	main.game_panel.add_child(spacer)
-	main.bottom_player_box = VBoxContainer.new()
-	main.bottom_player_box.alignment = BoxContainer.ALIGNMENT_CENTER
-	main.bottom_player_box.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	main.bottom_player_box.add_theme_constant_override("separation", 4)
-	main.game_panel.add_child(main.bottom_player_box)
-	# 右下操作区（绝对定位到右下角，不随对局内容流动）
-	var corner := VBoxContainer.new()
-	corner.alignment = BoxContainer.ALIGNMENT_END
-	corner.add_theme_constant_override("separation", 8)
-	corner.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
-	corner.offset_left = -360
-	corner.offset_top = -150
-	corner.offset_right = -12
-	corner.offset_bottom = -8
-	main.overlay.add_child(corner)
-	var controls_row := HBoxContainer.new()
-	controls_row.alignment = BoxContainer.ALIGNMENT_END
-	controls_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	controls_row.add_theme_constant_override("separation", 14)
-	corner.add_child(controls_row)
-	main.bell_button = main._button("🔔 KONGBAYA")
-	main.bell_button.custom_minimum_size = Vector2(190, 46)
-	main.bell_button.add_theme_font_size_override("font_size", 18)
+	# 右下操作区（Corner 场景，锚点绝对定位到右下角）
+	var corner := board.get_node("Corner")
+	var controls_row: HBoxContainer = corner.get_node("ControlsRow")
+	main.bell_button = controls_row.get_node("BellButton")
 	main.bell_button.add_theme_color_override("font_color", UITheme.color("danger"))
 	main.bell_button.pressed.connect(main._request_kongbaya)
-	controls_row.add_child(main.bell_button)
-	main.round_label = Label.new()
-	main.round_label.text = "第 1 局"
-	main.round_label.add_theme_font_size_override("font_size", 14)
+	main.round_label = controls_row.get_node("RoundLabel")
 	main.round_label.add_theme_color_override("font_color", UITheme.color("text_secondary"))
-	main.round_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	controls_row.add_child(main.round_label)
-	main.controls_box = HBoxContainer.new()
-	main.controls_box.add_theme_constant_override("separation", 8)
-	controls_row.add_child(main.controls_box)
-	# 右下：对局记录
-	var log_row := HBoxContainer.new()
-	log_row.alignment = BoxContainer.ALIGNMENT_END
-	log_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	corner.add_child(log_row)
-	main.log_box = RichTextLabel.new()
-	main.log_box.bbcode_enabled = true
-	main.log_box.custom_minimum_size = Vector2(340, 120)
-	main.log_box.add_theme_font_size_override("normal_font_size", 12)
+	main.controls_box = controls_row.get_node("ControlsBox")
+	var log_row: HBoxContainer = corner.get_node("LogRow")
+	main.log_box = log_row.get_node("LogBox")
 	main.log_box.add_theme_color_override("default_color", UITheme.color("text_secondary"))
-	log_row.add_child(main.log_box)
 
 ## 把最新状态投影到界面。
 func render(state: Dictionary) -> void:
@@ -211,6 +131,16 @@ func _update_discard_button(discard: Dictionary, available: bool) -> void:
 	# 弃牌堆动画中：延迟显示（落位后才更新）
 	if main._discard_anim_lock:
 		return
+	# 能力弃牌本地显示：立即在弃牌堆顶部显示弃掉的牌，服务器确认后清除并改由服务器状态
+	if not main._discard_local_display.is_empty():
+		var local: Dictionary = main._discard_local_display
+		var server_confirmed: bool = not discard.is_empty() and str(discard.get("id", "")) == str(local.get("id", ""))
+		if server_confirmed:
+			main._discard_local_display = {}
+		else:
+			main.discard_button.setup(local)
+			main._highlight(main.discard_button, available)
+			return
 	main.discard_button.disabled = not available
 	if main.discard_button is CardView:
 		main.discard_button.setup(discard)
@@ -237,33 +167,51 @@ func _update_pending_card(phase: int, is_current: bool) -> void:
 		if not (phase == PHASE_TURN_DECISION and is_current and main.latest_state.has("pending")):
 			main._pending_hidden_for_ability = false
 		return
-	var should_show: bool = phase == PHASE_TURN_DECISION and is_current and main.latest_state.has("pending")
-	main.pending_card_box.visible = should_show
-	main.pending_action_button.visible = false
+	var should_show: bool = phase == PHASE_TURN_DECISION and main.latest_state.has("pending")
 	if not should_show:
+		main.pending_card_box.visible = false
+		main.pending_action_button.visible = false
 		return
 	var pending: Dictionary = main.latest_state.pending
-	main.pending_card_button.queue_free()
-	main.pending_card_button = main._make_card_button(pending, Vector2(102, 160))
-	main.pending_card_box.add_child(main.pending_card_button)
-	main.pending_card_button.move_to_front()
-	# 棋盘默认 setup：两堆中心 + scale 1.5 + 按钮
-	_apply_pending_setup(pending)
-	# 抽牌动画：点击抽牌堆后，隐藏棋盘大牌，用副本从抽牌堆飞到大牌位置并翻成正面
-	if main._draw_flip_pending and str(pending.get("source", "draw")) == "draw":
+	# 抽牌动画：仅当前玩家播放（其他玩家直接显示背面大牌）
+	if is_current and main._draw_flip_pending and str(pending.get("source", "draw")) == "draw":
 		main._draw_flip_pending = false
+		main.pending_card_box.visible = false
+		main.pending_action_button.visible = false
 		if is_instance_valid(main.deck_button) and is_instance_valid(main.discard_button):
 			var deck_rect: Rect2 = main.deck_button.get_global_rect()
 			var disc_rect: Rect2 = main.discard_button.get_global_rect()
 			var mid: Vector2 = (deck_rect.get_center() + disc_rect.get_center()) / 2.0
 			var big_size: Vector2 = deck_rect.size * 1.5
 			var big_rect: Rect2 = Rect2(mid - big_size / 2.0, big_size)
-			main.pending_card_box.visible = false
+			main._pending_card_id = ""
 			main.animator.play_draw(pending, deck_rect, big_rect, func():
-				main.pending_card_box.visible = true)
+				_rebuild_pending_card(pending, is_current))
+		return
+	# 普通更新：只在 pending 卡牌或视角(is_current)变化时重建，避免动画期间反复释放重建
+	var card_id := str(pending.get("card_id", ""))
+	if card_id != main._pending_card_id or is_current != main._pending_is_current:
+		_rebuild_pending_card(pending, is_current)
+	main.pending_card_box.visible = true
+
+## 重建棋盘大牌并定位显示（动画完成回调 / pending 变化时调用）。
+## is_current 为当前玩家时显示正面 + Use Power/弃牌按钮；其他玩家显示背面、无按钮。
+func _rebuild_pending_card(pending: Dictionary, is_current: bool = true) -> void:
+	main._pending_card_id = str(pending.get("card_id", ""))
+	main._pending_is_current = is_current
+	main.pending_card_button.queue_free()
+	var is_hidden: bool = bool(pending.get("hidden", false)) or not is_current
+	var display: Dictionary = {} if is_hidden else pending
+	main.pending_card_button = main._make_card_button(display, CARD_BIG_SIZE)
+	main.pending_card_box.add_child(main.pending_card_button)
+	main.pending_card_button.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	main.pending_card_button.move_to_front()
+	_apply_pending_setup(pending, is_current)
+	main.pending_card_box.visible = true
 
 ## 棋盘大牌默认 setup：中心 = 两堆中心，大牌实际 1.5 倍尺寸（不用 scale，避免位移）。
-func _apply_pending_setup(pending: Dictionary) -> void:
+## is_current 为当前玩家时显示 Use Power/弃牌按钮；其他玩家不显示按钮。
+func _apply_pending_setup(pending: Dictionary, is_current: bool = true) -> void:
 	if is_instance_valid(main.deck_button) and is_instance_valid(main.discard_button):
 		var deck_rect: Rect2 = main.deck_button.get_global_rect()
 		var disc_rect: Rect2 = main.discard_button.get_global_rect()
@@ -276,6 +224,9 @@ func _apply_pending_setup(pending: Dictionary) -> void:
 		# Use Power/弃牌按钮放在大牌内部下方
 		main.pending_action_button.custom_minimum_size = Vector2(big_size.x - 8, 26)
 		main.pending_action_button.global_position = mid - Vector2(big_size.x / 2.0, 0) + Vector2(4, big_size.y / 2.0 - 28)
+	main.pending_action_button.visible = false
+	if not is_current:
+		return
 	var from_discard := str(pending.get("source", "draw")) == "discard"
 	if from_discard:
 		return
@@ -315,10 +266,10 @@ func _render_controls(phase: int, is_current: bool) -> void:
 		main.controls_box.add_child(summary)
 
 func _render_players(viewer: int) -> void:
-	main._clear(main.top_player_box)
-	main._clear(main.left_player_box)
-	main._clear(main.right_player_box)
-	main._clear(main.bottom_player_box)
+	var all_areas: Array = [main.top_player_box, main.left_player_box, main.right_player_box, main.bottom_player_box]
+	for area in all_areas:
+		area.visible = false
+		_clear_area(area)
 	var players: Array = main.latest_state.players
 	var others: Array = []
 	var me: Dictionary = {}
@@ -339,25 +290,26 @@ func _render_players(viewer: int) -> void:
 	if not me.is_empty():
 		_render_player_section(main.bottom_player_box, me, viewer, false)
 
-func _render_player_section(box: VBoxContainer, player: Dictionary, viewer: int, is_top: bool) -> void:
+func _clear_area(area: Control) -> void:
+	if area.has_node("VBox/HandCenter/HandGrid"):
+		for c in area.get_node("VBox/HandCenter/HandGrid").get_children():
+			c.queue_free()
+
+func _render_player_section(area: Control, player: Dictionary, viewer: int, is_top: bool) -> void:
 	var is_me := int(player.id) == viewer
-	var card_size := Vector2(57, 89) if is_me else Vector2(34, 53)
 	var font_size := 16 if is_me else 12
-	var section := VBoxContainer.new()
-	section.add_theme_constant_override("separation", 4)
-	box.add_child(section)
-	var hand := GridContainer.new()
+	# 卡牌尺寸：优先用 PlayerArea 场景导出的 card_size（可在编辑器调），否则用代码默认 62x90
+	var exported: Variant = area.get("card_size")
+	var card_size: Vector2 = exported if exported != null and exported != Vector2.ZERO else CARD_SELF_SIZE
+	area.visible = true
+	var hand: GridContainer = area.get_node("VBox/HandCenter/HandGrid")
 	hand.columns = maxi(2, ceili(player.slots.size() / 2.0))
-	hand.add_theme_constant_override("h_separation", 6)
-	hand.add_theme_constant_override("v_separation", 6)
-	hand.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	section.add_child(hand)
 	for slot_index in player.slots.size():
 		var slot: Dictionary = player.slots[slot_index]
 		var is_empty_slot := str(slot.get("card_id", "")) == ""
 		var is_anim_slot: bool = main.is_anim_slot(int(player.id), slot_index)
 		if is_empty_slot or is_anim_slot:
-			# 空槽/动画中槽位：透明背景 + 虚线边框占位
+			# 空槽/动画中槽位：透明占位（无虚线），保持网格布局对齐但不可见
 			var empty := PanelContainer.new()
 			empty.custom_minimum_size = card_size
 			empty.size = card_size
@@ -366,10 +318,6 @@ func _render_player_section(box: VBoxContainer, player: Dictionary, viewer: int,
 			ts.set_corner_radius_all(8)
 			empty.add_theme_stylebox_override("panel", ts)
 			empty.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			var dashed := DashedBorder.new()
-			dashed.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-			dashed.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			empty.add_child(dashed)
 			hand.add_child(empty)
 			if not main._card_slots.has(int(player.id)):
 				main._card_slots[int(player.id)] = {}
@@ -383,14 +331,17 @@ func _render_player_section(box: VBoxContainer, player: Dictionary, viewer: int,
 		if not main._card_slots.has(int(player.id)):
 			main._card_slots[int(player.id)] = {}
 		main._card_slots[int(player.id)][slot_index] = card_button
-	var name_panel := PanelContainer.new()
-	var name_style := StyleBoxFlat.new()
-	name_style.bg_color = UITheme.color("player_self_bg") if is_me else UITheme.color("player_other_bg")
-	name_style.set_corner_radius_all(6)
-	name_style.set_content_margin_all(6)
-	name_panel.add_theme_stylebox_override("panel", name_style)
-	name_panel.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	var name_label := Label.new()
+		# 查看高亮持久化：该槽位在查看光晕有效期内 → render 重建后恢复蓝色光晕
+		var glow_key := "%d_%d" % [int(player.id), slot_index]
+		if main._peek_glow_slots.has(glow_key):
+			var deadline: int = int(main._peek_glow_slots[glow_key])
+			if Time.get_ticks_msec() < deadline:
+				var remain: float = (deadline - Time.get_ticks_msec()) / 1000.0
+				(card_button as CardView).flash_glow(main.PEEK_GLOW_COLOR, remain, main.PEEK_GLOW_SIZE)
+				print("[peek_glow] render re-applied glow pid=%d slot=%d remain=%.2fs" % [int(player.id), slot_index, remain])
+			else:
+				main._peek_glow_slots.erase(glow_key)
+	var name_label: Label = area.get_node("VBox/NameLabel")
 	var suffix := "（你）" if is_me else ""
 	var ready_mark := ""
 	if int(main.latest_state.phase) == PHASE_INITIAL_PEEK:
@@ -399,16 +350,21 @@ func _render_player_section(box: VBoxContainer, player: Dictionary, viewer: int,
 	name_label.add_theme_font_size_override("font_size", font_size)
 	name_label.add_theme_color_override("font_color", UITheme.color("player_self_text") if is_me else UITheme.color("player_other_text"))
 	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var name_style := StyleBoxFlat.new()
+	name_style.bg_color = UITheme.color("player_self_bg") if is_me else UITheme.color("player_other_bg")
+	name_style.set_corner_radius_all(6)
+	name_style.set_content_margin_all(6)
+	name_label.add_theme_stylebox_override("normal", name_style)
 	if is_top:
 		name_label.text = "▲ " + name_label.text
 	if is_me:
 		name_label.text = "▼ " + name_label.text
-	name_panel.add_child(name_label)
-	section.add_child(name_panel)
 
 func _render_log() -> void:
 	var accent_html := UITheme.color("accent").to_html(false)
 	var lines := ["[color=#%s]对局记录[/color]" % accent_html]
+	for entry in main._local_log:
+		lines.append("• %s" % str(entry))
 	for entry in main.latest_state.event_log:
 		lines.append("• %s" % str(entry))
 	if int(main.latest_state.phase) == PHASE_GAME_OVER:

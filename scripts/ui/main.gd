@@ -6,6 +6,12 @@ extends Control
 var dev: DevTools
 
 func _unhandled_input(event: InputEvent) -> void:
+	# 比拼中按空格 = 停止（与 STOP 按钮等效）
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_SPACE:
+		if _duel_panel != null and _duel_panel.has_method("stop"):
+			_duel_panel.stop()
+			get_viewport().set_input_as_handled()
+			return
 	dev.handle_input(event)
 
 
@@ -17,28 +23,34 @@ const PHASE_Q_DECISION := 4
 const PHASE_SLAP_WINDOW := 5
 const PHASE_SLAP_EXCHANGE := 6
 const PHASE_GAME_OVER := 7
+const PHASE_SLAP_DUEL := 8
+
+const PEEK_GLOW_COLOR := Color("3ef0f7ff")  # 查看牌蓝色光晕
+const PEEK_GLOW_DURATION := 1.5
+const PEEK_GLOW_SIZE := 14
+const DuelBarScript := preload("res://scripts/ui/duel_bar.gd")
 
 var latest_lobby: Dictionary = {}
 var latest_state: Dictionary = {}
 var last_phase := -1
 
 var status_label: Label
+var lobby_status_label: Label
 var lobby_panel: VBoxContainer
 var game_panel: VBoxContainer
 var name_input: LineEdit
 var address_input: LineEdit
 var port_input: LineEdit
 var lobby_members: RichTextLabel
-var game_header: Label
 var ready_button: Button
 var bell_button: Button
 var round_label: Label
 var deck_button: Button
 var discard_button: Button
-var top_player_box: VBoxContainer
-var left_player_box: VBoxContainer
-var right_player_box: VBoxContainer
-var bottom_player_box: VBoxContainer
+var top_player_box: Control
+var left_player_box: Control
+var right_player_box: Control
+var bottom_player_box: Control
 var center_hint: Label
 var _hint_actions: HBoxContainer
 var pending_card_box: Control
@@ -49,6 +61,7 @@ var log_box: RichTextLabel
 var overlay: Control
 var pending_overlay: Control
 var background: ColorRect
+var board: Control
 var is_dev_join := false
 var start_button: Button = null
 var _cards := CardFactory.new()
@@ -58,11 +71,18 @@ var game_view: GameView
 var reveal: RevealController
 var animator: CardAnimator
 var _card_slots: Dictionary = {}
+var _local_log: Array = []
 var _pending_flips: Array = []
 var _draw_flip_pending := false
 var _pending_hidden_for_ability := false
+var _pending_card_id := ""
+var _pending_is_current := false
 var _anim_slots: Dictionary = {}
 var _discard_anim_lock := false
+var _discard_local_display: Dictionary = {}
+var _peek_glow_slots: Dictionary = {}
+var _slap_reveal_lock := false
+var _duel_panel: Control = null
 
 ## 标记某个玩家槽位正在动画（渲染时该槽位显示虚线占位，不显示原卡）。
 func mark_anim_slot(pid: int, slot: int) -> void:
@@ -86,6 +106,7 @@ func _ready() -> void:
 	GameState.state_updated.connect(_on_state_updated)
 	GameState.private_reveal_received.connect(_show_private_reveal)
 	GameState.card_exchange_animated.connect(func(data: Dictionary): animator.handle_exchange(data))
+	GameState.peek_highlighted.connect(_on_peek_highlight)
 	GameState.toast_received.connect(_show_toast)
 	GameState.command_rejected.connect(_on_command_rejected)
 	GameState.match_aborted.connect(_on_match_aborted)
@@ -109,6 +130,7 @@ func _on_match_aborted(_code: int, message: String) -> void:
 		interaction.action_mode = ""
 		interaction.selected_target = 0
 		interaction.selected_own_slot = -1
+		interaction.selected_their_slot = -1
 	lobby_panel.visible = true
 	game_panel.visible = false
 	_set_status("对局中止：%s" % message)
@@ -134,15 +156,6 @@ func _build_interface() -> void:
 	page.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	page.add_theme_constant_override("separation", 16)
 	margin.add_child(page)
-	var title := Label.new()
-	title.text = "KONG  ·  LAN MVP"
-	title.add_theme_font_size_override("font_size", 30)
-	title.add_theme_color_override("font_color", UITheme.color("accent"))
-	page.add_child(title)
-	status_label = Label.new()
-	status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	status_label.add_theme_color_override("font_color", UITheme.color("text_secondary"))
-	page.add_child(status_label)
 	lobby_panel = VBoxContainer.new()
 	lobby_panel.add_theme_constant_override("separation", 12)
 	page.add_child(lobby_panel)
@@ -200,6 +213,25 @@ func _on_state_updated(state: Dictionary) -> void:
 
 func _render_game() -> void:
 	game_view.render(latest_state)
+	_render_duel(latest_state)
+
+## SLAP_DUEL 阶段：创建/更新比拼 bar 弹层，离开阶段时移除。
+func _render_duel(state: Dictionary) -> void:
+	if int(state.get("phase", 0)) == PHASE_SLAP_DUEL:
+		if _duel_panel == null:
+			var duel: Dictionary = state.get("slap_duel", {})
+			var contestants: Array = duel.get("contestants", [])
+			duel["viewer_contestant"] = 1 if int(state.get("viewer_id", 0)) in contestants else 0
+			_duel_panel = DuelBarScript.new()
+			overlay.add_child(_duel_panel)
+			_duel_panel.setup(self, duel, _on_slap_duel_stop)
+	else:
+		if _duel_panel != null:
+			_duel_panel.queue_free()
+			_duel_panel = null
+
+func _on_slap_duel_stop() -> void:
+	GameState.request_slap_duel_stop(_next_action_id())
 
 func _flush_pending_flips() -> void:
 	if _pending_flips.is_empty():
@@ -209,7 +241,7 @@ func _flush_pending_flips() -> void:
 		var target_id := int(entry.target_id)
 		var slot := int(entry.slot)
 		if _card_slots.has(target_id) and _card_slots[target_id].has(slot) and is_instance_valid(_card_slots[target_id][slot]):
-			reveal._flip_at(_card_slots[target_id][slot], entry.card)
+			reveal._flip_at(_card_slots[target_id][slot], entry.card, target_id, slot)
 		else:
 			remaining.append(entry)
 	_pending_flips = remaining
@@ -223,6 +255,8 @@ func _on_pending_action() -> void:
 	animator._animate_discard_pending(big_data, actor)
 	if KongRules.has_ability(str(pending.get("rank", ""))):
 		_pending_hidden_for_ability = true
+		# 能力牌弃牌：本地立即在弃牌堆顶部显示该牌，避免被旧状态覆盖，直到服务器确认
+		_discard_local_display = big_data
 		_begin_ability()
 	else:
 		GameState.request_discard_draw(_next_action_id())
@@ -248,9 +282,12 @@ func _hint_for(phase: int, is_current: bool) -> String:
 		PHASE_INITIAL_PEEK:
 			return "Remember your two bottom cards, then click Ready"
 		PHASE_TURN_DRAW:
+			var slap_note := ""
+			if bool(latest_state.get("slap_open", false)):
+				slap_note = " · SLAP open: click matching card"
 			if is_current:
-				return "Draw from the deck or the discard pile (discard top only replaces)"
-			return "Waiting for %s to draw a card" % name
+				return "Draw from the deck or the discard pile (discard top only replaces)" + slap_note
+			return "Waiting for %s to draw a card" % name + slap_note
 		PHASE_TURN_DECISION:
 			return _decision_hint(is_current, name)
 		PHASE_Q_DECISION:
@@ -263,6 +300,8 @@ func _hint_for(phase: int, is_current: bool) -> String:
 			if is_current:
 				return "Choose one of your cards to give to the slapped player"
 			return "Waiting for %s to give a card" % name
+		PHASE_SLAP_DUEL:
+			return "Duel: stop closest to the red mark to win the slap"
 		PHASE_GAME_OVER:
 			return "Ranked by total score, then card count, then highest single card"
 	return "Waiting for %s to act" % name
@@ -296,11 +335,9 @@ func _decision_hint(is_current: bool, name: String) -> String:
 		"q_exchange":
 			return "Choose your own card to exchange"
 		"jack_target":
-			return "Choose another player's card to swap"
+			return "Click the opponent's card to swap"
 		"jack_own":
-			return "Choose your own card to swap"
-		"jack_their":
-			return "Choose the other player's card to swap"
+			return "Click your own card to complete the swap"
 	if rank == "J":
 		return "Discard to swap two cards, or replace one of your cards"
 	if rank in ["7", "8"]:
@@ -317,12 +354,28 @@ func _mode_instruction(fallback: String) -> String:
 func _show_private_reveal(title: String, revealed_cards: Array, target: Dictionary = {}) -> void:
 	reveal.show_private_reveal(title, revealed_cards, target)
 
+## 其他玩家查看某张牌时，在被查看的牌上标蓝色光晕 1 秒（不含牌面）。
+## 记录槽位到 _peek_glow_slots，render 重建卡牌后仍可恢复光晕。
+func _on_peek_highlight(data: Dictionary) -> void:
+	var pid := int(data.get("player_id", 0))
+	var slot := int(data.get("slot", -1))
+	var key := "%d_%d" % [pid, slot]
+	_peek_glow_slots[key] = Time.get_ticks_msec() + int(PEEK_GLOW_DURATION * 1000.0)
+	print("[peek_glow] client received: player_id=%d slot=%d（其他玩家视角，蓝色光晕标记）" % [pid, slot])
+	if _card_slots.has(pid) and _card_slots[pid].has(slot):
+		var card: Control = _card_slots[pid][slot]
+		if is_instance_valid(card) and card is CardView:
+			(card as CardView).flash_glow(PEEK_GLOW_COLOR, PEEK_GLOW_DURATION, PEEK_GLOW_SIZE)
+			print("[peek_glow] flash_glow applied directly pid=%d slot=%d" % [pid, slot])
+
 func _show_toast(message: String) -> void:
 	_set_status(message)
 
 func _set_status(message: String) -> void:
 	if status_label != null:
 		status_label.text = message
+	if lobby_status_label != null:
+		lobby_status_label.text = message
 
 func _button(text: String) -> Button:
 	var button := Button.new()

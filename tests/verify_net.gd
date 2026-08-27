@@ -3,7 +3,7 @@ extends Node
 ## E1 双实例自动化验证（headless）：
 ##   host  : godot --headless --path . res://tests/verify_net.tscn -- -role host
 ##   client: godot --headless --path . res://tests/verify_net.tscn -- -role client
-## 验证：建房→加入→注册→开局→抽牌→替换→贴牌超时→轮转，共 4 次行动。
+## 验证：建房→加入→注册→开局→抽牌→替换→贴牌窗口（下一玩家抽牌关闭）→轮转，共 4 次行动。
 
 var role := ""
 var latest_state: Dictionary = {}
@@ -68,6 +68,8 @@ func _on_state(state: Dictionary) -> void:
 		if turn_draw_count >= TARGET_TURNS and not done:
 			done = true
 			print("VERIFY %s PASS: reached %d turn draws" % [role, TARGET_TURNS])
+			# 宽限：让另一端也收到最终广播后再退出，避免一方 quit 断连导致另一侧超时
+			await get_tree().create_timer(2.0).timeout
 			get_tree().quit(0)
 			return
 		if role == "host":

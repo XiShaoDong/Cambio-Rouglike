@@ -1,0 +1,202 @@
+[gd_scene format=3 uid="uid://d25offsrjwep6"]
+
+[ext_resource type="PackedScene" uid="uid://dcrhkyjwma431" path="res://scenes/ui/player_area.tscn" id="1_player"]
+
+[node name="GameBoard" type="Control" unique_id=1108066558]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 15.0
+offset_right = 15.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+
+[node name="TitleBar" type="VBoxContainer" parent="." unique_id=1393566813]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 60.0
+grow_horizontal = 2
+theme_override_constants/separation = 4
+alignment = 1
+
+[node name="Title" type="Label" parent="TitleBar" unique_id=2000941220]
+layout_mode = 2
+theme_override_font_sizes/font_size = 30
+text = "KONG  ·  LAN MVP"
+horizontal_alignment = 1
+
+[node name="StatusLabel" type="Label" parent="TitleBar" unique_id=146417217]
+visible = false
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="HintArea" type="VBoxContainer" parent="." unique_id=125081398]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 60.0
+offset_bottom = 200.0
+grow_horizontal = 2
+theme_override_constants/separation = 6
+alignment = 1
+
+[node name="TopBar" type="HBoxContainer" parent="HintArea" unique_id=339040736]
+layout_mode = 2
+theme_override_constants/separation = 24
+alignment = 1
+
+[node name="ReadyButton" type="Button" parent="HintArea/TopBar" unique_id=931340522]
+custom_minimum_size = Vector2(180, 40)
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "Ready（0/0）"
+
+[node name="CenterHint" type="Label" parent="HintArea" unique_id=1822748221]
+custom_minimum_size = Vector2(400, 0)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 16
+horizontal_alignment = 1
+autowrap_mode = 3
+max_lines_visible = 3
+
+[node name="HintActions" type="HBoxContainer" parent="HintArea" unique_id=1711912958]
+layout_mode = 2
+theme_override_constants/separation = 8
+alignment = 1
+
+[node name="PlayerTop" parent="." unique_id=124203675 instance=ExtResource("1_player")]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 205.0
+offset_bottom = 320.0
+grow_horizontal = 2
+
+[node name="PlayerLeft" parent="." unique_id=2072968101 instance=ExtResource("1_player")]
+layout_mode = 1
+anchors_preset = 4
+anchor_top = 0.5
+anchor_bottom = 0.5
+offset_left = 60.0
+offset_top = -120.0
+offset_right = 200.0
+offset_bottom = 120.0
+grow_horizontal = 0
+grow_vertical = 2
+
+[node name="PlayerRight" parent="." unique_id=1981690287 instance=ExtResource("1_player")]
+layout_mode = 1
+anchors_preset = 6
+anchor_left = 1.0
+anchor_top = 0.5
+anchor_right = 1.0
+anchor_bottom = 0.5
+offset_left = -200.0
+offset_top = -120.0
+offset_right = -60.0
+offset_bottom = 120.0
+grow_horizontal = 0
+grow_vertical = 2
+
+[node name="PlayerBottom" parent="." unique_id=999138046 instance=ExtResource("1_player")]
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_top = -203.0
+grow_horizontal = 2
+grow_vertical = 0
+
+[node name="MiddleRow" type="HBoxContainer" parent="." unique_id=432424090]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -110.0
+offset_top = -120.0
+offset_right = 110.0
+offset_bottom = -40.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 28
+alignment = 1
+
+[node name="PileArea" type="VBoxContainer" parent="MiddleRow" unique_id=1786408900]
+layout_mode = 2
+theme_override_constants/separation = 12
+alignment = 1
+
+[node name="PileRow" type="HBoxContainer" parent="MiddleRow/PileArea" unique_id=1944311643]
+layout_mode = 2
+theme_override_constants/separation = 28
+alignment = 1
+
+[node name="PileHint" type="Label" parent="MiddleRow/PileArea" unique_id=1060165535]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "抽牌堆          弃牌堆"
+horizontal_alignment = 1
+
+[node name="PendingBox" type="Control" parent="MiddleRow/PileArea" unique_id=1100042736]
+visible = false
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Corner" type="VBoxContainer" parent="." unique_id=631061013]
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -360.0
+offset_top = -150.0
+offset_right = -12.0
+offset_bottom = -8.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_override_constants/separation = 8
+alignment = 2
+
+[node name="ControlsRow" type="HBoxContainer" parent="Corner" unique_id=702231131]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 14
+alignment = 2
+
+[node name="BellButton" type="Button" parent="Corner/ControlsRow" unique_id=1419301281]
+custom_minimum_size = Vector2(190, 46)
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "🔔 KONGBAYA"
+
+[node name="RoundLabel" type="Label" parent="Corner/ControlsRow" unique_id=86784151]
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "第 1 局"
+vertical_alignment = 1
+
+[node name="ControlsBox" type="HBoxContainer" parent="Corner/ControlsRow" unique_id=1191548154]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="LogRow" type="HBoxContainer" parent="Corner" unique_id=1526890305]
+layout_mode = 2
+size_flags_horizontal = 3
+alignment = 2
+
+[node name="LogBox" type="RichTextLabel" parent="Corner/LogRow" unique_id=1907997881]
+custom_minimum_size = Vector2(340, 120)
+layout_mode = 2
+theme_override_font_sizes/normal_font_size = 12
+bbcode_enabled = true

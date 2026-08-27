@@ -11,6 +11,16 @@ func _init(owner_node: Node) -> void:
 
 ## 构建大厅界面（需已存在 lobby_panel）。
 func build() -> void:
+	var lobby_title := Label.new()
+	lobby_title.text = "KONG  ·  LAN MVP"
+	lobby_title.add_theme_font_size_override("font_size", 30)
+	lobby_title.add_theme_color_override("font_color", UITheme.color("accent"))
+	main.lobby_panel.add_child(lobby_title)
+	main.lobby_status_label = Label.new()
+	main.lobby_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	main.lobby_status_label.add_theme_color_override("font_color", UITheme.color("text_secondary"))
+	main.lobby_status_label.text = "输入昵称后创建或加入局域网房间。默认端口 7007。"
+	main.lobby_panel.add_child(main.lobby_status_label)
 	var intro := Label.new()
 	intro.text = "房主的电脑负责裁定全部规则；同一 Wi‑Fi 下的朋友输入房主的局域网 IP 即可加入。"
 	intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -73,7 +83,7 @@ func dev_launch_second() -> void:
 	if pid == 0:
 		main._show_toast("启动第二个实例失败，请直接手动运行：%s --path %s" % [executable, project_dir])
 	else:
-		main._set_status("已启动本机第二实例（PID %d），它会在 %d 秒内自动加入 127.0.0.1:%d。" % [pid, 2, port])
+		main._local_log.append("已启动第二实例（开发者2）")
 
 ## 从命令行参数应用开发者自动加入。
 func apply_dev_join() -> void:
