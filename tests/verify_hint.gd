@@ -22,7 +22,7 @@ func _check(name: String, ok: bool) -> void:
 		print("[PASS] " + name)
 
 func _set_state(phase: int, is_current: bool, pending: Dictionary = {}, mode: String = "") -> void:
-	main_node.latest_state = {"phase": phase, "phase_name": "p", "viewer_id": 1, "current_player": 1 if is_current else 2, "current_name": "Bob", "players": [], "discard": {}, "event_log": [], "match_number": 1, "draw_count": 40, "slap_rank": "", "slap_seconds": 0.0, "slap_exchange_actor": 0, "kong_caller": 0, "ready_count": 0, "result": {}, "run": {}}
+	main_node.latest_state = {"phase": phase, "phase_name": "p", "viewer_id": 1, "current_player": 1 if is_current else 2, "current_name": "Bob", "players": [], "discard": {}, "event_log": [], "match_number": 1, "draw_count": 40, "slap_rank": "", "slap_open": false, "slap_exchange_actor": 0, "kong_caller": 0, "ready_count": 0, "result": {}, "run": {}}
 	if not pending.is_empty():
 		main_node.latest_state["pending"] = pending
 	main_node.interaction.action_mode = mode

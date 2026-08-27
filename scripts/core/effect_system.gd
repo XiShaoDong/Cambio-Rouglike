@@ -28,6 +28,7 @@ func _peek_own(sender: int, data: Dictionary, action_id := "") -> void:
 		game._reject(sender, game.RejectCode.INVALID_SLOT, action_id)
 		return
 	game._send_reveal(sender, "查看自己的牌", [game.peek.public_card(game.players[sender].cards[own_slot])], {"player_id": sender, "slot": own_slot})
+	game._broadcast_peek_highlight(sender, {"player_id": sender, "slot": own_slot})
 	game._add_log("%s 查看了自己的一张牌。" % game.players[sender].name)
 	game._discard_pending_and_open_slap("advance")
 
@@ -38,6 +39,7 @@ func _peek_other(sender: int, data: Dictionary, action_id := "") -> void:
 		game._reject(sender, game.RejectCode.INVALID_TARGET, action_id)
 		return
 	game._send_reveal(sender, "查看别人的牌", [game.peek.public_card(game.players[target].cards[target_slot])], {"player_id": target, "slot": target_slot})
+	game._broadcast_peek_highlight(sender, {"player_id": target, "slot": target_slot})
 	game._add_log("%s 查看了 %s 的一张牌。" % [game.players[sender].name, game.players[target].name])
 	game._discard_pending_and_open_slap("advance")
 
@@ -64,5 +66,6 @@ func _start_queen(sender: int, data: Dictionary, action_id := "") -> void:
 	game.q_context = {"actor": sender, "target": q_target, "target_slot": q_slot}
 	game.phase = game.Phase.Q_DECISION
 	game._send_reveal(sender, "Q：查看后决定是否交换", [game.peek.public_card(game.players[q_target].cards[q_slot])], {"player_id": q_target, "slot": q_slot})
+	game._broadcast_peek_highlight(sender, {"player_id": q_target, "slot": q_slot})
 	game._add_log("%s 正在决定是否交换。" % game.players[sender].name)
 	game._broadcast_state()

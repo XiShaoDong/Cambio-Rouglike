@@ -5,13 +5,16 @@ extends RefCounted
 ## 不负责：UI 构建、GameState 投影、动画——只决定"玩家点击后下一步该做什么"。
 ## 持有 main（组合根）引用，读 latest_state，调用 GameState 的 request_* 与 main 的刷新。
 
+const PHASE_TURN_DRAW := 2
 const PHASE_SLAP_WINDOW := 5
 const PHASE_SLAP_EXCHANGE := 6
+const PHASE_SLAP_DUEL := 8
 
 var main: Node
 var action_mode := ""
 var selected_target := 0
 var selected_own_slot := -1
+var selected_their_slot := -1
 
 func _init(owner_node: Node) -> void:
 	main = owner_node
@@ -23,7 +26,11 @@ func on_card_pressed(player_id: int, slot: int) -> void:
 		return
 	var phase := int(state.phase)
 	var viewer := int(state.viewer_id)
-	if phase == PHASE_SLAP_WINDOW:
+	if phase == PHASE_SLAP_DUEL:
+		return
+	if bool(state.get("slap_open", false)) and phase == PHASE_TURN_DRAW:
+		if main._slap_reveal_lock:
+			return
 		GameState.request_slap(player_id, slot, main._next_action_id())
 		return
 	if phase == PHASE_SLAP_EXCHANGE and player_id == viewer and int(state.slap_exchange_actor) == viewer:
@@ -50,16 +57,14 @@ func on_card_pressed(player_id: int, slot: int) -> void:
 		"jack_target":
 			if player_id != viewer:
 				selected_target = player_id
+				selected_their_slot = slot
 				action_mode = "jack_own"
 				main._render_game()
 		"jack_own":
 			if player_id == viewer:
 				selected_own_slot = slot
-				action_mode = "jack_their"
-				main._render_game()
-		"jack_their":
-			if player_id == selected_target:
-				GameState.request_use_ability({"target": selected_target, "own_slot": selected_own_slot, "target_slot": slot}, main._next_action_id())
+				GameState.request_use_ability({"target": selected_target, "own_slot": selected_own_slot, "target_slot": selected_their_slot}, main._next_action_id())
+				_reset()
 
 ## 根据抽到的能力牌设置交互模式。
 func begin_ability() -> void:
@@ -77,8 +82,10 @@ func card_actionable(player_id: int, _slot: int) -> bool:
 	var phase := int(state.phase)
 	var viewer := int(state.viewer_id)
 	var is_current := viewer == int(state.current_player)
-	if phase == PHASE_SLAP_WINDOW:
-		return true
+	if phase == PHASE_SLAP_DUEL:
+		return false
+	if bool(state.get("slap_open", false)) and phase == PHASE_TURN_DRAW:
+		return false
 	if phase == PHASE_SLAP_EXCHANGE:
 		return player_id == viewer and int(state.slap_exchange_actor) == viewer
 	if not is_current:
@@ -92,9 +99,14 @@ func card_actionable(player_id: int, _slot: int) -> bool:
 			return player_id != viewer
 		"jack_own":
 			return player_id == viewer
-		"jack_their":
-			return player_id == selected_target
 	return false
+
+## 发送 J 交换请求后清空交互选择状态。
+func _reset() -> void:
+	action_mode = ""
+	selected_target = 0
+	selected_own_slot = -1
+	selected_their_slot = -1
 
 ## 模式相关提示语。
 func mode_instruction(fallback: String) -> String:
@@ -104,9 +116,8 @@ func mode_instruction(fallback: String) -> String:
 		"peek_other": return "9 / 10：请选择其他玩家的一张牌。"
 		"queen_target": return "Q：请选择其他玩家的一张牌查看。"
 		"q_exchange": return "Q：请选择自己交出去的牌。"
-		"jack_target": return "J：先点击任意一张对方的牌以选择交换对象。"
-		"jack_own": return "J：请选择自己要盲换出去的牌。"
-		"jack_their": return "J：请选择对方要盲换的牌。"
+		"jack_target": return "J：点击要换的对方牌。"
+		"jack_own": return "J：再点击自己要换的牌。"
 	return fallback
 
 ## 阶段变化时重置交互状态。
@@ -116,5 +127,6 @@ func reset_for_phase(state: Dictionary) -> void:
 	action_mode = ""
 	selected_target = 0
 	selected_own_slot = -1
+	selected_their_slot = -1
 	if int(state.phase) == 3 and int(state.viewer_id) == int(state.current_player):  # TURN_DECISION
 		action_mode = "replace"

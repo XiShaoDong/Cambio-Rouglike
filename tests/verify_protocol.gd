@@ -93,21 +93,53 @@ func run_checks() -> void:
 		if not last_reveal.is_empty():
 			_check("reveal 带 target(player_id/slot)", int(last_reveal.target.get("player_id", 0)) == 1 and last_reveal.target.get("slot", -1) == 0)
 			_check("reveal 卡牌是玩家手牌 slot 0 的牌", str(last_reveal.cards[0].get("id", "")) == str(GameState.players[1].cards[0]))
-		_check("看牌后进入 SLAP_WINDOW", GameState.phase == GameState.Phase.SLAP_WINDOW)
-		# 回到 TURN_DECISION 供后续测试（重置 pending 为另一张非能力牌）
+		_check("看牌后进入贴牌窗口(slap_open+TURN_DRAW)", GameState.slap_open and GameState.phase == GameState.Phase.TURN_DRAW)
+		_check("看牌后窗口由下一玩家接管", GameState.current_player_id == 2)
+		# 窗口内下一玩家可抽牌并关闭窗口
+		GameState._server_take(2, "draw", "t-peek")
+		_check("窗口内抽牌关闭窗口", not GameState.slap_open and GameState.phase == GameState.Phase.TURN_DECISION)
+		# 回到 1 的 TURN_DECISION 供后续测试（重置 pending 为另一张非能力牌）
 		for cid in GameState.cards:
 			if str(GameState.cards[cid].rank) == "A":
 				GameState.pending_draw = {"card_id": cid, "source": "draw"}
 				break
+		GameState.current_player_id = 1
 		GameState.phase = GameState.Phase.TURN_DECISION
 
 	seen_rejects.clear()
 	GameState._server_replace(1, 0, "r2")
-	_check("合法替换进入 SLAP_WINDOW", GameState.phase == GameState.Phase.SLAP_WINDOW)
+	_check("合法替换后 slap_open 且 TURN_DRAW", GameState.slap_open and GameState.phase == GameState.Phase.TURN_DRAW)
+	_check("替换后当前玩家轮转为 2", GameState.current_player_id == 2)
+
+	# 窗口内贴错 → 罚抽一张牌（需求 3），窗口继续
+	var wrong_id := ""
+	for cid in GameState.cards:
+		if str(GameState.cards[cid].rank) != GameState.slap_rank:
+			wrong_id = cid
+			break
+	if wrong_id != "":
+		var before_cards: Array = GameState.players[1].cards.duplicate()
+		GameState.players[2].cards[0] = wrong_id
+		seen_rejects.clear()
+		GameState._server_slap(1, 2, 0, "s-wrong")
+		_check("窗口内贴错被接受（未拒 INVALID_PHASE）", not _rejected(GameState.RejectCode.INVALID_PHASE))
+		_check("贴错后罚抽一张牌", _count_nonempty(GameState.players[1].cards) > _count_nonempty(before_cards))
+		_check("贴错后窗口继续", GameState.slap_open and GameState.phase == GameState.Phase.TURN_DRAW)
+		# 不限次数：同一玩家窗口内可再次尝试（不再被 ALREADY_ATTEMPTED_SLAP 拒绝）
+		seen_rejects.clear()
+		var before2: Array = GameState.players[1].cards.duplicate()
+		GameState._server_slap(1, 2, 0, "s-wrong2")
+		_check("同一玩家窗口内可再次贴牌（未拒 ALREADY_ATTEMPTED_SLAP）", not _rejected(GameState.RejectCode.ALREADY_ATTEMPTED_SLAP))
+		_check("再次贴错再次罚牌", _count_nonempty(GameState.players[1].cards) > _count_nonempty(before2))
+		_check("再次贴错窗口仍继续", GameState.slap_open and GameState.phase == GameState.Phase.TURN_DRAW)
+	# 复位到 2 的窗口，验证抽牌关窗
+	GameState.current_player_id = 2
+	GameState.slap_open = true
+	GameState.phase = GameState.Phase.TURN_DRAW
 
 	seen_rejects.clear()
-	GameState._server_take(1, "draw", "t2")
-	_check("SLAP_WINDOW 中取牌被拒 INVALID_PHASE", _rejected(GameState.RejectCode.INVALID_PHASE))
+	GameState._server_take(2, "draw", "t2")
+	_check("窗口内当前玩家抽牌关闭窗口", not GameState.slap_open and GameState.phase == GameState.Phase.TURN_DECISION)
 
 	seen_rejects.clear()
 	GameState._server_kongbaya(1, "kb1")
@@ -132,3 +164,10 @@ func _snapshot_leaks(s: Dictionary) -> bool:
 			if slot.has("card"):
 				return true
 	return false
+
+func _count_nonempty(cards: Array) -> int:
+	var n := 0
+	for c in cards:
+		if str(c) != "":
+			n += 1
+	return n

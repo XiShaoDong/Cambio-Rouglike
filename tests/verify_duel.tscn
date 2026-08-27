@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://dq1ftwsr4l3tk"]
+
+[ext_resource type="Script" path="res://tests/verify_duel.gd" id="1"]
+
+[node name="VerifyDuel" type="Node"]
+script = ExtResource("1")

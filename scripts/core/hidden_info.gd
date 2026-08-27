@@ -32,7 +32,8 @@ static func snapshot_for(state: Node, viewer_id: int) -> Dictionary:
 		"draw_count": state.deck.size(),
 		"discard": public_card(state, str(state.discard_pile.back())) if not state.discard_pile.is_empty() else {},
 		"slap_rank": state.slap_rank,
-		"slap_seconds": KongRules.SLAP_WINDOW_SECONDS if phase == GameState.Phase.SLAP_WINDOW else 0.0,
+		"slap_open": bool(state.slap_open),
+		"slap_duel": _slap_duel_snapshot(state) if phase == GameState.Phase.SLAP_DUEL else {},
 		"slap_exchange_actor": int(state.slap_exchange.get("actor", 0)),
 		"kong_caller": state.kong_caller,
 		"match_number": state.match_number,
@@ -41,11 +42,25 @@ static func snapshot_for(state: Node, viewer_id: int) -> Dictionary:
 		"result": state.last_result.duplicate(),
 		"run": state.run_state.duplicate(),
 	}
-	if viewer_id == state.current_player_id and (phase == GameState.Phase.TURN_DECISION or phase == GameState.Phase.Q_DECISION) and not state.pending_draw.is_empty():
-		var pending: Dictionary = public_card(state, str(state.pending_draw.card_id))
-		pending["source"] = str(state.pending_draw.get("source", "draw"))
-		snapshot["pending"] = pending
+	if (phase == GameState.Phase.TURN_DECISION or phase == GameState.Phase.Q_DECISION) and not state.pending_draw.is_empty():
+		if viewer_id == state.current_player_id:
+			var pending: Dictionary = public_card(state, str(state.pending_draw.card_id))
+			pending["source"] = str(state.pending_draw.get("source", "draw"))
+			snapshot["pending"] = pending
+		else:
+			# 其他玩家：只看到一张背面大牌（仅无语义令牌，不泄漏牌面）
+			snapshot["pending"] = {"card_id": str(state.pending_draw.card_id), "hidden": true}
 	return snapshot
+
+## 贴牌比拼快照：候选人、扫动时长、服务器截止时刻、目标位置（公开）。
+static func _slap_duel_snapshot(state: Node) -> Dictionary:
+	var duel: Dictionary = state.slap_duel
+	return {
+		"contestants": duel.get("correct", {}).keys(),
+		"duration_ms": int(duel.get("duration_ms", 0)),
+		"deadline_server_ms": int(duel.get("start_ms", 0)) + int(duel.get("duration_ms", 0)),
+		"target": float(duel.get("target", 0.5)),
+	}
 
 ## 单玩家投影：玩家自己的牌按 peek_slots 揭示；他人牌只给令牌。
 ## 槽位固定为 HAND_SIZE（初始布局），缺失槽位为空；超出部分横向追加。
@@ -79,5 +94,6 @@ static func _phase_name(phase: int) -> String:
 		GameState.Phase.Q_DECISION: return "Q：决定交换"
 		GameState.Phase.SLAP_WINDOW: return "贴牌抢答"
 		GameState.Phase.SLAP_EXCHANGE: return "贴中他人：交出一张牌"
+		GameState.Phase.SLAP_DUEL: return "贴牌比拼"
 		GameState.Phase.GAME_OVER: return "结算"
 	return ""

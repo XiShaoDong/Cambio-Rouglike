@@ -7,7 +7,16 @@ extends RefCounted
 const MAX_PLAYERS := 4
 const MIN_PLAYERS := 2
 const HAND_SIZE := 4
-const SLAP_WINDOW_SECONDS := 2.5
+
+## 贴牌比拼：首个正确贴牌后的收集窗口（毫秒），期间其他正确贴牌加入比拼。
+const SLAP_DUEL_COLLECT_MS := 400
+## 比拼 bar 扫动总时长（毫秒）：标记 0→1→0 一趟来回。
+const SLAP_DUEL_DURATION_MS := 2000
+## 比拼结束宽限（毫秒）：等最后一名候选人按 STOP。
+const SLAP_DUEL_GRACE_MS := 2000
+## 加粗区目标位置范围（bar 归一化坐标，避开贴边）。
+const SLAP_DUEL_TARGET_MIN := 0.15
+const SLAP_DUEL_TARGET_MAX := 0.85
 
 const SPECIAL_RANKS := ["7", "8", "9", "10", "J", "Q"]
 

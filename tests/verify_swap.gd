@@ -36,7 +36,7 @@ func _run() -> void:
 			{"card_id": "c4", "card": {"rank": "K", "suit": "♣", "value": 13}},
 		]},
 	]
-	main_node.latest_state = {"phase": 3, "phase_name": "处理抽到的牌", "viewer_id": 1, "current_player": 1, "current_name": "A", "players": players, "discard": {}, "event_log": [], "match_number": 1, "draw_count": 40, "slap_rank": "", "slap_seconds": 0.0, "slap_exchange_actor": 0, "kong_caller": 0, "ready_count": 0, "result": {}, "run": {}}
+	main_node.latest_state = {"phase": 3, "phase_name": "处理抽到的牌", "viewer_id": 1, "current_player": 1, "current_name": "A", "players": players, "discard": {}, "event_log": [], "match_number": 1, "draw_count": 40, "slap_rank": "", "slap_open": false, "slap_exchange_actor": 0, "kong_caller": 0, "ready_count": 0, "result": {}, "run": {}}
 	gv._render_players(1)
 	await get_tree().process_frame
 	anim.animate_swap(1, 0, 2, 1, {"rank": "7", "suit": "♥", "value": 7}, {"rank": "K", "suit": "♣", "value": 13})

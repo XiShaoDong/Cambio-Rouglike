@@ -26,14 +26,22 @@ func _flip_card_show(card: Dictionary, target: Dictionary = {}) -> void:
 		# 目标卡牌尚未渲染或已释放（reveal 与状态广播时序），挂起到渲染后执行
 		main._pending_flips.append({"card": card, "target_id": target_id, "slot": slot})
 		return
-	_flip_at(anchor, card)
+	_flip_at(anchor, card, target_id, slot)
 
-func _flip_at(anchor: Control, card: Dictionary) -> void:
-	_play_flip_at(anchor, card)
+func _flip_at(anchor: Control, card: Dictionary, target_id: int = 0, slot: int = -1) -> void:
+	_play_flip_at(anchor, card, target_id, slot)
 
 ## 在锚点位置翻牌展示（保持卡牌尺寸，只纵轴翻转，不缩放）。
-func _play_flip_at(anchor: Control, card: Dictionary) -> void:
+## 期间把该槽位标记为动画中（渲染为空占位），避免露出底下默认背面。
+## 同时上判定锁：贴牌判定翻牌期间禁止再点击新牌（`main._slap_reveal_lock`）。
+func _play_flip_at(anchor: Control, card: Dictionary, target_id: int = 0, slot: int = -1) -> void:
+	main._slap_reveal_lock = true
 	var rect: Rect2 = anchor.get_global_rect()
+	# 隐藏底下原卡 + 标记槽位为空占位（render 重建时也不露默认背面）
+	if is_instance_valid(anchor):
+		anchor.visible = false
+	if slot >= 0:
+		main.mark_anim_slot(target_id, slot)
 	var layer := Control.new()
 	layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	main.overlay.add_child(layer)
@@ -55,3 +63,10 @@ func _play_flip_at(anchor: Control, card: Dictionary) -> void:
 		await main.get_tree().create_timer(0.5).timeout
 	if is_instance_valid(layer):
 		layer.queue_free()
+	# 清除动画标记并刷新槽位
+	if slot >= 0:
+		main.unmark_anim_slot(target_id, slot)
+	main._render_game()
+	main._slap_reveal_lock = false
+	if is_instance_valid(anchor):
+		anchor.visible = true

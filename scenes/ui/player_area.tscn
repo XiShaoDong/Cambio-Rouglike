@@ -1,0 +1,31 @@
+[gd_scene format=3 uid="uid://dcrhkyjwma431"]
+
+[ext_resource type="Script" uid="uid://dr2bxqu0frac7" path="res://scripts/ui/player_area.gd" id="1_pa"]
+
+[node name="PlayerArea" type="Control" unique_id=1151177727]
+layout_mode = 3
+anchors_preset = 0
+script = ExtResource("1_pa")
+
+[node name="VBox" type="VBoxContainer" parent="." unique_id=521429622]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+grow_horizontal = 2
+theme_override_constants/separation = 4
+alignment = 1
+
+[node name="HandCenter" type="HBoxContainer" parent="VBox" unique_id=821040631]
+layout_mode = 2
+theme_override_constants/separation = 0
+alignment = 1
+
+[node name="HandGrid" type="GridContainer" parent="VBox/HandCenter" unique_id=165855882]
+layout_mode = 2
+theme_override_constants/h_separation = 6
+theme_override_constants/v_separation = 6
+
+[node name="NameLabel" type="Label" parent="VBox" unique_id=1814466455]
+layout_mode = 2
+text = "玩家"
+horizontal_alignment = 1
