@@ -12,6 +12,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			_duel_panel.stop()
 			get_viewport().set_input_as_handled()
 			return
+	# ESC 呼出/关闭设置菜单（大厅与对局通用）
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
+		_toggle_settings()
+		get_viewport().set_input_as_handled()
+		return
 	dev.handle_input(event)
 
 
@@ -29,6 +34,7 @@ const PEEK_GLOW_COLOR := Color("3ef0f7ff")  # 查看牌蓝色光晕
 const PEEK_GLOW_DURATION := 1.5
 const PEEK_GLOW_SIZE := 14
 const DuelBarScript := preload("res://scripts/ui/duel_bar.gd")
+const SettingsMenuScript := preload("res://scripts/ui/settings_menu.gd")
 
 var latest_lobby: Dictionary = {}
 var latest_state: Dictionary = {}
@@ -83,6 +89,7 @@ var _discard_local_display: Dictionary = {}
 var _peek_glow_slots: Dictionary = {}
 var _slap_reveal_lock := false
 var _duel_panel: Control = null
+var settings_menu: Control = null
 
 ## 标记某个玩家槽位正在动画（渲染时该槽位显示虚线占位，不显示原卡）。
 func mark_anim_slot(pid: int, slot: int) -> void:
@@ -95,6 +102,8 @@ func is_anim_slot(pid: int, slot: int) -> bool:
 	return _anim_slots.has("%d_%d" % [pid, slot])
 
 func _ready() -> void:
+	# 启动即应用持久化主题，保证 UI 用正确 token 构建
+	UITheme.switch_theme(str(Settings.get_setting("display", "theme", "dark")))
 	interaction = GameInteraction.new(self)
 	lobby = LobbyView.new(self)
 	game_view = GameView.new(self)
@@ -232,6 +241,21 @@ func _render_duel(state: Dictionary) -> void:
 
 func _on_slap_duel_stop() -> void:
 	GameState.request_slap_duel_stop(_next_action_id())
+
+## ESC 切换设置菜单：懒创建一次，反复切 visible。
+func _toggle_settings() -> void:
+	if settings_menu == null or not is_instance_valid(settings_menu):
+		settings_menu = SettingsMenuScript.new()
+		add_child(settings_menu)
+	settings_menu.visible = not settings_menu.visible
+
+## 设置菜单切换主题后调用：重刷背景与对局渲染（与 T 键切换同保真度）。
+func apply_theme() -> void:
+	background.color = UITheme.color("bg_table")
+	if not latest_state.is_empty():
+		_render_game()
+	else:
+		_set_status("主题已切换：%s" % UITheme.current)
 
 func _flush_pending_flips() -> void:
 	if _pending_flips.is_empty():

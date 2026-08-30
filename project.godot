@@ -20,6 +20,9 @@ config/icon="res://icon.svg"
 Network="*res://scripts/net/network.gd"
 GameState="*res://scripts/core/game_state.gd"
 UITheme="*res://scripts/ui/ui_theme.gd"
+Settings="*res://scripts/core/settings.gd"
+Loc="*res://scripts/core/loc.gd"
+AudioManager="*res://scenes/ui/audio_manager.tscn"
 MCPRuntimeProbe="*uid://bsg12huaf1u5i"
 
 [display]

@@ -14,8 +14,6 @@ var card_data: Dictionary = {}
 var is_face_up := false
 var enabled_hover := true
 
-#Sound for flip_card
-@onready var sound_flip_card: AudioStreamPlayer = $AudioStreamPlayer
 @onready var back: PanelContainer = $Back
 @onready var back_texture: TextureRect = $Back/BackTexture
 @onready var front: PanelContainer = $Front
@@ -155,7 +153,7 @@ func _create_flip(from: Control, to: Control) -> void:
 
 ## 纵轴翻转：绕垂直中线 scale.x 1→0→1，中途切换面到指定面。face_up=true 显示正面。
 func flip_to_face(face_up: bool) -> void:
-	sound_flip_card.play()
+	AudioManager.play_flip()
 	pivot_offset = size / 2.0
 	var from := front if front.visible else back
 	var to := front if face_up else back

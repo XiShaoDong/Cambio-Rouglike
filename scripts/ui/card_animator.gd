@@ -137,7 +137,7 @@ func _face_up_of(card: Control) -> bool:
 ## 时长随移动距离增长。source_card 为被移动走的原卡（动画开始时隐藏，避免双卡）。
 ## on_finish 在动画结束（副本落位清理）后调用，用于刷新目标位置。
 func _fly(from_rect: Rect2, to_rect: Rect2, data: Dictionary, start_face_up: bool, end_face_up: bool, source_card: Control = null, on_finish: Callable = Callable()) -> void:
-	#card.get_node("sound_flip_cared").play()
+	AudioManager.play_fly()
 	var layer := Control.new()
 	layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	main.overlay.add_child(layer)
@@ -161,6 +161,7 @@ func _fly(from_rect: Rect2, to_rect: Rect2, data: Dictionary, start_face_up: boo
 	tween.set_ease(Tween.EASE_IN_OUT)
 	if start_face_up != end_face_up:
 		# 需要翻转：纵轴 scale.x 1→0→1，中途切换面
+		AudioManager.play_flip_quick()
 		var end_data: Dictionary = data if end_face_up else {}
 		tween.tween_property(card, "scale:x", 0.0, dur * 0.35)
 		tween.tween_callback(_reveal_data.bind(card, end_data))

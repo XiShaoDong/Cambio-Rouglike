@@ -2,7 +2,6 @@
 
 [ext_resource type="Script" uid="uid://bqi80f542jay5" path="res://scripts/ui/card_view.gd" id="1"]
 [ext_resource type="Texture2D" uid="uid://b6c1to7oc5vl3" path="res://assets/Cards/back07.png" id="2_back"]
-[ext_resource type="AudioStream" uid="uid://bmg6a2iwsdasp" path="res://assets/Sounds/card-flip.wav" id="3_mli0n"]
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_1"]
 
@@ -56,6 +55,3 @@ layout_mode = 2
 mouse_filter = 2
 expand_mode = 1
 stretch_mode = 5
-
-[node name="AudioStreamPlayer" type="AudioStreamPlayer" parent="." unique_id=1016856903]
-stream = ExtResource("3_mli0n")

@@ -31,9 +31,11 @@ func on_card_pressed(player_id: int, slot: int) -> void:
 	if bool(state.get("slap_open", false)) and phase == PHASE_TURN_DRAW:
 		if main._slap_reveal_lock:
 			return
+		_play_select()
 		GameState.request_slap(player_id, slot, main._next_action_id())
 		return
 	if phase == PHASE_SLAP_EXCHANGE and player_id == viewer and int(state.slap_exchange_actor) == viewer:
+		_play_select()
 		GameState.request_slap_exchange(slot, main._next_action_id())
 		return
 	if int(state.current_player) != viewer:
@@ -41,27 +43,34 @@ func on_card_pressed(player_id: int, slot: int) -> void:
 	match action_mode:
 		"replace":
 			if player_id == viewer:
+				_play_select()
 				GameState.request_replace(slot, main._next_action_id())
 		"peek_own":
 			if player_id == viewer:
+				_play_select()
 				GameState.request_use_ability({"slot": slot}, main._next_action_id())
 		"peek_other":
 			if player_id != viewer:
+				_play_select()
 				GameState.request_use_ability({"target": player_id, "target_slot": slot}, main._next_action_id())
 		"queen_target":
 			if player_id != viewer:
+				_play_select()
 				GameState.request_use_ability({"target": player_id, "target_slot": slot}, main._next_action_id())
 		"q_exchange":
 			if player_id == viewer:
+				_play_select()
 				GameState.request_q_decision(true, slot, main._next_action_id())
 		"jack_target":
 			if player_id != viewer:
+				_play_select()
 				selected_target = player_id
 				selected_their_slot = slot
 				action_mode = "jack_own"
 				main._render_game()
 		"jack_own":
 			if player_id == viewer:
+				_play_select()
 				selected_own_slot = slot
 				GameState.request_use_ability({"target": selected_target, "own_slot": selected_own_slot, "target_slot": selected_their_slot}, main._next_action_id())
 				_reset()
@@ -107,6 +116,10 @@ func _reset() -> void:
 	selected_target = 0
 	selected_own_slot = -1
 	selected_their_slot = -1
+
+## 有效点击音效：所有成功动作（发出请求或推进交互模式）统一在此播。
+func _play_select() -> void:
+	AudioManager.play_select()
 
 ## 模式相关提示语。
 func mode_instruction(fallback: String) -> String:
