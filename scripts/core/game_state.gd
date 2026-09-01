@@ -647,12 +647,13 @@ func _kick_offline_seat(target_seat: int) -> void:
 	else:
 		_broadcast_state()
 
-## 房主中止当前对局并回到大厅（仅房主=seat0）。
+## 房主中止当前对局并回到初始大厅（仅房主=seat0）。
+## 中止后关闭服务器连接：玩家已退出、无法重连（阶段二前），房间不再保留，
+## 否则房间会挂起（无法重连也无法销毁）。回到初始界面可重新建房/加入。
 func request_abort_match() -> void:
-	if multiplayer.is_server():
-		_server_abort_match()
-	else:
-		server_abort_match.rpc_id(1)
+	if not multiplayer.is_server() or not Network.is_host:
+		return
+	_server_abort_match()
 
 @rpc("any_peer", "reliable")
 func server_abort_match() -> void:
@@ -662,16 +663,14 @@ func server_abort_match() -> void:
 func _server_abort_match() -> void:
 	_broadcast_abort(RejectCode.MATCH_ABORTED_PLAYER_LEFT, "房主中止了对局。")
 	_reset_match()
-	_add_player(1, str(Network.local_profile.get("name", "房主")))
-	_broadcast_lobby()
+	Network.disconnect_game(false)
 
 ## 房主解散房间（仅房主=seat0）：通知所有玩家回大厅并关闭服务器连接。
 ## 销毁房间后房主/客户端回到初始大厅界面，可重新建房或加入其他房间。
 func request_close_room() -> void:
-	if multiplayer.is_server():
-		_server_close_room()
-	else:
-		server_close_room.rpc_id(1)
+	if not multiplayer.is_server() or not Network.is_host:
+		return
+	_server_close_room()
 
 @rpc("any_peer", "reliable")
 func server_close_room() -> void:
