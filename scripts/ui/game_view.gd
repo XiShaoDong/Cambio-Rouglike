@@ -299,6 +299,9 @@ func _render_suspended_controls() -> void:
 	var abort: Button = main._button("中止并回大厅")
 	abort.pressed.connect(GameState.request_abort_match)
 	main.controls_box.add_child(abort)
+	var close: Button = main._button("解散房间")
+	close.pressed.connect(GameState.request_close_room)
+	main.controls_box.add_child(close)
 
 func _render_players(viewer: int) -> void:
 	var all_areas: Array = [main.top_player_box, main.left_player_box, main.right_player_box, main.bottom_player_box]

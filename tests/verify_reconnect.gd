@@ -17,6 +17,8 @@ func _ready() -> void:
 	await _test_continue_when_not_current_turn()
 	await _test_pause_on_offline_turn()
 	await _test_host_kick()
+	await _test_host_kick_last_player()
+	await _test_close_room()
 	print("=== RECONNECT RESULT: %d/%d passed%s ===" % [checks - failures, checks, " (FAILURES!)" if failures else ""])
 	get_tree().quit(1 if failures else 0)
 
@@ -49,6 +51,17 @@ func _open_match() -> void:
 	GameState._server_start_match(0)
 	GameState._server_initial_ready(0)
 	GameState._server_initial_ready(1)
+
+## 重置并开局 3 人（seat0/1/2）。
+func _open_match3() -> void:
+	GameState._reset_match()
+	GameState._add_player(1, "Host")
+	GameState._add_player(2, "ClientB")
+	GameState._add_player(3, "ClientC")
+	GameState._server_start_match(0)
+	GameState._server_initial_ready(0)
+	GameState._server_initial_ready(1)
+	GameState._server_initial_ready(2)
 
 func _test_identity() -> void:
 	GameState._reset_match()
@@ -96,8 +109,8 @@ func _test_pause_on_offline_turn() -> void:
 		_rejected(GameState.RejectCode.MATCH_SUSPENDED) or _rejected(GameState.RejectCode.INVALID_PHASE))
 
 func _test_host_kick() -> void:
-	_open_match()
-	GameState._on_peer_left(2)  # seat1 掉线
+	_open_match3()
+	GameState._on_peer_left(2)  # seat1 掉线（剩余 seat0/2 仍够继续）
 	# 构造：轮到 seat1（离线）暂停
 	GameState.players[0].has_acted = true
 	GameState.current_player_id = 1
@@ -107,4 +120,31 @@ func _test_host_kick() -> void:
 	_check("踢出后座位移除", not GameState.players.has(1))
 	_check("踢出后不在 turn_order", not 1 in GameState.turn_order)
 	_check("踢出后解除暂停", not GameState._is_suspended())
-	_check("踢出后轮转到在线者（seat0）", GameState.current_player_id == 0 and GameState.phase == GameState.Phase.TURN_DRAW)
+	_check("踢出后仍够 2 人继续（未中止）", GameState.phase != GameState.Phase.LOBBY)
+	_check("踢出后轮转到下一在线者（seat2）", GameState.current_player_id == 2 and GameState.phase == GameState.Phase.TURN_DRAW)
+
+func _test_host_kick_last_player() -> void:
+	# 踢出抗议玩家后只剩 1 人 → 对局无法继续，自动中止回大厅（房主保留可重新开局）
+	_open_match()
+	GameState._on_peer_left(2)  # seat1 掉线
+	GameState.players[0].has_acted = true
+	GameState.current_player_id = 1
+	GameState.phase = GameState.Phase.TURN_DRAW
+	GameState.slap_open = false
+	GameState._kick_offline_seat(1)
+	_check("踢出最后一名玩家后回 LOBBY", GameState.phase == GameState.Phase.LOBBY)
+	_check("回大厅后仅剩房主", GameState.players.size() == 1 and GameState.players.has(0))
+	_check("回大厅后房主座位在线", not bool(GameState.players[0].get("offline", false)))
+	_check("回大厅后 turn_order 仅房主", GameState.turn_order == [0])
+
+func _test_close_room() -> void:
+	# 房主解散房间：重置对局 + 关闭服务器连接，回到初始大厅可重建
+	_open_match()
+	var flag_box := {"flag": false}
+	var cb := func(_c: int, _m: String): flag_box["flag"] = true
+	GameState.match_aborted.connect(cb)
+	GameState._server_close_room()
+	_check("解散房间触发本地 match_aborted", bool(flag_box["flag"]))
+	_check("解散后重置回 LOBBY", GameState.phase == GameState.Phase.LOBBY)
+	_check("解散后清除玩家座位", GameState.players.is_empty())
+	GameState.match_aborted.disconnect(cb)

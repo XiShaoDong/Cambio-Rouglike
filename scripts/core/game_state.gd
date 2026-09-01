@@ -631,6 +631,10 @@ func _kick_offline_seat(target_seat: int) -> void:
 	if kong_caller == target_seat:
 		kong_caller = 0
 	_add_log("%s 已被房主移出对局。" % name)
+	# 剩余人数不足以继续对局 → 直接中止回大厅（不可把仅剩 1 人的对局留在空转）
+	if players.size() < KongRules.MIN_PLAYERS:
+		_server_abort_match()
+		return
 	if current_player_id == target_seat:
 		# 当前行动者被踢：把当前指针退到上一行动者，再 advance 到下一个在线者
 		if turn_order.is_empty():
@@ -660,6 +664,24 @@ func _server_abort_match() -> void:
 	_reset_match()
 	_add_player(1, str(Network.local_profile.get("name", "房主")))
 	_broadcast_lobby()
+
+## 房主解散房间（仅房主=seat0）：通知所有玩家回大厅并关闭服务器连接。
+## 销毁房间后房主/客户端回到初始大厅界面，可重新建房或加入其他房间。
+func request_close_room() -> void:
+	if multiplayer.is_server():
+		_server_close_room()
+	else:
+		server_close_room.rpc_id(1)
+
+@rpc("any_peer", "reliable")
+func server_close_room() -> void:
+	if multiplayer.is_server():
+		_server_close_room()
+
+func _server_close_room() -> void:
+	_broadcast_abort(RejectCode.HOST_DISCONNECTED, "房间已被房主解散。")
+	_reset_match()
+	Network.disconnect_game(false)
 
 func _discard_pending_and_open_slap(_resume: String) -> void:
 	var card_id: String = pending_draw.card_id

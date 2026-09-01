@@ -73,6 +73,7 @@ var background: ColorRect
 var board: Control
 var is_dev_join := false
 var start_button: Button = null
+var close_room_button: Button = null
 var _cards := CardFactory.new()
 var interaction: GameInteraction
 var lobby: LobbyView
@@ -165,8 +166,7 @@ func _on_match_aborted(_code: int, message: String) -> void:
 		interaction.selected_target = 0
 		interaction.selected_own_slot = -1
 		interaction.selected_their_slot = -1
-	lobby_panel.visible = true
-	game_panel.visible = false
+	lobby.reset_lobby()
 	_set_status("对局中止：%s" % message)
 
 func _build_interface() -> void:
