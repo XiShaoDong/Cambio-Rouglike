@@ -35,13 +35,14 @@ func _rejected(code: int) -> bool:
 	return code in seen_rejects
 
 ## 重置并开局 2 人，制造 slap_rank=rank、slap_open 的窗口；两人 slot0 各放一张该点数的牌。
+## seat 语义：host(peer1)=seat0，client(peer2)=seat1。
 func _open_window_with_rank(rank: String) -> void:
 	GameState._reset_match()
-	GameState._add_player(1, "A")
-	GameState._add_player(2, "B")
-	GameState._server_start_match(1)
+	GameState._add_player(1, "A")  # seat 0
+	GameState._add_player(2, "B")  # seat 1
+	GameState._server_start_match(0)
+	GameState._server_initial_ready(0)
 	GameState._server_initial_ready(1)
-	GameState._server_initial_ready(2)
 	var c1 := ""
 	var c2 := ""
 	for cid in GameState.cards:
@@ -51,12 +52,12 @@ func _open_window_with_rank(rank: String) -> void:
 			elif c2.is_empty():
 				c2 = cid
 				break
-	GameState.players[1].cards[0] = c1
-	GameState.players[2].cards[0] = c2
+	GameState.players[0].cards[0] = c1
+	GameState.players[1].cards[0] = c2
 	GameState.slap_rank = rank
 	GameState.slap_open = true
 	GameState.phase = GameState.Phase.TURN_DRAW
-	GameState.current_player_id = 2
+	GameState.current_player_id = 1
 
 func _count_nonempty(cards: Array) -> int:
 	var n := 0
@@ -68,9 +69,9 @@ func _count_nonempty(cards: Array) -> int:
 func _test_single_correct() -> void:
 	_open_window_with_rank("7")
 	seen_rejects.clear()
-	GameState._server_slap_duel_stop(1, "sc-early")
+	GameState._server_slap_duel_stop(0, "sc-early")
 	_check("非比拼阶段 STOP 被拒 INVALID_PHASE", _rejected(GameState.RejectCode.INVALID_PHASE))
-	GameState._server_slap(1, 2, 0, "sc-1")
+	GameState._server_slap(0, 1, 0, "sc-1")
 	_check("单正确进入收集窗", not GameState.slap_collect.is_empty())
 	GameState.slap.collection_timeout()
 	_check("收集后单人正确解决为 SLAP_EXCHANGE", GameState.phase == GameState.Phase.SLAP_EXCHANGE)
@@ -78,37 +79,37 @@ func _test_single_correct() -> void:
 
 func _test_duel_both_stop() -> void:
 	_open_window_with_rank("7")
-	GameState._server_slap(1, 2, 0, "db-1")
-	GameState._server_slap(2, 1, 0, "db-2")
+	GameState._server_slap(0, 1, 0, "db-1")
+	GameState._server_slap(1, 0, 0, "db-2")
 	GameState.slap.collection_timeout()
 	_check("双正确进入比拼", GameState.phase == GameState.Phase.SLAP_DUEL)
 	_check("比拼两个候选人", int(GameState.slap_duel.correct.size()) == 2)
-	var before_count := {1: _count_nonempty(GameState.players[1].cards), 2: _count_nonempty(GameState.players[2].cards)}
-	GameState._server_slap_duel_stop(1, "db-stop1")
+	var before_count := {0: _count_nonempty(GameState.players[0].cards), 1: _count_nonempty(GameState.players[1].cards)}
+	GameState._server_slap_duel_stop(0, "db-stop1")
 	_check("第一个 STOP 后仍在比拼", GameState.phase == GameState.Phase.SLAP_DUEL)
 	seen_rejects.clear()
-	GameState._server_slap_duel_stop(1, "db-stop1b")
+	GameState._server_slap_duel_stop(0, "db-stop1b")
 	_check("重复 STOP 被拒 ALREADY_STOPPED", _rejected(GameState.RejectCode.ALREADY_STOPPED))
-	GameState._server_slap_duel_stop(2, "db-stop2")
+	GameState._server_slap_duel_stop(1, "db-stop2")
 	_check("双方 STOP 后解决为 SLAP_EXCHANGE", GameState.phase == GameState.Phase.SLAP_EXCHANGE)
 	_check("比拼状态已清空", GameState.slap_duel.is_empty())
 	var winner := int(GameState.slap_exchange.get("actor", 0))
-	_check("胜者是一方候选人", winner == 1 or winner == 2)
-	var loser := (2 if winner == 1 else 1)
+	_check("胜者是一方候选人", winner == 0 or winner == 1)
+	var loser := (1 if winner == 0 else 0)
 	# 败者无罚牌：不会增加牌；其被贴的牌已在结算时清出（交给弃牌堆），故少 1 张
 	_check("败者无罚牌（被贴牌已清出）", _count_nonempty(GameState.players[loser].cards) == before_count[loser] - 1)
 
 func _test_duel_timeout() -> void:
 	_open_window_with_rank("9")
-	GameState._server_slap(1, 2, 0, "dt-1")
-	GameState._server_slap(2, 1, 0, "dt-2")
+	GameState._server_slap(0, 1, 0, "dt-1")
+	GameState._server_slap(1, 0, 0, "dt-2")
 	GameState.slap.collection_timeout()
 	_check("超时场景进入比拼", GameState.phase == GameState.Phase.SLAP_DUEL)
-	GameState._server_slap_duel_stop(1, "dt-stop1")
+	GameState._server_slap_duel_stop(0, "dt-stop1")
 	_check("另一方未 STOP 时仍在比拼", GameState.phase == GameState.Phase.SLAP_DUEL)
 	GameState.slap.duel_timeout()
 	_check("比拼超时后解决", GameState.phase != GameState.Phase.SLAP_DUEL)
-	_check("未 STOP 者败（1 号已 STOP 应胜出）", int(GameState.slap_exchange.get("actor", 0)) == 1)
+	_check("未 STOP 者败（0 号已 STOP 应胜出）", int(GameState.slap_exchange.get("actor", 0)) == 0)
 
 func _test_debug_duel() -> void:
 	# 调试模式（F11 开启 debug_duel）：不判正确性，任意贴牌计入；第二名不同玩家贴牌立即比拼。
@@ -118,26 +119,26 @@ func _test_debug_duel() -> void:
 		if str(GameState.cards[cid].rank) != "7":
 			wrong = cid
 			break
+	GameState.players[0].cards[0] = wrong
 	GameState.players[1].cards[0] = wrong
-	GameState.players[2].cards[0] = wrong
 	GameState.debug_duel = true
+	var c0_before: int = _count_nonempty(GameState.players[0].cards)
 	var c1_before: int = _count_nonempty(GameState.players[1].cards)
-	var c2_before: int = _count_nonempty(GameState.players[2].cards)
-	GameState._server_slap(1, 2, 0, "dd-1")
+	GameState._server_slap(0, 1, 0, "dd-1")
 	_check("调试：贴不匹配牌仍进入收集", not GameState.slap_collect.is_empty())
-	_check("调试：不匹配贴牌不罚牌(1)", _count_nonempty(GameState.players[1].cards) == c1_before)
-	GameState._server_slap(2, 1, 0, "dd-2")
+	_check("调试：不匹配贴牌不罚牌(1)", _count_nonempty(GameState.players[0].cards) == c0_before)
+	GameState._server_slap(1, 0, 0, "dd-2")
 	_check("调试：双贴立即进入比拼", GameState.phase == GameState.Phase.SLAP_DUEL)
-	_check("调试：不匹配贴牌不罚牌(2)", _count_nonempty(GameState.players[2].cards) == c2_before)
+	_check("调试：不匹配贴牌不罚牌(2)", _count_nonempty(GameState.players[1].cards) == c1_before)
 	GameState.debug_duel = false
 
 func _test_duel_nobody_stops() -> void:
 	# 全员未按 STOP：比拼超时必须无异常解决（不因 best=0 报错），兜底选第一个候选人。
 	_open_window_with_rank("8")
-	GameState._server_slap(1, 2, 0, "ns-1")
-	GameState._server_slap(2, 1, 0, "ns-2")
+	GameState._server_slap(0, 1, 0, "ns-1")
+	GameState._server_slap(1, 0, 0, "ns-2")
 	GameState.slap.collection_timeout()
 	_check("无人 STOP 场景进入比拼", GameState.phase == GameState.Phase.SLAP_DUEL)
 	GameState.slap.duel_timeout()
 	_check("无人 STOP 超时后正常解决", GameState.phase != GameState.Phase.SLAP_DUEL)
-	_check("无人 STOP 兜底胜者是候选人", int(GameState.slap_exchange.get("actor", 0)) == 1 or int(GameState.slap_exchange.get("actor", 0)) == 2)
+	_check("无人 STOP 兜底胜者是候选人", int(GameState.slap_exchange.get("actor", 0)) == 0 or int(GameState.slap_exchange.get("actor", 0)) == 1)

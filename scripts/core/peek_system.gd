@@ -10,12 +10,15 @@ var game: Node  # GameState 引用
 func _init(state: Node) -> void:
 	game = state
 
-## 把 revealed_cards 私下发送给 peer_id 玩家，附带 target 上下文（用于 UI 定位翻转）。
-func send_reveal(peer_id: int, title: String, revealed_cards: Array, target: Dictionary = {}) -> void:
-	if peer_id == 1:
+## 把 revealed_cards 私下发送给 seat 玩家，附带 target 上下文（用于 UI 定位翻转）。
+func send_reveal(seat: int, title: String, revealed_cards: Array, target: Dictionary = {}) -> void:
+	var peer := int(game.players.get(seat, {}).get("peer_id", 0))
+	if peer <= 0:
+		return
+	if peer == 1:
 		game._receive_reveal(title, revealed_cards, target)
 	else:
-		game.receive_reveal.rpc_id(peer_id, title, revealed_cards, target)
+		game.receive_reveal.rpc_id(peer, title, revealed_cards, target)
 
 ## 生成单张牌的公共表示（用于揭示）。
 func public_card(card_id: String) -> Dictionary:

@@ -48,6 +48,8 @@
    - 贴他人时规则微调：进 `SLAP_EXCHANGE` 之际即把被贴的牌清出槽位并弃牌（动画与状态一致），交换阶段只把行动者的牌补进空槽；`slap_gift` 事件**不含牌面**（防泄漏，他人看背面）。
 6. 规则层不依赖 IP/UI 节点/房主画面；未来 Headless VPS 复用 `GameState`。
 7. `run_state`/`RunModifier` 是扩展缝，默认不启用。
+8. **身份与连接解耦**：玩家身份为 `seat_id`（0..N-1，注册顺序分配），`players`/`turn_order`/`current_player_id`/快照玩家字段一律用 seat；`peer_id`（ENet 连接 id）只是当前连接，存于 `players[seat].peer_id`，掉线重连会变化而 seat 不变。所有 RPC 入口用 `_peer_to_seat(sender)` 转换。此为未来 VPS/跨网络重连的基础（VPS 上 peer id 同样是瞬态连接 id）。
+9. **断线 = 标记离线 + 条件暂停，不中止对局**：非当前行动者掉线游戏继续；当前行动者（或开局记忆阶段任一玩家）离线时 `suspended=true` 暂停并拒绝所有操作（`MATCH_SUSPENDED`）。房主可 `request_kick_offline(seat)` 踢出继续 / `request_abort_match` 中止。玩家 token 重连（`request_reconnect`）在阶段二实现。
 
 ## 4. 服务器权威子系统（16 Feature 已拆分）
 
