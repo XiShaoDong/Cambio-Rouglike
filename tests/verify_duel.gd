@@ -83,7 +83,7 @@ func _test_duel_both_stop() -> void:
 	GameState.slap.collection_timeout()
 	_check("双正确进入比拼", GameState.phase == GameState.Phase.SLAP_DUEL)
 	_check("比拼两个候选人", int(GameState.slap_duel.correct.size()) == 2)
-	var loser_before: int = _count_nonempty(GameState.players[1].cards)
+	var before_count := {1: _count_nonempty(GameState.players[1].cards), 2: _count_nonempty(GameState.players[2].cards)}
 	GameState._server_slap_duel_stop(1, "db-stop1")
 	_check("第一个 STOP 后仍在比拼", GameState.phase == GameState.Phase.SLAP_DUEL)
 	seen_rejects.clear()
@@ -95,7 +95,8 @@ func _test_duel_both_stop() -> void:
 	var winner := int(GameState.slap_exchange.get("actor", 0))
 	_check("胜者是一方候选人", winner == 1 or winner == 2)
 	var loser := (2 if winner == 1 else 1)
-	_check("败者无罚牌", _count_nonempty(GameState.players[loser].cards) == loser_before)
+	# 败者无罚牌：不会增加牌；其被贴的牌已在结算时清出（交给弃牌堆），故少 1 张
+	_check("败者无罚牌（被贴牌已清出）", _count_nonempty(GameState.players[loser].cards) == before_count[loser] - 1)
 
 func _test_duel_timeout() -> void:
 	_open_window_with_rank("9")

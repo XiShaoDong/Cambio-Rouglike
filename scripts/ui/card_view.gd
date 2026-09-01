@@ -137,6 +137,16 @@ func _restore_glow() -> void:
 	style.shadow_size = glow_size
 	glow.visible = _is_highlighted
 
+## 持久炫光：设置光晕颜色与尺寸并保持显示，不自动恢复（用于贴牌判定 hold 展示）。
+func set_glow(color: Color, glow_size := 0) -> void:
+	if not is_inside_tree() or not is_instance_valid(glow):
+		return
+	var style: StyleBoxFlat = glow.get_theme_stylebox("panel")
+	style.shadow_color = color
+	if glow_size > 0:
+		style.shadow_size = glow_size
+	glow.visible = true
+
 ## 翻牌动画：当前面翻到另一面（scale.x 收缩→切面→展开）。
 func flip_show() -> void:
 	var from := front if front.visible else back

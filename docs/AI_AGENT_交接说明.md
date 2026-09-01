@@ -16,6 +16,7 @@
 | `功能实现文档.md` | 文件树 + 16 Feature 映射 + 待开发清单 | Agent + 开发者 |
 | `UI主题规范.md` | 主题令牌（dark/light） | 开发者 |
 | `问题档案.md` | 未决/待确认问题登记 | Agent + 开发者 |
+| `未解决的BUG.md` | **未复现/原因未确认**的 bug（含代码路径分析与排查建议；确认根因后迁入 BUG 档案） | Agent + 开发者 |
 | `遗物设计卡模板.md` | Roguelike 设计卡填写模板 | 开发者 |
 | `修改日志.md` | **开发者个人**追踪（request→实现→反馈，gitignore，不纳入版本） | 开发者，非 Agent |
 
@@ -29,8 +30,10 @@
 - 当前目标：先验证 2–4 人纯基础牌局；Roguelike 尚未启用（`enable_relics = false`）。
 - 联网：ENet/UDP，房主权威，默认端口 `7007`。
 - 状态：大厅、对局界面、服务器权威状态机、规则、动效系统均已实现；已有自动化验证（见第 8 节）。
-- 当前工作分支：`refactor/ui-scene-board`（未合入 main）。已含：对局棋盘**场景实体化**（`game_board.tscn`/`player_area.tscn`）、大牌顶层定位、peek_highlight 查看高亮、能力弃牌本地显示。设计见 `docs/superpowers/specs/2026-08-20-ui-scene-board-design.md`。
-- **贴牌系统（本会话重构）**：固定 2.5s 窗口 → `slap_open` 标志（弃牌/用技能后开启，下一玩家抽牌关闭）；同一窗口**不限次数**尝试（贴错每次罚牌，贴对先到者胜）；多人同时贴中 → 400ms 收集 → `SLAP_DUEL` 比拼 bar（随机加粗区中心红心，服务器到达时间判最近者）；调试开关 **O 键**切换 `debug_duel`（不判正确性 + 双贴即比拼，便于手动触发）。
+- 当前工作分支：`refactor/ui-scene-board`（未合入 main）。已含：对局棋盘**场景实体化**（`game_board.tscn`/`player_area.tscn`）、大牌顶层定位、peek_highlight 查看高亮、能力弃牌本地显示、**音效系统 + ESC 设置菜单**（AudioManager/Settings/Loc autoload，配置持久化到 `user://settings.cfg`）。设计见 `docs/superpowers/specs/2026-08-20-ui-scene-board-design.md`。
+- **贴牌系统（已重做动画）**：固定 2.5s 窗口 → `slap_open` 标志（弃牌/用技能后开启，下一玩家抽牌关闭）；同一窗口**不限次数**尝试（贴错每次罚牌，贴对先到者胜）；多人同时贴中 → 400ms 收集 → `SLAP_DUEL` 比拼 bar（随机加粗区中心红心，服务器到达时间判最近者）；调试开关 **O 键**切换 `debug_duel`（不判正确性 + 双贴即比拼）。
+- **贴牌动画事件（`card_exchange_animated` 新 kind）**：`slap_penalty`（罚牌 fly 抽牌堆→手牌）、`slap_resolved`（赢家被贴的牌 fly→弃牌堆，弃牌堆延迟显示）、`slap_gift`（交换时行动者的牌 fly→对方槽，不带牌面防泄漏）。贴牌 reveal target 带 `correct` 标记 → 客户端打**绿（对）/红（错）炫光**；正确贴牌**绿光 hold**（v2，不翻回）等结算后 fly，比拼输家翻回。
+- **罚牌附加卡布局**：前 4 张主网格固定 2 列永不位移；第 5+ 张在 `ExtraLayer` 按**槽号固定绝对定位**（统一向上增长、行列固定，加新罚牌已存在卡不移动）。
 - Git：仓库 `git@github.com:XiShaoDong/Cambio-Rouglike.git`，分支 `main`。
 - 项目路径：`~/dev/gameDev/cambio-rouglike/`。
 
@@ -40,7 +43,9 @@
 2. 客户端只能调 `request_*` 意图方法；服务器收到 RPC 后再校验调用者、阶段、目标。
 3. `HiddenInfo._snapshot_for(viewer_id)` 按接收者生成状态；结算前普通手牌槽位不含 `rank/suit/value`。
 4. 看牌走 `receive_reveal` 定向消息，一次性展示；不要把已知牌写入公共状态。
-5. 贴牌窗口无固定时长：弃牌/用技能后 `slap_open=true` 并推进回合，**下一玩家抽牌时关闭**；同一窗口内可**多次**尝试，正确且先到者立即关窗，贴错每次罚牌，判定翻牌期间客户端锁点击。多人同时贴中 → 400ms 收集 → `SLAP_DUEL` 比拼（`slap_system.resolve_duel`，服务器到达时间判最近红心）。
+5. 贴牌窗口无固定时长：弃牌/用技能后 `slap_open=true` 并推进回合，**下一玩家抽牌时关闭**；同一窗口内可**多次**尝试，正确且先到者立即关窗，贴错每次罚牌，判定翻牌期间客户端锁点击（`_slap_reveal_lock` 计数）。多人同时贴中 → 400ms 收集 → `SLAP_DUEL` 比拼（`slap_system.resolve_duel`，服务器到达时间判最近红心）。
+   - 贴牌动画走 `card_exchange_animated` 事件（`slap_penalty`/`slap_resolved`/`slap_gift`），服务器在 `_broadcast_state` **之前**广播，客户端用旧布局定位。正确贴牌客户端绿光 hold（`reveal_controller._held_slap`）等结算事件；结算事件缺失会锁死牌堆（见 `未解决的BUG.md` U1）。
+   - 贴他人时规则微调：进 `SLAP_EXCHANGE` 之际即把被贴的牌清出槽位并弃牌（动画与状态一致），交换阶段只把行动者的牌补进空槽；`slap_gift` 事件**不含牌面**（防泄漏，他人看背面）。
 6. 规则层不依赖 IP/UI 节点/房主画面；未来 Headless VPS 复用 `GameState`。
 7. `run_state`/`RunModifier` 是扩展缝，默认不启用。
 
@@ -57,7 +62,7 @@
 | `effect_system.gd` | 卡牌能力执行（7/8/9/10/J/Q） |
 | `peek_system.gd` | 看牌揭示 |
 | `swap_system.gd` | J/Q 交换 |
-| `slap_system.gd` | 贴牌窗口（`slap_open`）+ 400ms 收集 + 比拼（`SLAP_DUEL` 裁决） |
+| `slap_system.gd` | 贴牌窗口（`slap_open`）+ 400ms 收集 + 比拼（`SLAP_DUEL` 裁决）+ 动画事件广播（slap_penalty/resolved/gift）+ `add_penalty` 返回槽号 |
 | `kongbaya_system.gd` | Kongbaya 最终轮 |
 | `network.gd` | ENet 连接/大厅/断线 |
 
@@ -68,9 +73,9 @@ UI 层已拆分（main.gd 是组合根）：
 | `main.gd` | 组合根：App 生命周期 + signal 转发 + 工具 |
 | `game_interaction.gd` | 交互状态机（action_mode/selected） |
 | `lobby_view.gd` | 大厅构建/建房/加入/双开 |
-| `game_view.gd` | 对局构建 + 状态投影渲染 |
-| `reveal_controller.gd` | 看牌翻转动画 |
-| `card_animator.gd` | 卡牌移动/交换/落位动画（副本 + 隐藏源卡 + 虚线占位） |
+| `game_view.gd` | 对局构建 + 状态投影渲染（前 4 张固定 2 列网格 + 第 5+ 张 `ExtraLayer` 按槽号固定定位） |
+| `reveal_controller.gd` | 看牌/贴牌翻转动画（`_play_flip_at`/`_play_slap_flip`，贴牌绿/红炫光 + 正确 hold `_held_slap`） |
+| `card_animator.gd` | 卡牌移动/交换/落位动画 + 贴牌事件（slap_penalty/resolved/gift）处理（副本 + 隐藏源卡 + 占位） |
 | `dev_tools.gd` | F12 布局调试 / T 主题切换 / O 调试贴牌开关 |
 | `duel_bar.gd` | 比拼 bar（全屏遮罩+居中弹窗；随机加粗区+中心红心+扫动标记+STOP；空格停止由 main 转发） |
 | `card_view.gd` / `card_factory.gd` | 卡牌视图节点 / 构建 |
@@ -99,7 +104,8 @@ UI 层已拆分（main.gd 是组合根）：
 - 状态消息：`receive_lobby`/`receive_state`/`receive_reveal`/`receive_toast`/`receive_peek_highlight`，牌面仅允许在弃牌顶、行动者的待处理抽牌、结算牌中出现。
 - 请求方向：`slap`（`TURN_DRAW` 且 `slap_open`）、`slap_exchange`（`SLAP_EXCHANGE`）、`slap_duel_stop`（`SLAP_DUEL`，仅候选人）。快照 `slap_duel` 仅在 `SLAP_DUEL` 存在（`contestants`/`duration_ms`/`deadline_server_ms`/`target`，均公开）。
 - 查看高亮 `peek_highlight`：仅含 `{player_id, slot}` 位置、**不含牌面**（详见 `网络协议_V1.md` 4.6）。非当前玩家看到的大牌为**背面**（`pending.hidden=true`，Feature0）。
-- 交换动画：server 广播 `card_exchange_animated` 事件，各 client 用**自己视角的 `_card_slots`** 定位播放。
+- 交换动画：server 广播 `card_exchange_animated` 事件（kind: `replace`/`swap`/`discard`/`slap_penalty`/`slap_resolved`/`slap_gift`），各 client 用**自己视角的 `_card_slots`** 定位播放。`slap_gift`/`slap_penalty` **不含牌面**（防泄漏）；`slap_resolved` 含 card（被贴的牌已通过贴牌 reveal 公开）。
+- 贴牌 reveal target 携带 `correct: Boolean`（客户端据此打绿/红炫光）。
 
 ## 7. 关键 bug 档案（已解决，复现时按诊断方法修复）
 
@@ -112,6 +118,7 @@ UI 层已拆分（main.gd 是组合根）：
 - **B7 贴牌揭示露默认背面**：翻牌期间底层原卡暴露 → 揭示期间 `mark_anim_slot` + 隐藏原卡，结束后恢复。
 - **B8 比拼无人 STOP 崩溃**：`resolve_duel` 里 `best` 初值 0，全员未按 STOP 时访问 `slap_duel.correct[0]` 报错 → 结算后 `best==0` 时兜底选第一个候选人。
 - **B9 DuelBar 弹窗不可见**：弹层加进 `overlay` 时自身尺寸为 0（默认锚点），内部全屏遮罩/居中容器随之 0 尺寸 → `_build_ui` 开头 `set_anchors_and_offsets_preset(PRESET_FULL_RECT)`。
+- **B10-B13（贴牌动画）**：贴错无红光/罚牌无 fly（reveal 按"是否贴牌"分发 + 罚牌槽挂起补飞）、罚牌 fly 位置错/提前落位（同步定位 + 先标记动画槽）、罚牌附加卡随卡数重排（按槽号固定绝对定位）、罚牌持久正面（已回退为背面 fly）。详见 `BUG档案.md`。
 
 ## 8. 验证命令（headless 单元测试，不启动 GUI）
 

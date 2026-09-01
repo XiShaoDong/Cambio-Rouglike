@@ -33,6 +33,9 @@ const PHASE_SLAP_DUEL := 8
 const PEEK_GLOW_COLOR := Color("3ef0f7ff")  # 查看牌蓝色光晕
 const PEEK_GLOW_DURATION := 1.5
 const PEEK_GLOW_SIZE := 14
+const SLAP_CORRECT_GLOW := Color("87d9a1")  # 贴对绿色炫光（同 UITheme success）
+const SLAP_WRONG_GLOW := Color("ff7b7b")  # 贴错红色炫光（同 UITheme danger）
+const SLAP_GLOW_SIZE := 14
 const DuelBarScript := preload("res://scripts/ui/duel_bar.gd")
 const SettingsMenuScript := preload("res://scripts/ui/settings_menu.gd")
 
@@ -79,6 +82,7 @@ var animator: CardAnimator
 var _card_slots: Dictionary = {}
 var _local_log: Array = []
 var _pending_flips: Array = []
+var _pending_slap_penalties: Array = []
 var _draw_flip_pending := false
 var _pending_hidden_for_ability := false
 var _pending_card_id := ""
@@ -100,6 +104,27 @@ func unmark_anim_slot(pid: int, slot: int) -> void:
 
 func is_anim_slot(pid: int, slot: int) -> bool:
 	return _anim_slots.has("%d_%d" % [pid, slot])
+
+## 贴牌判定锁按计数管理：多人同时贴中会同时 hold 多张翻牌，全部释放后才解锁。
+var _slap_reveal_count := 0
+func _slap_reveal_begin() -> void:
+	_slap_reveal_count += 1
+	_slap_reveal_lock = true
+
+func _slap_reveal_end() -> void:
+	_slap_reveal_count = maxi(0, _slap_reveal_count - 1)
+	_slap_reveal_lock = _slap_reveal_count > 0
+
+## 贴牌结算时清除所有尚未播放的贴牌翻牌（本轮贴牌已全部裁决，不再需要补播）。
+func purge_slap_pending_flips() -> void:
+	if _pending_flips.is_empty():
+		return
+	var remaining: Array = []
+	for entry in _pending_flips:
+		if entry.has("correct"):
+			continue
+		remaining.append(entry)
+	_pending_flips = remaining
 
 func _ready() -> void:
 	# 启动即应用持久化主题，保证 UI 用正确 token 构建
@@ -181,10 +206,14 @@ func _build_lobby() -> void:
 	lobby.build()
 
 func _on_deck_pressed() -> void:
+	if _slap_reveal_lock:
+		return
 	_draw_flip_pending = true
 	GameState.request_take("draw", _next_action_id())
 
 func _on_discard_pressed() -> void:
+	if _slap_reveal_lock:
+		return
 	GameState.request_take("discard", _next_action_id())
 
 func _host_game() -> void:
@@ -223,6 +252,22 @@ func _on_state_updated(state: Dictionary) -> void:
 func _render_game() -> void:
 	game_view.render(latest_state)
 	_render_duel(latest_state)
+	# ExtraLayer 附加卡已同步定位，罚牌 fly 可直接取到正确锚点
+	_flush_slap_penalties()
+
+## 罚牌 fly：事件到达时目标槽位可能尚未渲染（追加的第 5+ 张），render 后再补飞。
+func _flush_slap_penalties() -> void:
+	if _pending_slap_penalties.is_empty():
+		return
+	var remaining: Array = []
+	for item in _pending_slap_penalties:
+		var peer := int(item[0])
+		var slot := int(item[1])
+		if _card_slots.has(peer) and _card_slots[peer].has(slot) and is_instance_valid(_card_slots[peer][slot]):
+			animator._animate_slap_penalty(peer, slot)
+		else:
+			remaining.append(item)
+	_pending_slap_penalties = remaining
 
 ## SLAP_DUEL 阶段：创建/更新比拼 bar 弹层，离开阶段时移除。
 func _render_duel(state: Dictionary) -> void:
@@ -265,7 +310,7 @@ func _flush_pending_flips() -> void:
 		var target_id := int(entry.target_id)
 		var slot := int(entry.slot)
 		if _card_slots.has(target_id) and _card_slots[target_id].has(slot) and is_instance_valid(_card_slots[target_id][slot]):
-			reveal._flip_at(_card_slots[target_id][slot], entry.card, target_id, slot)
+			reveal._flip_at(_card_slots[target_id][slot], entry.card, target_id, slot, entry.has("correct"), bool(entry.get("correct", false)))
 		else:
 			remaining.append(entry)
 	_pending_flips = remaining
