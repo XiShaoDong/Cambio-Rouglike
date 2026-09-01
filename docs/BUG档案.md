@@ -200,3 +200,17 @@
 1. 贴牌后全员点不动 → 检查贴牌分支是否被 `_slap_reveal_lock` 拦截
 2. 判定锁只应挡抽牌堆/弃牌堆，**不应挡收集窗内的贴牌意图**
 3. headless 测试（`verify_duel`）因直接调 `_server_slap` 绕过 UI，无法覆盖此客户端锁问题，需手动 GUI 复现
+
+---
+
+## B15：结算时手牌含空槽导致 calculate_ranking 崩溃
+
+**现象**：对局结束时（`GAME_OVER` 结算）报 `calculate_ranking: Invalid access to property or key of type 'String' on a base object of type 'Dictionary'`（`score_system.gd:14`）。
+
+**根因**：贴牌/交换后清空槽位 `players[x].cards[slot] = ""`（`slap_system.gd:170/178`、`exchange`），空串 `""` 残留在手牌数组。`calculate_ranking` 遍历时把空槽当有效卡 id：`cards[""]` 返回 null，对 `null.value` 访问即报错。玩家在贴过牌的局里结算必然触发。
+
+**修复**：`score_system.gd:14` 遍历手牌时跳过空 id（`if str(card_id).is_empty(): continue`）。
+
+**诊断方法**：
+1. 结算崩溃 + 玩家曾贴牌/交换 → 检查是否把空槽 `""` 当卡 id 索引 `cards` 字典
+2. 手牌数组遍历一律先判空串再取 `cards[card_id]`，与 `game_view`/`hidden_info` 一致

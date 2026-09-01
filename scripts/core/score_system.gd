@@ -11,6 +11,8 @@ static func calculate_ranking(players: Dictionary, cards: Dictionary, turn_order
 	for peer_id in turn_order:
 		var values: Array[int] = []
 		for card_id in players[peer_id].cards:
+			if str(card_id).is_empty():
+				continue
 			values.append(int(cards[card_id].value))
 		values.sort()
 		var total := 0
