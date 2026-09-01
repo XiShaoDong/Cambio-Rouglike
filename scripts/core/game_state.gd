@@ -149,6 +149,7 @@ func _reset_match() -> void:
 	match_number = 1
 	match_id = ""
 	state_revision = 0
+	last_seen_revision = -1
 	action_history.clear()
 
 func _new_match_id() -> String:
@@ -758,4 +759,7 @@ func receive_rejected(code: int, _action_id: String, message: String) -> void:
 
 @rpc("authority", "call_remote", "reliable")
 func receive_match_aborted(code: int, message: String) -> void:
+	# 对局中止后 state_revision 从 0 重新计数，客户端必须重置去重水位线，
+	# 否则新一局所有快照（revision 从 1 起）都会被误判为旧包丢弃，UI 卡在大厅。
+	last_seen_revision = -1
 	match_aborted.emit(code, message)

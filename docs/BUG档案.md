@@ -214,3 +214,19 @@
 **诊断方法**：
 1. 结算崩溃 + 玩家曾贴牌/交换 → 检查是否把空槽 `""` 当卡 id 索引 `cards` 字典
 2. 手牌数组遍历一律先判空串再取 `cards[card_id]`，与 `game_view`/`hidden_info` 一致
+
+---
+
+## B16：玩家退出中止后，房主重建房间无法进入对局（卡在大厅）
+
+**现象**：对局中任一玩家退出 → 全员回大厅；之后房主再开局，其他玩家正常进入，**但房主/主机永远停在大厅页面**，无法进入对局。
+
+**根因**：`_reset_match()` 把 `state_revision` 重置为 `0`，但**没有重置去重水位线 `last_seen_revision`**。房主本地 GameState 的 `last_seen_revision` 保留上一局最高值（如 13）。新一局 `state_revision` 从 1 重新计数，`_receive_state` 中 `revision <= last_seen_revision` 把新快照全部判为旧包丢弃 → `state_updated` 永不触发 → UI 停在大厅。（其他玩家多为新进程/新连接，水位线为 -1，故正常。）
+
+**修复**：
+1. `_reset_match()` 末尾加 `last_seen_revision = -1`（房主侧）。
+2. `receive_match_aborted` RPC 处理开头加 `last_seen_revision = -1`（一直连着的客户端同样重置，否则也会丢新局快照）。
+
+**诊断方法**：
+1. 中止/重建后 host 收不到新快照 → 检查 `state_revision` 重置但 `last_seen_revision` 未重置
+2. 用 headless 测试：第一局广播抬高水位线 → `_reset_match()` → 新一局开局，断言 `state_updated` 仍能触发（修复前 delta=0，修复后 delta>0）
