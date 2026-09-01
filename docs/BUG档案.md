@@ -185,3 +185,18 @@
 **修复**：回退 `revealed_slots`；罚牌直接以背面 fly 到槽位并保持背面（不做翻面揭示）。
 
 **诊断方法**：若某槽位在快照中持久含 `card` 而该玩家未看过 → 检查是否误加了持久揭示槽位机制
+
+---
+
+## B14：debug_duel 下第一名贴牌后全员无法点击（收集窗被判定锁锁死）
+
+**现象**：`debug_duel`（O 键）开启时，任意玩家贴一张牌（恒判对）后，所有玩家都无法进行任何点击（贴牌/抽牌堆/弃牌堆），比拼永不触发。
+
+**根因**：正确贴牌 reveal 在客户端走 `_play_slap_flip` 的绿光 hold 分支，只 `_slap_reveal_begin()` 而不 `_slap_reveal_end()`，锁要等 `slap_resolved` 结算事件才释放。`game_interaction.on_card_pressed` 贴牌分支以 `if main._slap_reveal_lock: return` 拦截所有贴牌点击 → 收集窗（debug 下 30s）期间第二名玩家永远发不出 `request_slap` → 双贴比拼无法触发，全员冻结至收集窗超时。
+
+**修复**：`game_interaction.on_card_pressed` 的贴牌分支**不再检查 `_slap_reveal_lock`**——收集窗内允许继续贴牌（这正是收集窗/ debug_duel 双贴比拼的目的）。判定锁继续保护抽牌堆/弃牌堆点击（`main._on_deck_pressed`/`_on_discard_pressed` 不变），避免揭示期间误取牌。
+
+**诊断方法**：
+1. 贴牌后全员点不动 → 检查贴牌分支是否被 `_slap_reveal_lock` 拦截
+2. 判定锁只应挡抽牌堆/弃牌堆，**不应挡收集窗内的贴牌意图**
+3. headless 测试（`verify_duel`）因直接调 `_server_slap` 绕过 UI，无法覆盖此客户端锁问题，需手动 GUI 复现
