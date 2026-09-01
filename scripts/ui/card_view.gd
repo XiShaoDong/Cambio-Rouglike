@@ -14,8 +14,6 @@ var card_data: Dictionary = {}
 var is_face_up := false
 var enabled_hover := true
 
-#Sound for flip_card
-@onready var sound_flip_card: AudioStreamPlayer = $AudioStreamPlayer
 @onready var back: PanelContainer = $Back
 @onready var back_texture: TextureRect = $Back/BackTexture
 @onready var front: PanelContainer = $Front
@@ -139,6 +137,16 @@ func _restore_glow() -> void:
 	style.shadow_size = glow_size
 	glow.visible = _is_highlighted
 
+## 持久炫光：设置光晕颜色与尺寸并保持显示，不自动恢复（用于贴牌判定 hold 展示）。
+func set_glow(color: Color, glow_size := 0) -> void:
+	if not is_inside_tree() or not is_instance_valid(glow):
+		return
+	var style: StyleBoxFlat = glow.get_theme_stylebox("panel")
+	style.shadow_color = color
+	if glow_size > 0:
+		style.shadow_size = glow_size
+	glow.visible = true
+
 ## 翻牌动画：当前面翻到另一面（scale.x 收缩→切面→展开）。
 func flip_show() -> void:
 	var from := front if front.visible else back
@@ -155,7 +163,7 @@ func _create_flip(from: Control, to: Control) -> void:
 
 ## 纵轴翻转：绕垂直中线 scale.x 1→0→1，中途切换面到指定面。face_up=true 显示正面。
 func flip_to_face(face_up: bool) -> void:
-	sound_flip_card.play()
+	AudioManager.play_flip()
 	pivot_offset = size / 2.0
 	var from := front if front.visible else back
 	var to := front if face_up else back

@@ -36,13 +36,16 @@ func attempt(sender: int, target_player: int, slot: int, action_id := "") -> voi
 		game._reject(sender, game.RejectCode.INVALID_TARGET, action_id)
 		return
 	var target_card: String = game.players[target_player].cards[slot]
-	# 贴牌尝试：无论对错，把被贴的牌翻给所有玩家看
+	# 贴牌尝试：先判对错（debug 模式不判正确性），把被贴的牌翻给所有玩家看并带对错标记
+	var correct: bool = game.debug_duel or game.cards[target_card].rank == game.slap_rank
 	var card_public: Dictionary = game.peek.public_card(target_card)
 	var target_name: String = game.players[target_player].name
 	for pid in game.players:
-		game._send_reveal(int(pid), "贴牌：翻出 %s 的牌" % target_name, [card_public], {"player_id": target_player, "slot": slot})
-	if not game.debug_duel and game.cards[target_card].rank != game.slap_rank:
-		add_penalty(sender)
+		game._send_reveal(int(pid), "贴牌：翻出 %s 的牌" % target_name, [card_public], {"player_id": target_player, "slot": slot, "correct": correct})
+	if not correct:
+		var penalty_slot := add_penalty(sender)
+		if penalty_slot >= 0:
+			game._broadcast_exchange({"kind": "slap_penalty", "peer": sender, "slot": penalty_slot})
 		game._add_log("%s 贴错了，罚抽一张牌。" % game.players[sender].name)
 		game._broadcast_state()
 		return
@@ -160,15 +163,21 @@ static func _duel_position(elapsed_ms: float, duration_ms: int) -> float:
 	return 2.0 - 2.0 * t
 
 ## 解决一次正确贴牌（单收集胜者或比拼胜者）：自贴→弃牌；贴他人→SLAP_EXCHANGE。
+## 规则微调：贴他人时在进 SLAP_EXCHANGE 之际就把被贴的牌丢进弃牌堆（动画与状态一致），
+## 交换阶段只把行动者的牌补进已清空的对方槽位。
 func _resolve_correct_slap(sender: int, target_player: int, slot: int, target_card: String) -> void:
 	if target_player == sender:
 		game.players[sender].cards[slot] = ""
 		game.discard_pile.append(target_card)
+		game._broadcast_exchange({"kind": "slap_resolved", "target": target_player, "target_slot": slot, "card": game.peek.public_card(target_card)})
 		game._add_log("%s 成功贴出自己的 %s。" % [game.players[sender].name, game.slap_rank])
 		finish_slap()
 		return
 	game.slap_open = false
 	game.phase = game.Phase.SLAP_EXCHANGE
+	game.players[target_player].cards[slot] = ""
+	game.discard_pile.append(target_card)
+	game._broadcast_exchange({"kind": "slap_resolved", "target": target_player, "target_slot": slot, "card": game.peek.public_card(target_card)})
 	game.slap_exchange = {"actor": sender, "target": target_player, "target_slot": slot, "target_card": target_card}
 	game._add_log("%s 贴中了 %s 的牌，等待交出一张自己的牌。" % [game.players[sender].name, game.players[target_player].name])
 	game._broadcast_state()
@@ -192,10 +201,9 @@ func exchange(sender: int, own_slot: int, action_id := "") -> void:
 	if not game._valid_slot(target, target_slot):
 		return
 	var gift: String = game.players[sender].cards[own_slot]
-	var pasted: String = game.players[target].cards[target_slot]
 	game.players[sender].cards[own_slot] = ""
 	game.players[target].cards[target_slot] = gift
-	game.discard_pile.append(pasted)
+	game._broadcast_exchange({"kind": "slap_gift", "actor": sender, "own_slot": own_slot, "target": target, "target_slot": target_slot})
 	game._add_log("%s 成功贴牌并将一张牌交给 %s。" % [game.players[sender].name, game.players[target].name])
 	finish_slap()
 
@@ -208,14 +216,16 @@ func finish_slap() -> void:
 	game.phase = game.Phase.TURN_DRAW
 	game._broadcast_state()
 
-## 给玩家加一张罚抽牌（优先填入空槽位，保持固定布局；满则横向追加）。
-func add_penalty(peer_id: int) -> void:
+## 给玩家加一张罚抽牌（优先填入空槽位，保持固定布局；满则追加为新槽）。
+## 返回罚牌落位槽号；无可抽牌时返回 -1。
+func add_penalty(peer_id: int) -> int:
 	var penalty: String = game._draw_from_deck()
 	if penalty.is_empty():
-		return
+		return -1
 	var cards: Array = game.players[peer_id].cards
 	for index in cards.size():
 		if str(cards[index]) == "":
 			cards[index] = penalty
-			return
+			return index
 	cards.append(penalty)
+	return cards.size() - 1

@@ -294,6 +294,10 @@ func _clear_area(area: Control) -> void:
 	if area.has_node("VBox/HandCenter/HandGrid"):
 		for c in area.get_node("VBox/HandCenter/HandGrid").get_children():
 			c.queue_free()
+	var extra := area.get_node_or_null("ExtraLayer")
+	if extra != null:
+		# 立即释放，避免 queue_free 延迟导致下一次新建同名节点变 ExtraLayer@N
+		extra.free()
 
 func _render_player_section(area: Control, player: Dictionary, viewer: int, is_top: bool) -> void:
 	var is_me := int(player.id) == viewer
@@ -302,45 +306,26 @@ func _render_player_section(area: Control, player: Dictionary, viewer: int, is_t
 	var exported: Variant = area.get("card_size")
 	var card_size: Vector2 = exported if exported != null and exported != Vector2.ZERO else CARD_SELF_SIZE
 	area.visible = true
+	# 主网格列数固定按 HAND_SIZE（罚牌/第 5+ 张不改变列数，避免整手重排位移）
 	var hand: GridContainer = area.get_node("VBox/HandCenter/HandGrid")
-	hand.columns = maxi(2, ceili(player.slots.size() / 2.0))
+	hand.columns = maxi(2, ceili(min(player.slots.size(), KongRules.HAND_SIZE) / 2.0))
+	# 第 5 张起的额外槽位（罚牌）：ExtraLayer 直接子节点，每个槽位按槽号固定绝对定位
+	# （主网格上方/下方、行列固定），加新罚牌时已存在卡牌位置不变
+	var old_extra := area.get_node_or_null("ExtraLayer")
+	if old_extra != null:
+		old_extra.free()
+	var extra_layer: Control = null
+	if player.slots.size() > KongRules.HAND_SIZE:
+		extra_layer = Control.new()
+		extra_layer.name = "ExtraLayer"
+		extra_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		area.add_child(extra_layer)
 	for slot_index in player.slots.size():
-		var slot: Dictionary = player.slots[slot_index]
-		var is_empty_slot := str(slot.get("card_id", "")) == ""
-		var is_anim_slot: bool = main.is_anim_slot(int(player.id), slot_index)
-		if is_empty_slot or is_anim_slot:
-			# 空槽/动画中槽位：透明占位（无虚线），保持网格布局对齐但不可见
-			var empty := PanelContainer.new()
-			empty.custom_minimum_size = card_size
-			empty.size = card_size
-			var ts := StyleBoxFlat.new()
-			ts.bg_color = Color(0, 0, 0, 0)
-			ts.set_corner_radius_all(8)
-			empty.add_theme_stylebox_override("panel", ts)
-			empty.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			hand.add_child(empty)
-			if not main._card_slots.has(int(player.id)):
-				main._card_slots[int(player.id)] = {}
-			main._card_slots[int(player.id)][slot_index] = empty
+		if slot_index >= KongRules.HAND_SIZE:
+			if extra_layer != null:
+				_render_extra_slot(extra_layer, player, slot_index, card_size, hand)
 			continue
-		var card_button: Button = main._make_card_button(slot.get("card", {}), card_size)
-		card_button.tooltip_text = "记忆牌面后，点击以执行当前操作"
-		card_button.pressed.connect(main._on_card_pressed.bind(int(player.id), slot_index))
-		main._highlight(card_button, main._card_actionable(int(player.id), slot_index))
-		hand.add_child(card_button)
-		if not main._card_slots.has(int(player.id)):
-			main._card_slots[int(player.id)] = {}
-		main._card_slots[int(player.id)][slot_index] = card_button
-		# 查看高亮持久化：该槽位在查看光晕有效期内 → render 重建后恢复蓝色光晕
-		var glow_key := "%d_%d" % [int(player.id), slot_index]
-		if main._peek_glow_slots.has(glow_key):
-			var deadline: int = int(main._peek_glow_slots[glow_key])
-			if Time.get_ticks_msec() < deadline:
-				var remain: float = (deadline - Time.get_ticks_msec()) / 1000.0
-				(card_button as CardView).flash_glow(main.PEEK_GLOW_COLOR, remain, main.PEEK_GLOW_SIZE)
-				print("[peek_glow] render re-applied glow pid=%d slot=%d remain=%.2fs" % [int(player.id), slot_index, remain])
-			else:
-				main._peek_glow_slots.erase(glow_key)
+		_render_card_slot(hand, player, slot_index, card_size)
 	var name_label: Label = area.get_node("VBox/NameLabel")
 	var suffix := "（你）" if is_me else ""
 	var ready_mark := ""
@@ -360,6 +345,51 @@ func _render_player_section(area: Control, player: Dictionary, viewer: int, is_t
 	if is_me:
 		name_label.text = "▼ " + name_label.text
 
+## 渲染单个卡牌槽位到指定容器（主网格或 ExtraLayer），并登记到 _card_slots 供动画定位。
+## use_fixed 时用 fixed_pos（全局坐标）绝对定位（罚牌附加行：按槽号固定，加新牌不移位）。
+func _render_card_slot(container: Control, player: Dictionary, slot_index: int, card_size: Vector2, fixed_pos := Vector2.ZERO, use_fixed := false) -> void:
+	var pid := int(player.id)
+	var slot: Dictionary = player.slots[slot_index]
+	var is_empty_slot := str(slot.get("card_id", "")) == ""
+	var is_anim_slot: bool = main.is_anim_slot(pid, slot_index)
+	if is_empty_slot or is_anim_slot:
+		# 空槽/动画中槽位：透明占位（无虚线），保持网格布局对齐但不可见
+		var empty := PanelContainer.new()
+		empty.custom_minimum_size = card_size
+		empty.size = card_size
+		var ts := StyleBoxFlat.new()
+		ts.bg_color = Color(0, 0, 0, 0)
+		ts.set_corner_radius_all(8)
+		empty.add_theme_stylebox_override("panel", ts)
+		empty.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		container.add_child(empty)
+		if use_fixed:
+			empty.global_position = fixed_pos
+		if not main._card_slots.has(pid):
+			main._card_slots[pid] = {}
+		main._card_slots[pid][slot_index] = empty
+		return
+	var card_button: Button = main._make_card_button(slot.get("card", {}), card_size)
+	card_button.tooltip_text = "记忆牌面后，点击以执行当前操作"
+	card_button.pressed.connect(main._on_card_pressed.bind(pid, slot_index))
+	main._highlight(card_button, main._card_actionable(pid, slot_index))
+	container.add_child(card_button)
+	if use_fixed:
+		card_button.global_position = fixed_pos
+	if not main._card_slots.has(pid):
+		main._card_slots[pid] = {}
+	main._card_slots[pid][slot_index] = card_button
+	# 查看高亮持久化：该槽位在查看光晕有效期内 → render 重建后恢复蓝色光晕
+	var glow_key := "%d_%d" % [pid, slot_index]
+	if main._peek_glow_slots.has(glow_key):
+		var deadline: int = int(main._peek_glow_slots[glow_key])
+		if Time.get_ticks_msec() < deadline:
+			var remain: float = (deadline - Time.get_ticks_msec()) / 1000.0
+			(card_button as CardView).flash_glow(main.PEEK_GLOW_COLOR, remain, main.PEEK_GLOW_SIZE)
+			print("[peek_glow] render re-applied glow pid=%d slot=%d remain=%.2fs" % [pid, slot_index, remain])
+		else:
+			main._peek_glow_slots.erase(glow_key)
+
 func _render_log() -> void:
 	var accent_html := UITheme.color("accent").to_html(false)
 	var lines := ["[color=#%s]对局记录[/color]" % accent_html]
@@ -375,3 +405,19 @@ func _render_log() -> void:
 				var entry: Dictionary = ranking[index]
 				lines.append("%d. %s：%d 分，%d 张" % [index + 1, entry.name, int(entry.score), int(entry.count)])
 	main.log_box.text = "\n".join(lines)
+
+## 渲染罚牌附加槽位到 ExtraLayer：按槽号固定绝对定位（统一在主网格上方、行列固定）。
+## 所有玩家方向一致（向上增长），与主视角一致。
+func _render_extra_slot(layer: Control, player: Dictionary, slot_index: int, card_size: Vector2, hand: GridContainer) -> void:
+	var pos := _extra_slot_pos(hand.get_global_rect(), slot_index, card_size)
+	_render_card_slot(layer, player, slot_index, card_size, pos, true)
+
+## 附加槽位固定位置（统一在主网格上方）：idx0/1 在靠主网格的一行（第1列/第2列），idx2/3 在更上一行，依此类推。
+## 每个槽位位置只由槽号决定，加新罚牌时已存在的卡牌不移动。
+func _extra_slot_pos(grid_rect: Rect2, slot_index: int, card_size: Vector2) -> Vector2:
+	var idx := slot_index - KongRules.HAND_SIZE
+	var col := idx % 2
+	var row := idx / 2
+	var x := grid_rect.position.x + col * (card_size.x + 6.0)
+	var y := grid_rect.position.y - (row + 1) * (card_size.y + 6.0)
+	return Vector2(x, y)

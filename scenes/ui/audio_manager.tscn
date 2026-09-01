@@ -1,0 +1,14 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/audio_manager.gd" id="1_script"]
+[ext_resource type="AudioStream" uid="uid://bmg6a2iwsdasp" path="res://assets/Sounds/card-flip.wav" id="2_flip"]
+[ext_resource type="AudioStream" uid="uid://bjjtfe6mooha0" path="res://assets/Sounds/card-flip-quick.mp3" id="3_quick"]
+[ext_resource type="AudioStream" uid="uid://bcjok1umlcaul" path="res://assets/Sounds/card-fly.wav" id="4_fly"]
+[ext_resource type="AudioStream" uid="uid://cb7dwamgn3sab" path="res://assets/Sounds/mouse-click.mp3" id="5_select"]
+
+[node name="AudioManager" type="Node"]
+script = ExtResource("1_script")
+select_sfx = ExtResource("5_select")
+flip_sfx = ExtResource("2_flip")
+flip_quick_sfx = ExtResource("3_quick")
+fly_sfx = ExtResource("4_fly")

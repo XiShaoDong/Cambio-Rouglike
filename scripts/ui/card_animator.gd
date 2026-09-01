@@ -96,6 +96,12 @@ func handle_exchange(data: Dictionary) -> void:
 				data.get("a_data", {}), data.get("b_data", {}))
 		"discard":
 			_animate_discard_pending(data.get("big_data", {}), int(data.get("actor", 0)))
+		"slap_penalty":
+			_animate_slap_penalty(int(data.get("peer", 0)), int(data.get("slot", -1)))
+		"slap_resolved":
+			_animate_slap_resolved(int(data.get("target", 0)), int(data.get("target_slot", -1)), data.get("card", {}))
+		"slap_gift":
+			_animate_slap_gift(int(data.get("actor", 0)), int(data.get("own_slot", -1)), int(data.get("target", 0)), int(data.get("target_slot", -1)))
 
 ## 弃牌动画：pending 大牌从大牌位置移动到弃牌堆（隐藏源反馈，缩放与弃牌堆一致，落位后显示）。
 func _animate_discard_pending(big_data: Dictionary, actor: int) -> void:
@@ -113,6 +119,63 @@ func _animate_discard_pending(big_data: Dictionary, actor: int) -> void:
 			null, func():
 				main._discard_anim_lock = false
 				main._render_game())
+
+## 贴错罚牌动画：从抽牌堆位置飞一张背面卡到目标玩家槽位（他人看背面，落地后由状态快照显示）。
+## 先标记动画槽位（即使槽位尚未渲染——追加的第 5+ 张），保证状态广播渲染时显示占位而非已落位的罚牌；
+## 槽位未渲染时挂起到 render 后补飞。
+func _animate_slap_penalty(peer: int, slot: int) -> void:
+	main.mark_anim_slot(peer, slot)
+	if not main._card_slots.has(peer) or not main._card_slots[peer].has(slot):
+		main._pending_slap_penalties.append([peer, slot])
+		return
+	var target: Control = main._card_slots[peer][slot]
+	if not is_instance_valid(target) or not is_instance_valid(main.deck_button):
+		main._pending_slap_penalties.append([peer, slot])
+		return
+	var target_rect: Rect2 = target.get_global_rect()
+	_fly(main.deck_button.get_global_rect(), target_rect, {}, false, false, null, func():
+		main.unmark_anim_slot(peer, slot)
+		main._render_game())
+
+## 正确贴牌结算动画：释放其余 hold（输家翻回），把赢家被贴的牌从槽位 fly 到弃牌堆。
+## 弃牌堆用 _discard_anim_lock 延迟显示，落地后才出现。
+func _animate_slap_resolved(target_id: int, slot: int, card: Dictionary) -> void:
+	main.purge_slap_pending_flips()
+	main.reveal.release_slap_except(target_id, slot)
+	main.reveal.free_slap(target_id, slot)
+	if not main._card_slots.has(target_id) or not main._card_slots[target_id].has(slot):
+		return
+	var anchor: Control = main._card_slots[target_id][slot]
+	if not is_instance_valid(anchor) or not is_instance_valid(main.discard_button):
+		return
+	var from_rect: Rect2 = anchor.get_global_rect()
+	main.mark_anim_slot(target_id, slot)
+	main._discard_anim_lock = true
+	_fly(from_rect, main.discard_button.get_global_rect(), card, true, true, null, func():
+		main.unmark_anim_slot(target_id, slot)
+		main._discard_anim_lock = false
+		main._render_game())
+
+## 贴中他人后的交换动画：行动者选的牌 fly 到对方槽位（行动者视角显正面，他人看背面）。
+func _animate_slap_gift(actor: int, own_slot: int, target: int, target_slot: int) -> void:
+	if not main._card_slots.has(actor) or not main._card_slots[actor].has(own_slot):
+		return
+	if not main._card_slots.has(target) or not main._card_slots[target].has(target_slot):
+		return
+	var src: Control = main._card_slots[actor][own_slot]
+	var dst: Control = main._card_slots[target][target_slot]
+	if not is_instance_valid(src) or not is_instance_valid(dst):
+		return
+	var face_up := int(main.latest_state.get("viewer_id", 0)) == actor
+	var data: Dictionary = {}
+	if face_up and src is CardView:
+		data = (src as CardView).card_data
+	main.mark_anim_slot(actor, own_slot)
+	main.mark_anim_slot(target, target_slot)
+	_fly(src.get_global_rect(), dst.get_global_rect(), data, face_up, face_up, null, func():
+		main.unmark_anim_slot(actor, own_slot)
+		main.unmark_anim_slot(target, target_slot)
+		main._render_game())
 
 ## 大牌显示位置（两堆中心，1.5 倍尺寸）。
 func _big_card_rect() -> Rect2:
@@ -137,7 +200,7 @@ func _face_up_of(card: Control) -> bool:
 ## 时长随移动距离增长。source_card 为被移动走的原卡（动画开始时隐藏，避免双卡）。
 ## on_finish 在动画结束（副本落位清理）后调用，用于刷新目标位置。
 func _fly(from_rect: Rect2, to_rect: Rect2, data: Dictionary, start_face_up: bool, end_face_up: bool, source_card: Control = null, on_finish: Callable = Callable()) -> void:
-	#card.get_node("sound_flip_cared").play()
+	AudioManager.play_fly()
 	var layer := Control.new()
 	layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	main.overlay.add_child(layer)
@@ -161,6 +224,7 @@ func _fly(from_rect: Rect2, to_rect: Rect2, data: Dictionary, start_face_up: boo
 	tween.set_ease(Tween.EASE_IN_OUT)
 	if start_face_up != end_face_up:
 		# 需要翻转：纵轴 scale.x 1→0→1，中途切换面
+		AudioManager.play_flip_quick()
 		var end_data: Dictionary = data if end_face_up else {}
 		tween.tween_property(card, "scale:x", 0.0, dur * 0.35)
 		tween.tween_callback(_reveal_data.bind(card, end_data))
