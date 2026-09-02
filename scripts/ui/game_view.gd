@@ -408,6 +408,11 @@ func _render_card_slot(container: Control, player: Dictionary, slot_index: int, 
 		main._card_slots[pid][slot_index] = empty
 		return
 	var card_button: Button = main._make_card_button(slot.get("card", {}), card_size)
+	# 重连恢复：本人手牌在快照中无牌面时，用服务器补回的恢复手牌显示
+	if slot.get("card", {}).is_empty() and int(player.id) == int(main.latest_state.get("viewer_id", 0)):
+		var resume: Dictionary = main._resume_hand_map.get(slot_index, {})
+		if not resume.is_empty():
+			card_button = main._make_card_button(resume, card_size)
 	card_button.tooltip_text = "记忆牌面后，点击以执行当前操作"
 	card_button.pressed.connect(main._on_card_pressed.bind(pid, slot_index))
 	main._highlight(card_button, main._card_actionable(pid, slot_index))

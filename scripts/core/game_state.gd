@@ -13,6 +13,8 @@ signal command_rejected(code: int, message: String)
 signal match_aborted(code: int, message: String)
 signal card_exchange_animated(data: Dictionary)
 signal peek_highlighted(data: Dictionary)
+signal registered_token_received(token: String)
+signal resume_hand_received(hand: Array, pending: Dictionary)
 
 enum Phase { LOBBY, INITIAL_PEEK, TURN_DRAW, TURN_DECISION, Q_DECISION, SLAP_WINDOW, SLAP_EXCHANGE, GAME_OVER, SLAP_DUEL }
 
@@ -40,6 +42,7 @@ enum RejectCode {
 	NOT_DUEL_CONTESTANT,
 	ALREADY_STOPPED,
 	MATCH_SUSPENDED,
+	INVALID_TOKEN,
 }
 
 var phase: Phase = Phase.LOBBY
@@ -70,6 +73,7 @@ var match_id := ""
 var state_revision := 0
 var action_history: Dictionary = {}
 var last_seen_revision := -1
+var _registered_token := ""
 
 var peek: PeekSystem
 var effects: EffectSystem
@@ -121,10 +125,9 @@ func _on_peer_left(peer_id: int) -> void:
 		turn_order.erase(seat)
 		_broadcast_lobby()
 		return
-	# 阶段一：标记离线 + 条件暂停，不中止对局
+	# 阶段一/二：标记离线 + 条件暂停，不中止对局；保留 token 供断线重连认领
 	players[seat].offline = true
 	players[seat].peer_id = 0
-	players[seat].token = ""
 	_add_log("%s 断线，对局暂停等待重连（轮到其回合时冻结）。" % left_name)
 	_broadcast_state()
 
@@ -183,6 +186,7 @@ func _reject_code_message(code: int) -> String:
 		RejectCode.NOT_DUEL_CONTESTANT: return "你不是比拼候选人。"
 		RejectCode.ALREADY_STOPPED: return "你已经在比拼中按过 STOP。"
 		RejectCode.MATCH_SUSPENDED: return "对局已暂停（有玩家离线），等待重连或房主处理。"
+		RejectCode.INVALID_TOKEN: return "重连凭据无效或座位已被移除。"
 	return "操作被拒绝。"
 
 ## 对局是否处于条件暂停（当前行动者离线 / 开局记忆阶段有人离线）。
@@ -235,7 +239,7 @@ func _add_player(peer_id: int, display_name: String) -> void:
 	players[seat] = {
 		"seat": seat,
 		"peer_id": peer_id,
-		"token": "",
+		"token": _new_token(),
 		"name": safe_name,
 		"cards": [],
 		"has_acted": false,
@@ -243,6 +247,25 @@ func _add_player(peer_id: int, display_name: String) -> void:
 		"health": int(run_state.get("health", 3)),
 	}
 	turn_order.append(seat)
+	# 注册时把 token 定向发给该玩家，用于断线后重连认领座位
+	var token: String = players[seat].token
+	if peer_id == 1:
+		_receive_registered(token)
+	else:
+		receive_registered.rpc_id(peer_id, token)
+
+## 生成一次性玩家身份 token（注册时分配，重连时凭它认领原座位）。
+func _new_token() -> String:
+	return "%08x%08x" % [randi(), randi()]
+
+## 由 token 反查 seat_id；找不到返回 -1。
+func _seat_by_token(token: String) -> int:
+	if token.is_empty():
+		return -1
+	for seat in players:
+		if str(players[seat].get("token", "")) == token:
+			return int(seat)
+	return -1
 
 ## 由 peer_id 反查 seat_id；未注册/已离线（peer_id 已清 0）返回 -1。
 func _peer_to_seat(peer_id: int) -> int:
@@ -267,6 +290,59 @@ func request_register_player(display_name: String, protocol_version: int = KongG
 	_add_player(sender, display_name)
 	_add_log("%s 加入了房间。" % players[_peer_to_seat(sender)].name)
 	_broadcast_lobby()
+
+## 断线玩家重连：凭 token 认领原座位，恢复对局状态。
+## 服务器把该玩家的手牌面 + 当前待处理牌定向发回，并广播最新快照。
+func request_reconnect(token: String, display_name: String, protocol_version: int = KongGameState.PROTOCOL_VERSION) -> void:
+	if multiplayer.is_server():
+		_server_reconnect(_peer_to_seat(1), token, display_name)
+	else:
+		server_reconnect.rpc_id(1, token, display_name, protocol_version)
+
+@rpc("any_peer", "reliable")
+func server_reconnect(token: String, display_name: String, protocol_version: int) -> void:
+	if multiplayer.is_server():
+		_server_reconnect(_peer_to_seat(multiplayer.get_remote_sender_id()), token, display_name, protocol_version)
+
+func _server_reconnect(sender_seat: int, token: String, display_name: String, protocol_version: int = KongGameState.PROTOCOL_VERSION) -> void:
+	var peer := multiplayer.get_remote_sender_id() if multiplayer.get_remote_sender_id() > 0 else 1
+	if protocol_version != PROTOCOL_VERSION:
+		_reject(sender_seat, RejectCode.PROTOCOL_VERSION_MISMATCH)
+		return
+	var seat := _seat_by_token(token)
+	if seat < 0:
+		_reject(sender_seat, RejectCode.INVALID_TOKEN)
+		return
+	if not players.has(seat) or not bool(players[seat].get("offline", false)):
+		_reject(sender_seat, RejectCode.INVALID_TOKEN)
+		return
+	# 认领座位：绑定新连接，恢复在线
+	players[seat].peer_id = peer
+	players[seat].offline = false
+	var safe_name := display_name.strip_edges().left(16)
+	if not safe_name.is_empty():
+		players[seat].name = safe_name
+	_add_log("%s 重新连接了对局。" % players[seat].name)
+	# 定向补发本人手牌面 + 当前待处理牌，再发一帧全量快照
+	_send_resume_hand(seat)
+	_broadcast_state()
+
+## 重连恢复：把 seat 玩家自己的手牌面 + 待处理抽牌私下发回（只发给本人）。
+func _send_resume_hand(seat: int) -> void:
+	var hand: Array = []
+	for card_id in players[seat].cards:
+		if str(card_id).is_empty():
+			hand.append({})
+		else:
+			hand.append(HiddenInfo.public_card(self, str(card_id)))
+	var pending: Dictionary = {}
+	if (phase == Phase.TURN_DECISION or phase == Phase.Q_DECISION) and not pending_draw.is_empty():
+		pending = HiddenInfo.public_card(self, str(pending_draw.card_id))
+	var peer := int(players[seat].peer_id)
+	if peer == 1:
+		_receive_resume_hand(hand, pending)
+	else:
+		receive_resume_hand.rpc_id(peer, hand, pending)
 
 func request_start_match() -> void:
 	if multiplayer.is_server():
@@ -873,6 +949,13 @@ func _receive_state(snapshot: Dictionary) -> void:
 func _receive_reveal(title: String, revealed_cards: Array, target: Dictionary = {}) -> void:
 	private_reveal_received.emit(title, revealed_cards, target)
 
+func _receive_registered(token: String) -> void:
+	_registered_token = token
+	registered_token_received.emit(token)
+
+func _receive_resume_hand(hand: Array, pending: Dictionary) -> void:
+	resume_hand_received.emit(hand, pending)
+
 func _receive_exchange_animated(data: Dictionary) -> void:
 	card_exchange_animated.emit(data)
 
@@ -902,6 +985,17 @@ func receive_peek_highlight(data: Dictionary) -> void:
 @rpc("authority", "call_remote", "reliable")
 func receive_toast(message: String) -> void:
 	toast_received.emit(message)
+
+## 服务器把玩家身份 token 发给刚注册的玩家（仅本人），用于断线后重连认领座位。
+@rpc("authority", "call_remote", "reliable")
+func receive_registered(token: String) -> void:
+	_registered_token = token
+	registered_token_received.emit(token)
+
+## 服务器重连时把本人手牌面 + 待处理牌定向发回（仅本人）。
+@rpc("authority", "call_remote", "reliable")
+func receive_resume_hand(hand: Array, pending: Dictionary) -> void:
+	resume_hand_received.emit(hand, pending)
 
 @rpc("authority", "call_remote", "reliable")
 func receive_rejected(code: int, _action_id: String, message: String) -> void:

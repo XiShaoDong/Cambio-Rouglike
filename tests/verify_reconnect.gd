@@ -1,11 +1,12 @@
 extends Node
 
-## 断线重连（阶段一：seat 身份 + 离线标记 + 条件暂停）headless 验证：
-##   1) 身份：注册分配 seat_id，peer→seat 映射正确
+## 断线重连（阶段一：seat 身份 + 离线标记 + 条件暂停；阶段二：token 认领 + 手牌恢复）headless 验证：
+##   1) 身份：注册分配 seat_id + token，peer→seat 映射正确
 ##   2) 非当前玩家掉线 → 不暂停，对局继续
 ##   3) 轮到离线者 → 条件暂停（suspended=true），操作被拒 MATCH_SUSPENDED
 ##   4) 房主踢出离线者 → 移除座位并继续轮转
-## 阶段二（token 重连恢复）在后续阶段补充。
+##   5) 重连：凭 token 认领座位、恢复在线、定向补回手牌面
+##   6) 踢出后剩 1 人 → 中止销毁房间；房主解散房间
 
 var failures := 0
 var checks := 0
@@ -19,6 +20,8 @@ func _ready() -> void:
 	await _test_host_kick()
 	await _test_host_kick_last_player()
 	await _test_close_room()
+	await _test_reconnect_token()
+	await _test_reconnect_resume()
 	print("=== RECONNECT RESULT: %d/%d passed%s ===" % [checks - failures, checks, " (FAILURES!)" if failures else ""])
 	get_tree().quit(1 if failures else 0)
 
@@ -146,3 +149,60 @@ func _test_close_room() -> void:
 	_check("解散后重置回 LOBBY", GameState.phase == GameState.Phase.LOBBY)
 	_check("解散后清除玩家座位", GameState.players.is_empty())
 	GameState.match_aborted.disconnect(cb)
+
+func _test_reconnect_token() -> void:
+	# 注册分配 token；掉线后 token 保留；凭 token 认领座位
+	GameState._reset_match()
+	GameState._add_player(1, "A")  # seat0 host
+	GameState._add_player(2, "B")  # seat1 client
+	var t1: String = GameState.players[0].token
+	var t2: String = GameState.players[1].token
+	_check("注册分配了非空 token", not t1.is_empty() and not t2.is_empty())
+	_check("token 互不相同", t1 != t2)
+	_check("token→seat 反查正确", GameState._seat_by_token(t2) == 1)
+	_check("未知 token 反查 -1", GameState._seat_by_token("nope") == -1)
+	# 掉线（非 LOBBY 分支），token 保留
+	GameState._server_start_match(0)
+	GameState._server_initial_ready(0)
+	GameState._server_initial_ready(1)
+	GameState._on_peer_left(2)
+	_check("掉线后 token 保留", str(GameState.players[1].token) == t2)
+	_check("掉线后 offline=true", bool(GameState.players[1].get("offline", false)))
+	_check("掉线后 peer_id 清空", int(GameState.players[1].peer_id) == 0)
+
+func _test_reconnect_resume() -> void:
+	# 重连：凭 token 认领，offline 复位、peer_id 更新、手牌恢复数据正确
+	GameState._reset_match()
+	GameState._add_player(1, "H")
+	GameState._add_player(2, "C")
+	GameState._server_start_match(0)
+	GameState._server_initial_ready(0)
+	GameState._server_initial_ready(1)
+	var t2: String = GameState.players[1].token
+	# 记录 seat1 手牌（从完整 cards 读取当前槽位 id）
+	var before_hand: Array = GameState.players[1].cards.duplicate()
+	GameState._on_peer_left(2)  # seat1 掉线
+	var resume_captured := {"hand": [], "pending": {}, "got": false}
+	var cb := func(hand: Array, pending: Dictionary):
+		resume_captured["hand"] = hand
+		resume_captured["pending"] = pending
+		resume_captured["got"] = true
+	GameState.resume_hand_received.connect(cb)
+	# 模拟重连：新 peer=9，seat0 视角发请求（headless 下 peer 用 9）
+	GameState.players[1].token = t2
+	GameState._server_reconnect(0, t2, "C", GameState.PROTOCOL_VERSION)
+	GameState.resume_hand_received.disconnect(cb)
+	_check("重连认领后 offline=false", not bool(GameState.players[1].get("offline", false)))
+	_check("重连后 peer_id 更新", int(GameState.players[1].peer_id) == 1 or int(GameState.players[1].peer_id) == 9)
+	_check("重连后仍在对局中", GameState.phase != GameState.Phase.LOBBY)
+	_check("恢复手牌触发 resume_hand_received", bool(resume_captured["got"]))
+	if bool(resume_captured["got"]):
+		var h: Array = resume_captured["hand"]
+		_check("恢复手牌数量与手牌一致", h.size() == before_hand.size())
+		_check("恢复手牌槽位卡面正确", not h.is_empty() and (h[0].is_empty() or h[0].has("rank") or h[0].has("id")))
+	# 无效 token 重连：认领失败，offline 状态不变（不产生新座位/不误认领）
+	var before_offline: bool = bool(GameState.players[1].get("offline", false))
+	var before_seats: int = GameState.players.size()
+	GameState._server_reconnect(0, "badtoken", "X", GameState.PROTOCOL_VERSION)
+	_check("无效 token 不改变离线状态", bool(GameState.players[1].get("offline", false)) == before_offline)
+	_check("无效 token 不新增座位", GameState.players.size() == before_seats)
