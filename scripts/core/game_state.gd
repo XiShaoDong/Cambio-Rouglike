@@ -13,6 +13,8 @@ signal command_rejected(code: int, message: String)
 signal match_aborted(code: int, message: String)
 signal card_exchange_animated(data: Dictionary)
 signal peek_highlighted(data: Dictionary)
+signal registered_token_received(token: String)
+signal resume_hand_received(hand: Array, pending: Dictionary)
 
 enum Phase { LOBBY, INITIAL_PEEK, TURN_DRAW, TURN_DECISION, Q_DECISION, SLAP_WINDOW, SLAP_EXCHANGE, GAME_OVER, SLAP_DUEL }
 
@@ -39,12 +41,15 @@ enum RejectCode {
 	HOST_DISCONNECTED,
 	NOT_DUEL_CONTESTANT,
 	ALREADY_STOPPED,
+	MATCH_SUSPENDED,
+	INVALID_TOKEN,
 }
 
 var phase: Phase = Phase.LOBBY
-var players: Dictionary = {}
-var turn_order: Array[int] = []
-var current_player_id := 0
+var players: Dictionary = {}  # key: seat_id(0..N-1)；value: {seat, peer_id, token, name, cards, has_acted, offline, health}
+var turn_order: Array[int] = []  # seat_id 顺序
+var current_player_id := 0  # seat_id
+var _next_seat := 0
 var deck: Array[String] = []
 var discard_pile: Array[String] = []
 var cards: Dictionary = {}
@@ -68,6 +73,7 @@ var match_id := ""
 var state_revision := 0
 var action_history: Dictionary = {}
 var last_seen_revision := -1
+var _registered_token := ""
 
 var peek: PeekSystem
 var effects: EffectSystem
@@ -110,23 +116,26 @@ func _on_joined_server() -> void:
 func _on_peer_left(peer_id: int) -> void:
 	if not multiplayer.is_server():
 		return
-	if not players.has(peer_id):
+	var seat := _peer_to_seat(peer_id)
+	if seat < 0:
 		return
-	var left_name: String = players[peer_id].get("name", "玩家")
-	players.erase(peer_id)
-	turn_order.erase(peer_id)
+	var left_name: String = players[seat].get("name", "玩家")
 	if phase == Phase.LOBBY:
+		players.erase(seat)
+		turn_order.erase(seat)
 		_broadcast_lobby()
 		return
-	_broadcast_abort(RejectCode.MATCH_ABORTED_PLAYER_LEFT, "%s 中途断线，当前对局已中止。" % left_name)
-	_reset_match()
-	_add_player(1, str(Network.local_profile.get("name", "房主")))
-	_broadcast_lobby()
+	# 阶段一/二：标记离线 + 条件暂停，不中止对局；保留 token 供断线重连认领
+	players[seat].offline = true
+	players[seat].peer_id = 0
+	_add_log("%s 断线，对局暂停等待重连（轮到其回合时冻结）。" % left_name)
+	_broadcast_state()
 
 func _reset_match() -> void:
 	phase = Phase.LOBBY
 	players.clear()
 	turn_order.clear()
+	_next_seat = 0
 	deck.clear()
 	discard_pile.clear()
 	cards.clear()
@@ -176,7 +185,28 @@ func _reject_code_message(code: int) -> String:
 		RejectCode.HOST_DISCONNECTED: return "房主已经断开。"
 		RejectCode.NOT_DUEL_CONTESTANT: return "你不是比拼候选人。"
 		RejectCode.ALREADY_STOPPED: return "你已经在比拼中按过 STOP。"
+		RejectCode.MATCH_SUSPENDED: return "对局已暂停（有玩家离线），等待重连或房主处理。"
+		RejectCode.INVALID_TOKEN: return "重连凭据无效或座位已被移除。"
 	return "操作被拒绝。"
+
+## 对局是否处于条件暂停（当前行动者离线 / 开局记忆阶段有人离线）。
+## 暂停期间拒绝一切玩家操作。
+func _is_suspended() -> bool:
+	if players.is_empty():
+		return false
+	if phase == Phase.INITIAL_PEEK:
+		for seat in turn_order:
+			if bool(players[seat].get("offline", false)):
+				return true
+		return false
+	return players.has(current_player_id) and bool(players[current_player_id].get("offline", false))
+
+## 条件暂停期间拒绝玩家操作的统一拦截；返回 true 表示已被拦截。
+func _guard_suspended(sender: int, action_id: String) -> bool:
+	if _is_suspended():
+		_reject(sender, RejectCode.MATCH_SUSPENDED, action_id)
+		return true
+	return false
 
 func _check_action_id(sender: int, action_id: String) -> bool:
 	if action_id.is_empty():
@@ -190,32 +220,66 @@ func _check_action_id(sender: int, action_id: String) -> bool:
 	action_history[sender] = seen
 	return true
 
-func _reject(sender: int, code: int, action_id := "") -> void:
+func _reject(seat: int, code: int, action_id := "") -> void:
 	var message := _reject_code_message(code)
-	if sender == 1:
+	var peer := int(players.get(seat, {}).get("peer_id", 0))
+	if peer <= 0:
+		return
+	if peer == 1:
 		command_rejected.emit(code, message)
 	else:
-		receive_rejected.rpc_id(sender, code, action_id, message)
+		receive_rejected.rpc_id(peer, code, action_id, message)
 
 func _add_player(peer_id: int, display_name: String) -> void:
+	var seat := _next_seat
+	_next_seat += 1
 	var safe_name := display_name.strip_edges().left(16)
 	if safe_name.is_empty():
-		safe_name = "玩家 %d" % peer_id
-	players[peer_id] = {
-		"id": peer_id,
+		safe_name = "玩家 %d" % (seat + 1)
+	players[seat] = {
+		"seat": seat,
+		"peer_id": peer_id,
+		"token": _new_token(),
 		"name": safe_name,
 		"cards": [],
 		"has_acted": false,
+		"offline": false,
 		"health": int(run_state.get("health", 3)),
 	}
-	turn_order.append(peer_id)
+	turn_order.append(seat)
+	# 注册时把 token 定向发给该玩家，用于断线后重连认领座位
+	var token: String = players[seat].token
+	if peer_id == 1:
+		_receive_registered(token)
+	else:
+		receive_registered.rpc_id(peer_id, token)
+
+## 生成一次性玩家身份 token（注册时分配，重连时凭它认领原座位）。
+func _new_token() -> String:
+	return "%08x%08x" % [randi(), randi()]
+
+## 由 token 反查 seat_id；找不到返回 -1。
+func _seat_by_token(token: String) -> int:
+	if token.is_empty():
+		return -1
+	for seat in players:
+		if str(players[seat].get("token", "")) == token:
+			return int(seat)
+	return -1
+
+## 由 peer_id 反查 seat_id；未注册/已离线（peer_id 已清 0）返回 -1。
+func _peer_to_seat(peer_id: int) -> int:
+	for seat in players:
+		if int(players[seat].get("peer_id", 0)) == peer_id:
+			return int(seat)
+	return -1
 
 @rpc("any_peer", "reliable")
 func request_register_player(display_name: String, protocol_version: int = KongGameState.PROTOCOL_VERSION) -> void:
 	if not multiplayer.is_server() or phase != Phase.LOBBY:
 		return
 	var sender := multiplayer.get_remote_sender_id()
-	if sender <= 0 or players.has(sender):
+	if sender <= 0 or _peer_to_seat(sender) >= 0:
 		return
 	if protocol_version != PROTOCOL_VERSION:
 		_reject(sender, RejectCode.PROTOCOL_VERSION_MISMATCH)
@@ -224,25 +288,78 @@ func request_register_player(display_name: String, protocol_version: int = KongG
 		_reject(sender, RejectCode.ROOM_FULL)
 		return
 	_add_player(sender, display_name)
-	_add_log("%s 加入了房间。" % players[sender].name)
+	_add_log("%s 加入了房间。" % players[_peer_to_seat(sender)].name)
 	_broadcast_lobby()
+
+## 断线玩家重连：凭 token 认领原座位，恢复对局状态。
+## 服务器把该玩家的手牌面 + 当前待处理牌定向发回，并广播最新快照。
+func request_reconnect(token: String, display_name: String, protocol_version: int = KongGameState.PROTOCOL_VERSION) -> void:
+	if multiplayer.is_server():
+		_server_reconnect(_peer_to_seat(1), token, display_name)
+	else:
+		server_reconnect.rpc_id(1, token, display_name, protocol_version)
+
+@rpc("any_peer", "reliable")
+func server_reconnect(token: String, display_name: String, protocol_version: int) -> void:
+	if multiplayer.is_server():
+		_server_reconnect(_peer_to_seat(multiplayer.get_remote_sender_id()), token, display_name, protocol_version)
+
+func _server_reconnect(sender_seat: int, token: String, display_name: String, protocol_version: int = KongGameState.PROTOCOL_VERSION) -> void:
+	var peer := multiplayer.get_remote_sender_id() if multiplayer.get_remote_sender_id() > 0 else 1
+	if protocol_version != PROTOCOL_VERSION:
+		_reject(sender_seat, RejectCode.PROTOCOL_VERSION_MISMATCH)
+		return
+	var seat := _seat_by_token(token)
+	if seat < 0:
+		_reject(sender_seat, RejectCode.INVALID_TOKEN)
+		return
+	if not players.has(seat) or not bool(players[seat].get("offline", false)):
+		_reject(sender_seat, RejectCode.INVALID_TOKEN)
+		return
+	# 认领座位：绑定新连接，恢复在线
+	players[seat].peer_id = peer
+	players[seat].offline = false
+	var safe_name := display_name.strip_edges().left(16)
+	if not safe_name.is_empty():
+		players[seat].name = safe_name
+	_add_log("%s 重新连接了对局。" % players[seat].name)
+	# 定向补发本人手牌面 + 当前待处理牌，再发一帧全量快照
+	_send_resume_hand(seat)
+	_broadcast_state()
+
+## 重连恢复：把 seat 玩家自己的手牌面 + 待处理抽牌私下发回（只发给本人）。
+func _send_resume_hand(seat: int) -> void:
+	var hand: Array = []
+	for card_id in players[seat].cards:
+		if str(card_id).is_empty():
+			hand.append({})
+		else:
+			hand.append(HiddenInfo.public_card(self, str(card_id)))
+	var pending: Dictionary = {}
+	if (phase == Phase.TURN_DECISION or phase == Phase.Q_DECISION) and not pending_draw.is_empty():
+		pending = HiddenInfo.public_card(self, str(pending_draw.card_id))
+	var peer := int(players[seat].peer_id)
+	if peer == 1:
+		_receive_resume_hand(hand, pending)
+	else:
+		receive_resume_hand.rpc_id(peer, hand, pending)
 
 func request_start_match() -> void:
 	if multiplayer.is_server():
-		_server_start_match(1)
+		_server_start_match(_peer_to_seat(1))
 	else:
 		server_start_match.rpc_id(1)
 
 @rpc("any_peer", "reliable")
 func server_start_match() -> void:
 	if multiplayer.is_server():
-		_server_start_match(multiplayer.get_remote_sender_id())
+		_server_start_match(_peer_to_seat(multiplayer.get_remote_sender_id()))
 
 func _server_start_match(sender: int) -> void:
 	if phase != Phase.LOBBY:
 		_reject(sender, RejectCode.ROOM_NOT_OPEN)
 		return
-	if sender != 1:
+	if sender != 0:
 		_reject(sender, RejectCode.NOT_HOST)
 		return
 	if players.size() < KongRules.MIN_PLAYERS:
@@ -250,11 +367,11 @@ func _server_start_match(sender: int) -> void:
 		return
 	match_id = _new_match_id()
 	_create_deck()
-	for peer_id in turn_order:
-		players[peer_id].cards.clear()
-		players[peer_id].has_acted = false
+	for seat in turn_order:
+		players[seat].cards.clear()
+		players[seat].has_acted = false
 		for _slot in KongRules.HAND_SIZE:
-			players[peer_id].cards.append(_draw_from_deck())
+			players[seat].cards.append(_draw_from_deck())
 	phase = Phase.INITIAL_PEEK
 	initial_confirmed.clear()
 	_add_log("对局开始：请记住自己下方的两张牌。")
@@ -292,18 +409,20 @@ func _draw_from_deck() -> String:
 
 func request_initial_ready() -> void:
 	if multiplayer.is_server():
-		_server_initial_ready(1)
+		_server_initial_ready(_peer_to_seat(1))
 	else:
 		server_initial_ready.rpc_id(1)
 
 @rpc("any_peer", "reliable")
 func server_initial_ready() -> void:
 	if multiplayer.is_server():
-		_server_initial_ready(multiplayer.get_remote_sender_id())
+		_server_initial_ready(_peer_to_seat(multiplayer.get_remote_sender_id()))
 
 func _server_initial_ready(sender: int) -> void:
 	if phase != Phase.INITIAL_PEEK:
 		_reject(sender, RejectCode.INVALID_PHASE)
+		return
+	if _guard_suspended(sender, ""):
 		return
 	if not players.has(sender):
 		return
@@ -321,18 +440,20 @@ func _server_initial_ready(sender: int) -> void:
 
 func request_take(source: String, action_id := "") -> void:
 	if multiplayer.is_server():
-		_server_take(1, source, action_id)
+		_server_take(_peer_to_seat(1), source, action_id)
 	else:
 		server_take.rpc_id(1, source, action_id)
 
 @rpc("any_peer", "reliable")
 func server_take(source: String, action_id: String) -> void:
 	if multiplayer.is_server():
-		_server_take(multiplayer.get_remote_sender_id(), source, action_id)
+		_server_take(_peer_to_seat(multiplayer.get_remote_sender_id()), source, action_id)
 
 func _server_take(sender: int, source: String, action_id := "") -> void:
 	if phase != Phase.TURN_DRAW:
 		_reject(sender, RejectCode.INVALID_PHASE, action_id)
+		return
+	if _guard_suspended(sender, action_id):
 		return
 	if sender != current_player_id:
 		_reject(sender, RejectCode.NOT_CURRENT_PLAYER, action_id)
@@ -362,18 +483,20 @@ func _server_take(sender: int, source: String, action_id := "") -> void:
 
 func request_replace(slot: int, action_id := "") -> void:
 	if multiplayer.is_server():
-		_server_replace(1, slot, action_id)
+		_server_replace(_peer_to_seat(1), slot, action_id)
 	else:
 		server_replace.rpc_id(1, slot, action_id)
 
 @rpc("any_peer", "reliable")
 func server_replace(slot: int, action_id: String) -> void:
 	if multiplayer.is_server():
-		_server_replace(multiplayer.get_remote_sender_id(), slot, action_id)
+		_server_replace(_peer_to_seat(multiplayer.get_remote_sender_id()), slot, action_id)
 
 func _server_replace(sender: int, slot: int, action_id := "") -> void:
 	if phase != Phase.TURN_DECISION:
 		_reject(sender, RejectCode.INVALID_PHASE, action_id)
+		return
+	if _guard_suspended(sender, action_id):
 		return
 	if sender != current_player_id:
 		_reject(sender, RejectCode.NOT_CURRENT_PLAYER, action_id)
@@ -397,18 +520,20 @@ func _server_replace(sender: int, slot: int, action_id := "") -> void:
 
 func request_discard_draw(action_id := "") -> void:
 	if multiplayer.is_server():
-		_server_discard_draw(1, action_id)
+		_server_discard_draw(_peer_to_seat(1), action_id)
 	else:
 		server_discard_draw.rpc_id(1, action_id)
 
 @rpc("any_peer", "reliable")
 func server_discard_draw(action_id: String) -> void:
 	if multiplayer.is_server():
-		_server_discard_draw(multiplayer.get_remote_sender_id(), action_id)
+		_server_discard_draw(_peer_to_seat(multiplayer.get_remote_sender_id()), action_id)
 
 func _server_discard_draw(sender: int, action_id := "") -> void:
 	if phase != Phase.TURN_DECISION:
 		_reject(sender, RejectCode.INVALID_PHASE, action_id)
+		return
+	if _guard_suspended(sender, action_id):
 		return
 	if sender != current_player_id:
 		_reject(sender, RejectCode.NOT_CURRENT_PLAYER, action_id)
@@ -425,18 +550,20 @@ func _server_discard_draw(sender: int, action_id := "") -> void:
 
 func request_use_ability(data: Dictionary, action_id := "") -> void:
 	if multiplayer.is_server():
-		_server_use_ability(1, data, action_id)
+		_server_use_ability(_peer_to_seat(1), data, action_id)
 	else:
 		server_use_ability.rpc_id(1, data, action_id)
 
 @rpc("any_peer", "reliable")
 func server_use_ability(data: Dictionary, action_id: String) -> void:
 	if multiplayer.is_server():
-		_server_use_ability(multiplayer.get_remote_sender_id(), data, action_id)
+		_server_use_ability(_peer_to_seat(multiplayer.get_remote_sender_id()), data, action_id)
 
 func _server_use_ability(sender: int, data: Dictionary, action_id := "") -> void:
 	if phase != Phase.TURN_DECISION:
 		_reject(sender, RejectCode.INVALID_PHASE, action_id)
+		return
+	if _guard_suspended(sender, action_id):
 		return
 	if sender != current_player_id:
 		_reject(sender, RejectCode.NOT_CURRENT_PLAYER, action_id)
@@ -455,18 +582,20 @@ func _server_use_ability(sender: int, data: Dictionary, action_id := "") -> void
 
 func request_q_decision(exchange: bool, own_slot := -1, action_id := "") -> void:
 	if multiplayer.is_server():
-		_server_q_decision(1, exchange, own_slot, action_id)
+		_server_q_decision(_peer_to_seat(1), exchange, own_slot, action_id)
 	else:
 		server_q_decision.rpc_id(1, exchange, own_slot, action_id)
 
 @rpc("any_peer", "reliable")
 func server_q_decision(exchange: bool, own_slot: int, action_id: String) -> void:
 	if multiplayer.is_server():
-		_server_q_decision(multiplayer.get_remote_sender_id(), exchange, own_slot, action_id)
+		_server_q_decision(_peer_to_seat(multiplayer.get_remote_sender_id()), exchange, own_slot, action_id)
 
 func _server_q_decision(sender: int, exchange: bool, own_slot: int, action_id := "") -> void:
 	if phase != Phase.Q_DECISION:
 		_reject(sender, RejectCode.INVALID_PHASE, action_id)
+		return
+	if _guard_suspended(sender, action_id):
 		return
 	if sender != int(q_context.get("actor", 0)):
 		_reject(sender, RejectCode.NOT_CURRENT_PLAYER, action_id)
@@ -491,59 +620,143 @@ func _server_q_decision(sender: int, exchange: bool, own_slot: int, action_id :=
 
 func request_slap(target_player: int, slot: int, action_id := "") -> void:
 	if multiplayer.is_server():
-		_server_slap(1, target_player, slot, action_id)
+		_server_slap(_peer_to_seat(1), target_player, slot, action_id)
 	else:
 		server_slap.rpc_id(1, target_player, slot, action_id)
 
 @rpc("any_peer", "reliable")
 func server_slap(target_player: int, slot: int, action_id: String) -> void:
 	if multiplayer.is_server():
-		_server_slap(multiplayer.get_remote_sender_id(), target_player, slot, action_id)
+		_server_slap(_peer_to_seat(multiplayer.get_remote_sender_id()), target_player, slot, action_id)
 
 func _server_slap(sender: int, target_player: int, slot: int, action_id := "") -> void:
+	if _guard_suspended(sender, action_id):
+		return
 	slap.attempt(sender, target_player, slot, action_id)
 
 func request_slap_exchange(own_slot: int, action_id := "") -> void:
 	if multiplayer.is_server():
-		_server_slap_exchange(1, own_slot, action_id)
+		_server_slap_exchange(_peer_to_seat(1), own_slot, action_id)
 	else:
 		server_slap_exchange.rpc_id(1, own_slot, action_id)
 
 @rpc("any_peer", "reliable")
 func server_slap_exchange(own_slot: int, action_id: String) -> void:
 	if multiplayer.is_server():
-		_server_slap_exchange(multiplayer.get_remote_sender_id(), own_slot, action_id)
+		_server_slap_exchange(_peer_to_seat(multiplayer.get_remote_sender_id()), own_slot, action_id)
 
 func _server_slap_exchange(sender: int, own_slot: int, action_id := "") -> void:
+	if _guard_suspended(sender, action_id):
+		return
 	slap.exchange(sender, own_slot, action_id)
 
 func request_slap_duel_stop(action_id := "") -> void:
 	if multiplayer.is_server():
-		_server_slap_duel_stop(1, action_id)
+		_server_slap_duel_stop(_peer_to_seat(1), action_id)
 	else:
 		server_slap_duel_stop.rpc_id(1, action_id)
 
 @rpc("any_peer", "reliable")
 func server_slap_duel_stop(action_id: String) -> void:
 	if multiplayer.is_server():
-		_server_slap_duel_stop(multiplayer.get_remote_sender_id(), action_id)
+		_server_slap_duel_stop(_peer_to_seat(multiplayer.get_remote_sender_id()), action_id)
 
 func _server_slap_duel_stop(sender: int, action_id := "") -> void:
+	if _guard_suspended(sender, action_id):
+		return
 	slap.duel_stop(sender, action_id)
 
 func request_kongbaya(action_id := "") -> void:
 	if multiplayer.is_server():
-		_server_kongbaya(1, action_id)
+		_server_kongbaya(_peer_to_seat(1), action_id)
 	else:
 		server_kongbaya.rpc_id(1, action_id)
 
 @rpc("any_peer", "reliable")
 func server_kongbaya(action_id: String) -> void:
 	if multiplayer.is_server():
-		_server_kongbaya(multiplayer.get_remote_sender_id(), action_id)
+		_server_kongbaya(_peer_to_seat(multiplayer.get_remote_sender_id()), action_id)
 
 func _server_kongbaya(sender: int, action_id := "") -> void:
+	if _guard_suspended(sender, action_id):
+		return
 	kongbaya.declare(sender, action_id)
+
+## 房主踢出离线玩家并继续对局（仅房主=seat0）。被踢者若为当前玩家则轮转到下一玩家。
+func request_kick_offline(target_seat: int) -> void:
+	if multiplayer.is_server():
+		if _peer_to_seat(1) == 0:
+			_kick_offline_seat(target_seat)
+	else:
+		server_kick_offline.rpc_id(1, target_seat)
+
+@rpc("any_peer", "reliable")
+func server_kick_offline(target_seat: int) -> void:
+	if multiplayer.is_server():
+		if _peer_to_seat(multiplayer.get_remote_sender_id()) == 0:
+			_kick_offline_seat(target_seat)
+
+func _kick_offline_seat(target_seat: int) -> void:
+	if not players.has(target_seat) or not bool(players[target_seat].get("offline", false)):
+		return
+	var name: String = players[target_seat].name
+	players.erase(target_seat)
+	turn_order.erase(target_seat)
+	initial_confirmed.erase(target_seat)
+	final_queue.erase(target_seat)
+	if kong_caller == target_seat:
+		kong_caller = 0
+	_add_log("%s 已被房主移出对局。" % name)
+	# 剩余人数不足以继续对局 → 直接中止回大厅（不可把仅剩 1 人的对局留在空转）
+	if players.size() < KongRules.MIN_PLAYERS:
+		_server_abort_match()
+		return
+	if current_player_id == target_seat:
+		# 当前行动者被踢：把当前指针退到上一行动者，再 advance 到下一个在线者
+		if turn_order.is_empty():
+			_finish_game("所有玩家已离开对局。")
+			return
+		var idx := turn_order.find(current_player_id)
+		var prev_idx := (idx - 1) % turn_order.size() if idx >= 0 else 0
+		current_player_id = turn_order[prev_idx]
+		_advance_turn()
+	else:
+		_broadcast_state()
+
+## 房主中止当前对局并回到初始大厅（仅房主=seat0）。
+## 中止后关闭服务器连接：玩家已退出、无法重连（阶段二前），房间不再保留，
+## 否则房间会挂起（无法重连也无法销毁）。回到初始界面可重新建房/加入。
+func request_abort_match() -> void:
+	if not multiplayer.is_server() or not Network.is_host:
+		return
+	_server_abort_match()
+
+@rpc("any_peer", "reliable")
+func server_abort_match() -> void:
+	if multiplayer.is_server():
+		_server_abort_match()
+
+func _server_abort_match() -> void:
+	_broadcast_abort(RejectCode.MATCH_ABORTED_PLAYER_LEFT, "房主中止了对局。")
+	_reset_match()
+	Network.disconnect_game(false)
+
+## 房主解散房间（仅房主=seat0）：通知所有玩家回大厅并关闭服务器连接。
+## 销毁房间后房主/客户端回到初始大厅界面，可重新建房或加入其他房间。
+func request_close_room() -> void:
+	if not multiplayer.is_server() or not Network.is_host:
+		return
+	_server_close_room()
+
+@rpc("any_peer", "reliable")
+func server_close_room() -> void:
+	if multiplayer.is_server():
+		_server_close_room()
+
+func _server_close_room() -> void:
+	_broadcast_abort(RejectCode.HOST_DISCONNECTED, "房间已被房主解散。")
+	_reset_match()
+	Network.disconnect_game(false)
 
 func _discard_pending_and_open_slap(_resume: String) -> void:
 	var card_id: String = pending_draw.card_id
@@ -626,14 +839,14 @@ func _is_lower_score(a: Dictionary, b: Dictionary) -> bool:
 func _same_score(a: Dictionary, b: Dictionary) -> bool:
 	return ScoreSystem.same_score(a, b)
 
-func _valid_slot(peer_id: int, slot: int) -> bool:
-	return players.has(peer_id) and slot >= 0 and slot < players[peer_id].cards.size()
+func _valid_slot(seat: int, slot: int) -> bool:
+	return players.has(seat) and slot >= 0 and slot < players[seat].cards.size()
 
 func _card_public(card_id: String) -> Dictionary:
 	return HiddenInfo.public_card(self, card_id)
 
-func _player_snapshot(peer_id: int, reveal_all: bool, viewer_id := 0, peek_slots: Array[int] = []) -> Dictionary:
-	return HiddenInfo._player_snapshot(self, peer_id, reveal_all, viewer_id, peek_slots)
+func _player_snapshot(seat: int, reveal_all: bool, viewer_id := 0, peek_slots: Array[int] = []) -> Dictionary:
+	return HiddenInfo._player_snapshot(self, seat, reveal_all, viewer_id, peek_slots)
 
 func _snapshot_for(viewer_id: int) -> Dictionary:
 	return HiddenInfo.snapshot_for(self, viewer_id)
@@ -643,67 +856,80 @@ func _phase_name() -> String:
 
 func _lobby_snapshot() -> Dictionary:
 	var entries: Array = []
-	for peer_id in turn_order:
-		entries.append({"id": peer_id, "name": players[peer_id].name})
-	return {"players": entries, "host_id": 1, "min_players": KongRules.MIN_PLAYERS, "max_players": KongRules.MAX_PLAYERS}
+	for seat in turn_order:
+		entries.append({"id": seat, "name": players[seat].name})
+	return {"players": entries, "host_id": 0, "min_players": KongRules.MIN_PLAYERS, "max_players": KongRules.MAX_PLAYERS}
 
 func _broadcast_lobby() -> void:
 	var lobby := _lobby_snapshot()
 	_receive_lobby(lobby)
-	for peer_id in players.keys():
-		if int(peer_id) != 1:
-			receive_lobby.rpc_id(int(peer_id), lobby)
+	for seat in players.keys():
+		var peer := int(players[seat].peer_id)
+		if peer > 1:
+			receive_lobby.rpc_id(peer, lobby)
 
 func _broadcast_state() -> void:
 	state_revision += 1
-	var snapshots: Dictionary = {}
-	for peer_id in players.keys():
-		snapshots[int(peer_id)] = _snapshot_for(int(peer_id))
-	for peer_id in snapshots:
-		if peer_id == 1:
-			_receive_state.call_deferred(snapshots[peer_id])
+	var by_peer: Dictionary = {}
+	for seat in players.keys():
+		var peer := int(players[seat].peer_id)
+		if peer <= 0:
+			continue  # 离线玩家不广播
+		by_peer[peer] = _snapshot_for(int(seat))
+	for peer in by_peer:
+		if peer == 1:
+			_receive_state.call_deferred(by_peer[peer])
 		else:
-			receive_state.rpc_id(peer_id, snapshots[peer_id])
+			receive_state.rpc_id(peer, by_peer[peer])
 
 func _broadcast_abort(code: int, message := "") -> void:
 	if message.is_empty():
 		message = _reject_code_message(code)
-	for peer_id in players.keys():
-		if int(peer_id) == 1:
-			match_aborted.emit(code, message)
-		else:
-			receive_match_aborted.rpc_id(int(peer_id), code, message)
+	match_aborted.emit(code, message)
+	for seat in players.keys():
+		var peer := int(players[seat].peer_id)
+		if peer > 1:
+			receive_match_aborted.rpc_id(peer, code, message)
 
-func _send_reveal(peer_id: int, title: String, revealed_cards: Array, target: Dictionary = {}) -> void:
+func _send_reveal(seat: int, title: String, revealed_cards: Array, target: Dictionary = {}) -> void:
 	if peek != null:
-		peek.send_reveal(peer_id, title, revealed_cards, target)
+		peek.send_reveal(seat, title, revealed_cards, target)
 	else:
 		_receive_reveal(title, revealed_cards, target)
 
 ## 广播交换动画事件到所有玩家（在 _broadcast_state 之前调用，保证 client 先用旧布局定位）。
 func _broadcast_exchange(data: Dictionary) -> void:
-	for peer_id in players.keys():
-		if int(peer_id) == 1:
+	for seat in players.keys():
+		var peer := int(players[seat].peer_id)
+		if peer <= 0:
+			continue
+		if peer == 1:
 			_receive_exchange_animated(data)
 		else:
-			receive_exchange_animated.rpc_id(int(peer_id), data)
+			receive_exchange_animated.rpc_id(peer, data)
 
 ## 广播查看高亮事件给除 viewer 外的所有玩家（不含牌面，仅标记被查看牌的位置）。
 func _broadcast_peek_highlight(viewer: int, data: Dictionary) -> void:
 	print("[peek_glow] server broadcast viewer=%d -> %s" % [viewer, str(data)])
-	for peer_id in players.keys():
-		if int(peer_id) == viewer:
+	for seat in players.keys():
+		if int(seat) == viewer:
 			continue
-		if int(peer_id) == 1:
+		var peer := int(players[seat].peer_id)
+		if peer <= 0:
+			continue
+		if peer == 1:
 			_receive_peek_highlight(data)
 		else:
-			receive_peek_highlight.rpc_id(int(peer_id), data)
+			receive_peek_highlight.rpc_id(peer, data)
 
-func _send_toast(peer_id: int, message: String) -> void:
-	if peer_id == 1:
+func _send_toast(seat: int, message: String) -> void:
+	var peer := int(players.get(seat, {}).get("peer_id", 0))
+	if peer <= 0:
+		return
+	if peer == 1:
 		toast_received.emit(message)
 	else:
-		receive_toast.rpc_id(peer_id, message)
+		receive_toast.rpc_id(peer, message)
 
 func _add_log(message: String) -> void:
 	event_log.push_front(message)
@@ -722,6 +948,13 @@ func _receive_state(snapshot: Dictionary) -> void:
 
 func _receive_reveal(title: String, revealed_cards: Array, target: Dictionary = {}) -> void:
 	private_reveal_received.emit(title, revealed_cards, target)
+
+func _receive_registered(token: String) -> void:
+	_registered_token = token
+	registered_token_received.emit(token)
+
+func _receive_resume_hand(hand: Array, pending: Dictionary) -> void:
+	resume_hand_received.emit(hand, pending)
 
 func _receive_exchange_animated(data: Dictionary) -> void:
 	card_exchange_animated.emit(data)
@@ -752,6 +985,17 @@ func receive_peek_highlight(data: Dictionary) -> void:
 @rpc("authority", "call_remote", "reliable")
 func receive_toast(message: String) -> void:
 	toast_received.emit(message)
+
+## 服务器把玩家身份 token 发给刚注册的玩家（仅本人），用于断线后重连认领座位。
+@rpc("authority", "call_remote", "reliable")
+func receive_registered(token: String) -> void:
+	_registered_token = token
+	registered_token_received.emit(token)
+
+## 服务器重连时把本人手牌面 + 待处理牌定向发回（仅本人）。
+@rpc("authority", "call_remote", "reliable")
+func receive_resume_hand(hand: Array, pending: Dictionary) -> void:
+	resume_hand_received.emit(hand, pending)
 
 @rpc("authority", "call_remote", "reliable")
 func receive_rejected(code: int, _action_id: String, message: String) -> void:

@@ -5,6 +5,28 @@ extends Control
 
 var dev: DevTools
 
+func _notification(what: int) -> void:
+	# 点击窗口关闭：拦截默认退出。若仍在房间/对局中 → 回初始大厅；已在初始大厅 → 真正退出
+	if what == NOTIFICATION_WM_CLOSE_REQUEST:
+		if _in_room():
+			_leave_to_main_menu()
+		else:
+			get_tree().quit()
+
+## 是否处于房间/对局连接中（ENet 连接建立，区别于初始大厅的 Offline peer）。
+func _in_room() -> bool:
+	var peer := multiplayer.multiplayer_peer
+	return peer is ENetMultiplayerPeer
+
+## 从房间/对局回到初始大厅界面（点窗口关闭时调用）：
+## 房主解散房间通知全员；客户端退出房间断开连接。不真正退出程序。
+func _leave_to_main_menu() -> void:
+	if Network.is_host:
+		GameState.request_close_room()
+	else:
+		lobby._leave_room()
+	_set_status("已回到大厅。")
+
 func _unhandled_input(event: InputEvent) -> void:
 	# 比拼中按空格 = 停止（与 STOP 按钮等效）
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_SPACE:
@@ -73,6 +95,8 @@ var background: ColorRect
 var board: Control
 var is_dev_join := false
 var start_button: Button = null
+var close_room_button: Button = null
+var leave_room_button: Button = null
 var _cards := CardFactory.new()
 var interaction: GameInteraction
 var lobby: LobbyView
@@ -94,6 +118,15 @@ var _peek_glow_slots: Dictionary = {}
 var _slap_reveal_lock := false
 var _duel_panel: Control = null
 var settings_menu: Control = null
+var _my_token := ""
+var _rejoin_addr := ""
+var _rejoin_port := KongNetwork.DEFAULT_PORT
+var _was_in_match := false
+var _reconnect_panel: Control = null
+var _resume_hand: Array = []
+var _resume_pending: Dictionary = {}
+var _resume_hand_map: Dictionary = {}
+var _reconnect_expected := false
 
 ## 标记某个玩家槽位正在动画（渲染时该槽位显示虚线占位，不显示原卡）。
 func mark_anim_slot(pid: int, slot: int) -> void:
@@ -127,6 +160,8 @@ func purge_slap_pending_flips() -> void:
 	_pending_flips = remaining
 
 func _ready() -> void:
+	# 拦截窗口关闭：在房间/对局中时先回初始大厅而非直接退出
+	get_tree().set_auto_accept_quit(false)
 	# 启动即应用持久化主题，保证 UI 用正确 token 构建
 	UITheme.switch_theme(str(Settings.get_setting("display", "theme", "dark")))
 	interaction = GameInteraction.new(self)
@@ -144,9 +179,13 @@ func _ready() -> void:
 	GameState.toast_received.connect(_show_toast)
 	GameState.command_rejected.connect(_on_command_rejected)
 	GameState.match_aborted.connect(_on_match_aborted)
+	GameState.registered_token_received.connect(_on_registered_token)
+	GameState.resume_hand_received.connect(_on_resume_hand)
 	Network.connection_status_changed.connect(_set_status)
 	Network.connection_failed.connect(_show_toast)
+	Network.joined_server.connect(_on_joined_server_for_reconnect)
 	_apply_dev_join()
+	_restore_identity()
 	_set_status("输入昵称后创建或加入局域网房间。默认端口 7007。")
 
 var _action_counter := 0
@@ -160,14 +199,131 @@ func _on_command_rejected(_code: int, message: String) -> void:
 func _on_match_aborted(_code: int, message: String) -> void:
 	latest_state.clear()
 	last_phase = -1
+	_was_in_match = false
 	if interaction != null:
 		interaction.action_mode = ""
 		interaction.selected_target = 0
 		interaction.selected_own_slot = -1
 		interaction.selected_their_slot = -1
-	lobby_panel.visible = true
-	game_panel.visible = false
+	lobby.reset_lobby()
 	_set_status("对局中止：%s" % message)
+	# 断线后回大厅：若持有 token，在初始界面显示"重连上次对局"入口
+	if not Network.is_host and not _my_token.is_empty():
+		_render_rejoin_entry()
+
+## 收到服务器发放的身份 token：保存内存 + 持久化（user://identity.cfg）。
+func _on_registered_token(token: String) -> void:
+	_my_token = token
+	_save_identity()
+
+## 重连成功：服务器补回本人手牌面 + 待处理牌，刷新界面。
+func _on_resume_hand(hand: Array, pending: Dictionary) -> void:
+	_hide_reconnect_panel()
+	_remove_rejoin_entry()
+	_resume_hand_map.clear()
+	for index in hand.size():
+		var card: Dictionary = hand[index]
+		if not card.is_empty():
+			_resume_hand_map[index] = card
+	_resume_pending = pending
+	if not latest_state.is_empty():
+		_render_game()
+
+## 从 user://identity.cfg 恢复上次的 token 与地址。
+func _restore_identity() -> void:
+	var cfg := ConfigFile.new()
+	if cfg.load("user://identity.cfg") != OK:
+		return
+	_my_token = str(cfg.get_value("identity", "last_token", ""))
+	_rejoin_addr = str(cfg.get_value("identity", "last_addr", ""))
+	_rejoin_port = int(cfg.get_value("identity", "last_port", KongNetwork.DEFAULT_PORT))
+
+func _save_identity() -> void:
+	var cfg := ConfigFile.new()
+	cfg.load("user://identity.cfg")
+	cfg.set_value("identity", "last_token", _my_token)
+	cfg.set_value("identity", "last_addr", _rejoin_addr)
+	cfg.set_value("identity", "last_port", _rejoin_port)
+	cfg.save("user://identity.cfg")
+
+## 对局中与房主断开 → 若已保存 token，弹重连入口（非房主）。
+func _on_server_disconnected_in_match() -> void:
+	if not _was_in_match or Network.is_host or _my_token.is_empty():
+		return
+	_show_reconnect_panel("与房主连接断开，可重连继续对局")
+
+## 构建重连面板（覆盖层）。
+func _show_reconnect_panel(title: String) -> void:
+	if _reconnect_panel != null and is_instance_valid(_reconnect_panel):
+		return
+	var panel := PanelContainer.new()
+	panel.name = "ReconnectPanel"
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 24)
+	margin.add_theme_constant_override("margin_right", 24)
+	margin.add_theme_constant_override("margin_top", 20)
+	margin.add_theme_constant_override("margin_bottom", 20)
+	panel.add_child(margin)
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 12)
+	margin.add_child(vb)
+	var lbl := Label.new()
+	lbl.text = title
+	lbl.add_theme_font_size_override("font_size", 18)
+	lbl.add_theme_color_override("font_color", UITheme.color("accent"))
+	vb.add_child(lbl)
+	var addr := Label.new()
+	addr.text = "房主：%s:%d" % [_rejoin_addr, _rejoin_port]
+	addr.add_theme_color_override("font_color", UITheme.color("text_secondary"))
+	vb.add_child(addr)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	vb.add_child(row)
+	var btn_reconnect: Button = _button("重连")
+	btn_reconnect.pressed.connect(_do_reconnect)
+	row.add_child(btn_reconnect)
+	var btn_later: Button = _button("稍后")
+	btn_later.pressed.connect(_hide_reconnect_panel)
+	row.add_child(btn_later)
+	overlay.add_child(panel)
+	_reconnect_panel = panel
+
+func _hide_reconnect_panel() -> void:
+	if _reconnect_panel != null and is_instance_valid(_reconnect_panel):
+		_reconnect_panel.queue_free()
+	_reconnect_panel = null
+
+## 执行重连：记录当前输入框的地址/端口（供下次），重新加入并用 token 认领座位。
+func _do_reconnect() -> void:
+	if _my_token.is_empty():
+		_hide_reconnect_panel()
+		return
+	_rejoin_addr = address_input.text.strip_edges() if not address_input.text.strip_edges().is_empty() else _rejoin_addr
+	_rejoin_port = _entered_port()
+	_save_identity()
+	_reconnect_expected = true
+	Network.join_game(_rejoin_addr, {"name": _entered_name()}, _rejoin_port)
+
+func _on_joined_server_for_reconnect() -> void:
+	# 连接成功：若本机持有 token（曾注册过，退出/断线后想回原对局），
+	# 先尝试凭 token 认领原座位；token 无效时服务端会拒绝，不影响 LOBBY 阶段的正常注册。
+	if not _my_token.is_empty():
+		_reconnect_expected = false
+		GameState.request_reconnect(_my_token, _entered_name())
+
+## 在初始大厅显示"重连上次对局"入口（断线后持有 token 时）。
+func _render_rejoin_entry() -> void:
+	_remove_rejoin_entry()
+	var btn: Button = _button("重连上次对局")
+	btn.name = "RejoinEntry"
+	btn.pressed.connect(_do_reconnect)
+	lobby_panel.add_child(btn)
+
+func _remove_rejoin_entry() -> void:
+	for child in lobby_panel.get_children():
+		if child.name == "RejoinEntry":
+			child.queue_free()
+			break
 
 func _build_interface() -> void:
 	background = ColorRect.new()
@@ -241,6 +397,8 @@ func _entered_port() -> int:
 
 func _on_state_updated(state: Dictionary) -> void:
 	latest_state = state
+	# 非 LOBBY 阶段视为对局中（用于断线后判断是否提示重连）
+	_was_in_match = int(state.phase) != 0
 	if interaction != null:
 		interaction.reset_for_phase(state)
 	if int(state.phase) != last_phase:

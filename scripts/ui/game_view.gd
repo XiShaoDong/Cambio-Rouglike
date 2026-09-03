@@ -242,6 +242,9 @@ func _render_controls(phase: int, is_current: bool) -> void:
 	# 清空 hint 区域的操作按钮
 	for child in main._hint_actions.get_children():
 		child.queue_free()
+	if bool(main.latest_state.get("suspended", false)):
+		_render_suspended_controls()
+		return
 	if phase == PHASE_Q_DECISION and is_current:
 		var keep: Button = main._button("Q：不交换")
 		keep.pressed.connect(func(): GameState.request_q_decision(false, -1, main._next_action_id()))
@@ -264,6 +267,41 @@ func _render_controls(phase: int, is_current: bool) -> void:
 		summary.add_theme_font_size_override("font_size", 20)
 		summary.add_theme_color_override("font_color", UITheme.color("success"))
 		main.controls_box.add_child(summary)
+
+## 对局暂停（有玩家离线）时的房主操作：踢出离线者继续 / 中止回大厅。
+func _render_suspended_controls() -> void:
+	var note := Label.new()
+	note.text = "对局已暂停（有玩家离线）"
+	note.add_theme_color_override("font_color", UITheme.color("danger"))
+	main.controls_box.add_child(note)
+	var offline_names: Array[String] = []
+	for seat in main.latest_state.get("offline_players", []):
+		for p in main.latest_state.players:
+			if int(p.id) == int(seat):
+				offline_names.append(str(p.name))
+				break
+	if not offline_names.is_empty():
+		var who := Label.new()
+		who.text = "离线：%s" % "、".join(offline_names)
+		who.add_theme_color_override("font_color", UITheme.color("text_secondary"))
+		main.controls_box.add_child(who)
+	if not Network.is_host:
+		return
+	var kick: Button = main._button("踢出离线者并继续")
+	kick.pressed.connect(func():
+		var first_offline := -1
+		var offs: Array = main.latest_state.get("offline_players", [])
+		if not offs.is_empty():
+			first_offline = int(offs[0])
+		if first_offline >= 0:
+			GameState.request_kick_offline(first_offline))
+	main.controls_box.add_child(kick)
+	var abort: Button = main._button("中止并回大厅")
+	abort.pressed.connect(GameState.request_abort_match)
+	main.controls_box.add_child(abort)
+	var close: Button = main._button("解散房间")
+	close.pressed.connect(GameState.request_close_room)
+	main.controls_box.add_child(close)
 
 func _render_players(viewer: int) -> void:
 	var all_areas: Array = [main.top_player_box, main.left_player_box, main.right_player_box, main.bottom_player_box]
@@ -370,6 +408,11 @@ func _render_card_slot(container: Control, player: Dictionary, slot_index: int, 
 		main._card_slots[pid][slot_index] = empty
 		return
 	var card_button: Button = main._make_card_button(slot.get("card", {}), card_size)
+	# 重连恢复：本人手牌在快照中无牌面时，用服务器补回的恢复手牌显示
+	if slot.get("card", {}).is_empty() and int(player.id) == int(main.latest_state.get("viewer_id", 0)):
+		var resume: Dictionary = main._resume_hand_map.get(slot_index, {})
+		if not resume.is_empty():
+			card_button = main._make_card_button(resume, card_size)
 	card_button.tooltip_text = "记忆牌面后，点击以执行当前操作"
 	card_button.pressed.connect(main._on_card_pressed.bind(pid, slot_index))
 	main._highlight(card_button, main._card_actionable(pid, slot_index))

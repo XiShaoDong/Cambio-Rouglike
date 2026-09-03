@@ -72,6 +72,7 @@ func join_game() -> void:
 	if address.is_empty():
 		main._show_toast("请输入房主的局域网 IP。")
 		return
+	main._reconnect_expected = false  # 正常加入，不触发重连
 	Network.join_game(address, {"name": main._entered_name()}, main._entered_port())
 
 func dev_launch_second() -> void:
@@ -105,6 +106,24 @@ func apply_dev_join() -> void:
 	Network.join_game(address, {"name": "开发者2"}, port)
 	main._set_status("开发者模式：正在自动加入 %s:%d…" % [address, port])
 
+## 回到初始大厅：清空房主操作按钮与成员列表（解散房间/中止/退出房间后调用）。
+func reset_lobby() -> void:
+	if main.start_button != null:
+		if is_instance_valid(main.start_button):
+			main.start_button.queue_free()
+		main.start_button = null
+	if main.close_room_button != null:
+		if is_instance_valid(main.close_room_button):
+			main.close_room_button.queue_free()
+		main.close_room_button = null
+	if main.leave_room_button != null:
+		if is_instance_valid(main.leave_room_button):
+			main.leave_room_button.queue_free()
+		main.leave_room_button = null
+	main.lobby_members.text = ""
+	main.lobby_panel.visible = true
+	main.game_panel.visible = false
+
 ## 刷新房间成员列表。
 func update_lobby(lobby: Dictionary) -> void:
 	main.latest_lobby = lobby
@@ -122,4 +141,29 @@ func update_lobby(lobby: Dictionary) -> void:
 			main.start_button.pressed.connect(GameState.request_start_match)
 			main.lobby_panel.add_child(main.start_button)
 		main.start_button.disabled = lobby.players.size() < int(lobby.min_players)
+		# 房主可解散房间：通知全员回大厅并关闭服务器，回到初始界面
+		if main.close_room_button == null:
+			main.close_room_button = main._button("解散房间")
+			main.close_room_button.name = "CloseRoom"
+			main.close_room_button.pressed.connect(GameState.request_close_room)
+			main.lobby_panel.add_child(main.close_room_button)
+	else:
+		# 客户端可主动退出房间：断开连接回到初始大厅
+		if main.leave_room_button == null:
+			main.leave_room_button = main._button("退出房间")
+			main.leave_room_button.name = "LeaveRoom"
+			main.leave_room_button.pressed.connect(_leave_room)
+			main.lobby_panel.add_child(main.leave_room_button)
 	main.lobby_members.text = "\n".join(lines)
+
+## 客户端主动退出房间：断开连接，回到初始大厅界面。
+## 保留 token 与地址，便于之后重新"加入房间"时凭 token 重连回原座位（若房主对局仍在进行）。
+func _leave_room() -> void:
+	GameState._reset_match()
+	Network.disconnect_game(false)
+	main._rejoin_addr = main.address_input.text.strip_edges() if not main.address_input.text.strip_edges().is_empty() else main._rejoin_addr
+	main._rejoin_port = main._entered_port()
+	main._save_identity()
+	main._reconnect_expected = false
+	reset_lobby()
+	main._set_status("已退出房间。")
