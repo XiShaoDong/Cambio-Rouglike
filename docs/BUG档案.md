@@ -230,3 +230,20 @@
 **诊断方法**：
 1. 中止/重建后 host 收不到新快照 → 检查 `state_revision` 重置但 `last_seen_revision` 未重置
 2. 用 headless 测试：第一局广播抬高水位线 → `_reset_match()` → 新一局开局，断言 `state_updated` 仍能触发（修复前 delta=0，修复后 delta>0）
+
+---
+
+## B17：客户端退出房间后重新"加入房间"进不去（房主对局进行中）
+
+**现象**：客户端点"退出房间"后，房主仍在房间（对局进行中），客户端重新点"加入房间"→ 提示栏闪过"正在连接…"、"已加入房间"，但一直停留在大厅进不去。
+
+**根因**：`request_register_player` 仅在 `LOBBY` 阶段有效；房主对局进行中（`phase != LOBBY`）注册被服务端**静默拒绝**（`request_register_player` 直接 `return` 不发拒绝）。且 `_leave_room` 之前**清空了 token**，客户端无法走 `request_reconnect` 认领原座位 → 连接成功但收不到对局状态。
+
+**修复**：
+1. `lobby_view._leave_room` 保留 token 与地址（不再清空 `_my_token`），供重新加入时凭 token 重连。
+2. `main._on_joined_server_for_reconnect` 连接成功后若持有 token 即调用 `request_reconnect` 认领原座位；token 无效被拒不影响 LOBBY 阶段正常注册。
+
+**诊断方法**：
+1. 客户端"已加入房间"但停留大厅 → 检查是否被服务端注册静默拒绝（对局中 phase != LOBBY）
+2. 退出房间时是否清空了 token → 保留 token 才能凭它重连
+3. 连接成功后应尝试 `request_reconnect`（`_on_joined_server_for_reconnect`）

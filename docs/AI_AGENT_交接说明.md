@@ -30,7 +30,7 @@
 - 当前目标：先验证 2–4 人纯基础牌局；Roguelike 尚未启用（`enable_relics = false`）。
 - 联网：ENet/UDP，房主权威，默认端口 `7007`。
 - 状态：大厅、对局界面、服务器权威状态机、规则、动效系统均已实现；已有自动化验证（见第 8 节）。
-- 当前工作分支：`refactor/ui-scene-board`（未合入 main）。已含：对局棋盘**场景实体化**（`game_board.tscn`/`player_area.tscn`）、大牌顶层定位、peek_highlight 查看高亮、能力弃牌本地显示、**音效系统 + ESC 设置菜单**（AudioManager/Settings/Loc autoload，配置持久化到 `user://settings.cfg`）。设计见 `docs/superpowers/specs/2026-08-20-ui-scene-board-design.md`。
+- 当前工作分支：`feature/internet-reconnect`（未合入 main，基于 `refactor/ui-scene-board`）。已含：**seat 身份重构 + 断线条件暂停 + token 重连恢复**（见第 4.5 节"断线重连功能修改摘要"）、窗口关闭拦截、大厅客户端退出房间按钮、对局棋盘场景实体化、音效系统 + ESC 设置菜单。设计见 `docs/superpowers/specs/2026-08-20-ui-scene-board-design.md`。
 - **贴牌系统（已重做动画）**：固定 2.5s 窗口 → `slap_open` 标志（弃牌/用技能后开启，下一玩家抽牌关闭）；同一窗口**不限次数**尝试（贴错每次罚牌，贴对先到者胜）；多人同时贴中 → 400ms 收集 → `SLAP_DUEL` 比拼 bar（随机加粗区中心红心，服务器到达时间判最近者）；调试开关 **O 键**切换 `debug_duel`（不判正确性 + 双贴即比拼）。
 - **贴牌动画事件（`card_exchange_animated` 新 kind）**：`slap_penalty`（罚牌 fly 抽牌堆→手牌）、`slap_resolved`（赢家被贴的牌 fly→弃牌堆，弃牌堆延迟显示）、`slap_gift`（交换时行动者的牌 fly→对方槽，不带牌面防泄漏）。贴牌 reveal target 带 `correct` 标记 → 客户端打**绿（对）/红（错）炫光**；正确贴牌**绿光 hold**（v2，不翻回）等结算后 fly，比拼输家翻回。
 - **罚牌附加卡布局**：前 4 张主网格固定 2 列永不位移；第 5+ 张在 `ExtraLayer` 按**槽号固定绝对定位**（统一向上增长、行列固定，加新罚牌已存在卡不移动）。
@@ -50,6 +50,24 @@
 7. `run_state`/`RunModifier` 是扩展缝，默认不启用。
 8. **身份与连接解耦**：玩家身份为 `seat_id`（0..N-1，注册顺序分配），`players`/`turn_order`/`current_player_id`/快照玩家字段一律用 seat；`peer_id`（ENet 连接 id）只是当前连接，存于 `players[seat].peer_id`，掉线重连会变化而 seat 不变。所有 RPC 入口用 `_peer_to_seat(sender)` 转换。此为未来 VPS/跨网络重连的基础（VPS 上 peer id 同样是瞬态连接 id）。
 9. **断线 = 标记离线 + 条件暂停，可重连恢复**：非当前行动者掉线游戏继续；当前行动者（或开局记忆阶段任一玩家）离线时 `suspended=true` 暂停并拒绝所有操作（`MATCH_SUSPENDED`）。注册时服务器发 `player_token`，客户端持久化到 `user://identity.cfg`；断线玩家凭 token 调 `request_reconnect` 认领原座位（更新 peer_id、置回在线、定向补发本人手牌面 + 待处理牌并广播快照）。房主可 `request_kick_offline(seat)` 踢出继续 / `request_abort_match` 中止（销毁房间回初始界面）/ `request_close_room` 解散房间。**踢出后剩余人数 < MIN_PLAYERS 自动中止回大厅**。
+
+## 3.5 断线重连功能修改摘要（当前分支已完成）
+
+> 目的：为下一个 Agent 快速定位"断线重连"涉及哪些文件/改了什么。详细协议见 `网络协议_V1.md`，bug 根因见 `BUG档案.md`（B14/B15/B16），实现拆解见 `功能实现文档.md`。
+
+| 涉及文件 | 修改内容 |
+| --- | --- |
+| `scripts/core/game_state.gd` | ① **seat 身份重构**：`players` 以 `seat_id` 为 key（0..N-1），内部存 `{seat, peer_id, token, name, cards, offline, health}`；`turn_order`/`current_player_id` 全改 seat；新增 `_peer_to_seat()`/`_seat_by_token()`；所有 RPC 入口 `_server_*` 的 sender 经 `_peer_to_seat` 转换；`_reject`/广播/`_send_reveal`/动画事件按 `players[seat].peer_id` 路由，离线（peer=0）跳过。② **离线标记 + 条件暂停**：`_on_peer_left` 非 LOBBY 改为 `offline=true`（保留 token），`_is_suspended()` 动态判断，`_guard_suspended()` 统一拦截。③ **重连**：`request_reconnect`/`server_reconnect`/`_server_reconnect` 按 token 认领座位 + `_send_resume_hand` 补回手牌；`_add_player` 生成 token 并经 `receive_registered` 定向发回。④ **房主操作**：`request_kick_offline` / `request_abort_match`（中止=销毁房间） / `request_close_room`（解散关服务器）。⑤ 新错误码 `MATCH_SUSPENDED`/`INVALID_TOKEN`；`last_seen_revision` 在中止时重置（修复 B16） |
+| `scripts/core/hidden_info.gd` | 快照输出 seat 语义（`viewer_id`/`current_player`/`player.id`）；新增 `suspended`/`offline_players` 字段；`_player_snapshot` 参数改 seat |
+| `scripts/core/peek_system.gd` | `send_reveal` 由 peer 改为 seat，经 `players[seat].peer_id` 路由 |
+| `scripts/ui/main.gd` | token 持久化（`user://identity.cfg`）、断线重连入口（"重连上次对局"）、`_on_joined_server_for_reconnect` 连接后凭 token 尝试重连、`_on_resume_hand` 刷新界面、窗口关闭拦截（`NOTIFICATION_WM_CLOSE_REQUEST`：房间中回大厅、初始大厅才退出） |
+| `scripts/ui/game_view.gd` | 暂停时房主"踢出离线者并继续 / 中止并回大厅 / 解散房间"按钮；本人手牌渲染支持 `_resume_hand_map` 恢复牌面 |
+| `scripts/ui/lobby_view.gd` | 大厅房主"解散房间"按钮、客户端"退出房间"按钮（保留 token 供重连）；`reset_lobby()` 复位 |
+| `tests/verify_reconnect.gd`/`.tscn` | 新增：seat 身份 / 非当前回合掉线继续 / 轮到离线者暂停 / 房主踢出 / 踢出后剩 1 人中止 / 解散房间 / token 认领 / 手牌恢复（41/41） |
+| `tests/verify_protocol.gd` | 翻成 seat 语义；断线断言改为"标记离线不中止" |
+| `tests/verify_duel.gd` | 翻成 seat 语义（peer1→seat0, peer2→seat1） |
+
+**验证命令**（新增）：`--headless --path . res://tests/verify_reconnect.tscn`（41/41）。全量回归基准见第 8 节。
 
 ## 4. 服务器权威子系统（16 Feature 已拆分）
 
@@ -133,6 +151,8 @@ UI 层已拆分（main.gd 是组合根）：
 ... --headless --path . res://tests/verify_swap.tscn
 # 贴牌比拼测试（23/23：单正确/双正确比拼/超时/无人 STOP/调试模式/错误码）
 ... --headless --path . res://tests/verify_duel.tscn
+# 断线重连测试（41/41：seat 身份/离线标记/条件暂停/踢出/中止/解散/token 认领/手牌恢复）
+... --headless --path . res://tests/verify_reconnect.tscn
 # hint 生成测试（7/8；既有失败：断言 "replace" 大小写敏感，main 分支同样失败，非本次引入）
 ... --headless --path . res://tests/verify_hint.tscn
 # 双实例网络回归（host + client 各跑，均 exit 0）
@@ -140,7 +160,7 @@ UI 层已拆分（main.gd 是组合根）：
 ... --headless --path . res://tests/verify_net.tscn -- -role client
 ```
 
-> **开发约定**：按用户的指示**不启动 GUI**，用上述 unit test 验证后总结。每次改动后跑 `verify_protocol` + `verify_swap` + `verify_duel` + 双实例 `verify_net`。
+> **开发约定**：按用户的指示**不启动 GUI**，用上述 unit test 验证后总结。每次改动后跑 `verify_protocol` + `verify_swap` + `verify_duel` + `verify_reconnect` + 双实例 `verify_net`。
 
 ## 9. 给后续 Agent 的工作方式
 
