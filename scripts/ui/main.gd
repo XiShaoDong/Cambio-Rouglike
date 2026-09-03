@@ -5,6 +5,28 @@ extends Control
 
 var dev: DevTools
 
+func _notification(what: int) -> void:
+	# 点击窗口关闭：拦截默认退出。若仍在房间/对局中 → 回初始大厅；已在初始大厅 → 真正退出
+	if what == NOTIFICATION_WM_CLOSE_REQUEST:
+		if _in_room():
+			_leave_to_main_menu()
+		else:
+			get_tree().quit()
+
+## 是否处于房间/对局连接中（ENet 连接建立，区别于初始大厅的 Offline peer）。
+func _in_room() -> bool:
+	var peer := multiplayer.multiplayer_peer
+	return peer is ENetMultiplayerPeer
+
+## 从房间/对局回到初始大厅界面（点窗口关闭时调用）：
+## 房主解散房间通知全员；客户端退出房间断开连接。不真正退出程序。
+func _leave_to_main_menu() -> void:
+	if Network.is_host:
+		GameState.request_close_room()
+	else:
+		lobby._leave_room()
+	_set_status("已回到大厅。")
+
 func _unhandled_input(event: InputEvent) -> void:
 	# 比拼中按空格 = 停止（与 STOP 按钮等效）
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_SPACE:
@@ -138,6 +160,8 @@ func purge_slap_pending_flips() -> void:
 	_pending_flips = remaining
 
 func _ready() -> void:
+	# 拦截窗口关闭：在房间/对局中时先回初始大厅而非直接退出
+	get_tree().set_auto_accept_quit(false)
 	# 启动即应用持久化主题，保证 UI 用正确 token 构建
 	UITheme.switch_theme(str(Settings.get_setting("display", "theme", "dark")))
 	interaction = GameInteraction.new(self)
