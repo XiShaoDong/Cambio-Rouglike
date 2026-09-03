@@ -72,6 +72,7 @@ func join_game() -> void:
 	if address.is_empty():
 		main._show_toast("请输入房主的局域网 IP。")
 		return
+	main._reconnect_expected = false  # 正常加入，不触发重连
 	Network.join_game(address, {"name": main._entered_name()}, main._entered_port())
 
 func dev_launch_second() -> void:
@@ -156,9 +157,13 @@ func update_lobby(lobby: Dictionary) -> void:
 	main.lobby_members.text = "\n".join(lines)
 
 ## 客户端主动退出房间：断开连接，回到初始大厅界面。
+## 保留 token 与地址，便于之后重新"加入房间"时凭 token 重连回原座位（若房主对局仍在进行）。
 func _leave_room() -> void:
 	GameState._reset_match()
 	Network.disconnect_game(false)
-	main._my_token = ""
+	main._rejoin_addr = main.address_input.text.strip_edges() if not main.address_input.text.strip_edges().is_empty() else main._rejoin_addr
+	main._rejoin_port = main._entered_port()
+	main._save_identity()
+	main._reconnect_expected = false
 	reset_lobby()
 	main._set_status("已退出房间。")

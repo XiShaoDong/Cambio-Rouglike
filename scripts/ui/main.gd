@@ -305,10 +305,10 @@ func _do_reconnect() -> void:
 	Network.join_game(_rejoin_addr, {"name": _entered_name()}, _rejoin_port)
 
 func _on_joined_server_for_reconnect() -> void:
-	if not _reconnect_expected:
-		return
-	_reconnect_expected = false
+	# 连接成功：若本机持有 token（曾注册过，退出/断线后想回原对局），
+	# 先尝试凭 token 认领原座位；token 无效时服务端会拒绝，不影响 LOBBY 阶段的正常注册。
 	if not _my_token.is_empty():
+		_reconnect_expected = false
 		GameState.request_reconnect(_my_token, _entered_name())
 
 ## 在初始大厅显示"重连上次对局"入口（断线后持有 token 时）。
