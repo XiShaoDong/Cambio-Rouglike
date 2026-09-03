@@ -185,3 +185,48 @@
 **修复**：回退 `revealed_slots`；罚牌直接以背面 fly 到槽位并保持背面（不做翻面揭示）。
 
 **诊断方法**：若某槽位在快照中持久含 `card` 而该玩家未看过 → 检查是否误加了持久揭示槽位机制
+
+---
+
+## B14：debug_duel 下第一名贴牌后全员无法点击（收集窗被判定锁锁死）
+
+**现象**：`debug_duel`（O 键）开启时，任意玩家贴一张牌（恒判对）后，所有玩家都无法进行任何点击（贴牌/抽牌堆/弃牌堆），比拼永不触发。
+
+**根因**：正确贴牌 reveal 在客户端走 `_play_slap_flip` 的绿光 hold 分支，只 `_slap_reveal_begin()` 而不 `_slap_reveal_end()`，锁要等 `slap_resolved` 结算事件才释放。`game_interaction.on_card_pressed` 贴牌分支以 `if main._slap_reveal_lock: return` 拦截所有贴牌点击 → 收集窗（debug 下 30s）期间第二名玩家永远发不出 `request_slap` → 双贴比拼无法触发，全员冻结至收集窗超时。
+
+**修复**：`game_interaction.on_card_pressed` 的贴牌分支**不再检查 `_slap_reveal_lock`**——收集窗内允许继续贴牌（这正是收集窗/ debug_duel 双贴比拼的目的）。判定锁继续保护抽牌堆/弃牌堆点击（`main._on_deck_pressed`/`_on_discard_pressed` 不变），避免揭示期间误取牌。
+
+**诊断方法**：
+1. 贴牌后全员点不动 → 检查贴牌分支是否被 `_slap_reveal_lock` 拦截
+2. 判定锁只应挡抽牌堆/弃牌堆，**不应挡收集窗内的贴牌意图**
+3. headless 测试（`verify_duel`）因直接调 `_server_slap` 绕过 UI，无法覆盖此客户端锁问题，需手动 GUI 复现
+
+---
+
+## B15：结算时手牌含空槽导致 calculate_ranking 崩溃
+
+**现象**：对局结束时（`GAME_OVER` 结算）报 `calculate_ranking: Invalid access to property or key of type 'String' on a base object of type 'Dictionary'`（`score_system.gd:14`）。
+
+**根因**：贴牌/交换后清空槽位 `players[x].cards[slot] = ""`（`slap_system.gd:170/178`、`exchange`），空串 `""` 残留在手牌数组。`calculate_ranking` 遍历时把空槽当有效卡 id：`cards[""]` 返回 null，对 `null.value` 访问即报错。玩家在贴过牌的局里结算必然触发。
+
+**修复**：`score_system.gd:14` 遍历手牌时跳过空 id（`if str(card_id).is_empty(): continue`）。
+
+**诊断方法**：
+1. 结算崩溃 + 玩家曾贴牌/交换 → 检查是否把空槽 `""` 当卡 id 索引 `cards` 字典
+2. 手牌数组遍历一律先判空串再取 `cards[card_id]`，与 `game_view`/`hidden_info` 一致
+
+---
+
+## B16：玩家退出中止后，房主重建房间无法进入对局（卡在大厅）
+
+**现象**：对局中任一玩家退出 → 全员回大厅；之后房主再开局，其他玩家正常进入，**但房主/主机永远停在大厅页面**，无法进入对局。
+
+**根因**：`_reset_match()` 把 `state_revision` 重置为 `0`，但**没有重置去重水位线 `last_seen_revision`**。房主本地 GameState 的 `last_seen_revision` 保留上一局最高值（如 13）。新一局 `state_revision` 从 1 重新计数，`_receive_state` 中 `revision <= last_seen_revision` 把新快照全部判为旧包丢弃 → `state_updated` 永不触发 → UI 停在大厅。（其他玩家多为新进程/新连接，水位线为 -1，故正常。）
+
+**修复**：
+1. `_reset_match()` 末尾加 `last_seen_revision = -1`（房主侧）。
+2. `receive_match_aborted` RPC 处理开头加 `last_seen_revision = -1`（一直连着的客户端同样重置，否则也会丢新局快照）。
+
+**诊断方法**：
+1. 中止/重建后 host 收不到新快照 → 检查 `state_revision` 重置但 `last_seen_revision` 未重置
+2. 用 headless 测试：第一局广播抬高水位线 → `_reset_match()` → 新一局开局，断言 `state_updated` 仍能触发（修复前 delta=0，修复后 delta>0）

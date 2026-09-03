@@ -73,3 +73,11 @@ cv.set_glow(main.SLAP_WRONG_GLOW, ...)  # 红色，稍后翻回
 - 最可能是 **`debug_duel` 误开启**（O 键），其行为（全绿 + 30s 收集 + 锁牌堆）与所有症状完全一致。
 - 次要因素：SLAP_EXCHANGE 交牌等待（提示不够明显）、`_slap_reveal_lock` 在结算事件缺失时永久锁牌堆。
 - **待办**：若能复现，确认 debug_duel 状态后再定论；若为 SLAP_EXCHANGE 交牌卡住，可考虑给行动者更明显的引导（高亮自己的可交牌）。
+
+---
+
+### 更新（2026-09-01）：debug_duel 下收集窗锁死已确认并修复
+
+- 现象"贴牌后全员无法点击"在 `debug_duel` 下为**必然复现**，根因已确认：正确贴牌绿光 hold 使 `_slap_reveal_lock` 在收集窗内不释放，`game_interaction.on_card_pressed` 贴牌分支被该锁拦截，第二名玩家无法补拍 → 比拼永不触发。
+- **修复**：贴牌分支不再检查 `_slap_reveal_lock`（收集窗内允许继续贴牌），判定锁继续挡抽牌/弃牌堆。详见 `BUG档案.md` B14。
+- 本条目（U1）的"debug_duel 误开启导致锁牌堆"分支随 B14 修复解除；遗留的仅剩"SLAP_EXCHANGE 行动者交牌引导不明显"与"结算事件缺失锁死牌堆"（后者本身已由计数管理缓解）。

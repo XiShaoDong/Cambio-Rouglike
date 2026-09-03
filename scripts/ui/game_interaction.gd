@@ -29,8 +29,8 @@ func on_card_pressed(player_id: int, slot: int) -> void:
 	if phase == PHASE_SLAP_DUEL:
 		return
 	if bool(state.get("slap_open", false)) and phase == PHASE_TURN_DRAW:
-		if main._slap_reveal_lock:
-			return
+		# 收集窗内允许继续贴牌：正确贴牌绿光 hold 期间不拦截后续贴牌
+		# （debug_duel 需第二名玩家补拍触发比拼；普通模式收集窗也依赖此）
 		_play_select()
 		GameState.request_slap(player_id, slot, main._next_action_id())
 		return
