@@ -247,3 +247,54 @@
 1. 客户端"已加入房间"但停留大厅 → 检查是否被服务端注册静默拒绝（对局中 phase != LOBBY）
 2. 退出房间时是否清空了 token → 保留 token 才能凭它重连
 3. 连接成功后应尝试 `request_reconnect`（`_on_joined_server_for_reconnect`）
+
+## B18：断线重连后所有手牌一直保持正面
+
+**现象**：断线重连后，本人所有手牌一直正面朝上（卡面可见），违反"只能记住看过的牌"的暗牌记忆机制。
+
+**根因**：服务器 `_send_resume_hand` 补回全部手牌面，客户端 `main._on_resume_hand` 填入 `_resume_hand_map`；`game_view._render_card_slot` 用它对每个本人槽位渲染正面，且 map 重连后永不清除 → 永久正面。
+
+**修复**：`_render_card_slot` 移除 `_resume_hand_map` 渲染逻辑；`_on_resume_hand` 只隐藏重连面板并重渲染；删除无用变量 `_resume_hand`/`_resume_pending`/`_resume_hand_map`。
+
+**诊断方法**：重连后检查本人手牌是否渲染为背面；`_resume_hand_map` 是否仍有数据。
+
+## B19：replace（抽牌堆牌↔自己手牌）动画落位后闪烁
+
+**现象**：当前玩家用抽牌堆的牌替换手牌时，其他玩家视角在 fly 动画结束、牌落位后闪烁（槽位牌消失片刻 / 弃牌顶闪回旧牌）。
+
+**根因**：`animate_replace` 用计数器等**两张 fly 都完成**才清除槽位动画标记、解锁弃牌堆并重建；两张 fly 距离不同落位有先后，先落位的一段被清理后其目标（槽位/弃牌顶）在等待另一段落位期间短暂回到旧状态。
+
+**修复**：改为每段 fly 落位各自处理自身并刷新（`_replace_landed`）：弃牌段落位立即解锁弃牌堆显示新弃牌；抽牌段落位立即清除槽位标记显示新牌，互不等待。
+
+**诊断方法**：像素级捕获对比落位瞬间槽位空挡帧（旧代码约 6 帧 → 修复后 0）。
+
+## B20：discard-replace 后所有玩家手牌两行出现 gap
+
+**现象**：房主取弃牌堆牌替换手牌时（首次不出现、后续出现），房主屏幕上**所有玩家**手牌第一/第二行之间出现大空隙，下一玩家操作后恢复。
+
+**根因（推断）**：`_clear_area` 用 `queue_free()` 延迟释放网格旧卡，同帧重建时 GridContainer 同时含旧卡+新卡 → 2 列网格临时多出行；replace 落位修复增加了同帧重建次数使其更易触发。
+
+**修复**：`_clear_area` 先 `remove_child` 立即移出网格、再 `queue_free` 延迟释放（ExtraLayer 同理），杜绝旧卡+新卡累积。
+
+**诊断方法**：用 `HandGrid.get_child_count()` 采样，重建期间应恒为 4；若为 8/12 说明旧卡未及时移出。
+
+## B21：J 能力点击对方卡报 "Object is locked" + 卡牌增多
+
+**现象**：将 `_clear_area` 改为 `free()` 后，用 J 能力点击对方牌（点击触发重建）报 "Object is locked and can't be freed"；即使不报错，选择对方牌时卡牌增多，交换结束复原。
+
+**根因**：卡牌点击触发重建时，被点击的卡正被 `pressed` 信号锁定，直接 `free()` 非法；free 失败导致旧卡残留（卡牌增多）。
+
+**修复**：`_clear_area` 改为先 `remove_child` 立即移出网格、再 `queue_free` 延迟释放，不触碰被信号锁定的对象。
+
+**诊断方法**：模拟 J 能力点击流程，应无 locked 报错、网格子节点数恒为 4。
+
+## B22：Kongbaya 不结算 + 可重复喊叫
+
+**现象**：① Kongbaya 触发后不进入结算（GAME_OVER）；② 最终轮玩家可再次喊 Kongbaya，不符合"一场一次"规则。
+
+**根因①**：`kong_caller` 用 **0** 作为"无喊叫者"哨兵，但房主座位恰为 0 → 房主喊叫时 `kong_caller=0`，`_advance_turn` 的 `if kong_caller != 0` 误判为"未喊叫"，最终轮被当作普通回合推进，永不结算。
+**根因②**：`declare` 未拦截"已喊过"的情况，最终轮玩家（TURN_DRAW 且为当前玩家）可重置 `kong_caller`/`final_queue`。
+
+**修复**：`kong_caller` 哨兵 **0 → -1**（game_state 声明/`_reset_match`/踢出重置、`_advance_turn` 判断与传参、`turn_system.decide` 判断）；`kongbaya_system.declare` 加 `kong_caller != -1` 拦截重复喊叫（返 `INVALID_PHASE`）。
+
+**诊断方法**：新增 `verify_kongbaya`（15/15）覆盖正常最终轮结算、重复喊叫被拒、首/非首回合 `kong_called_first_turn` 标记。

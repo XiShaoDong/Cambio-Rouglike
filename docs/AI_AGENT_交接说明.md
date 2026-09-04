@@ -33,6 +33,9 @@
 - 当前工作分支：`feature/internet-reconnect`（未合入 main，基于 `refactor/ui-scene-board`）。已含：**seat 身份重构 + 断线条件暂停 + token 重连恢复**（见第 4.5 节"断线重连功能修改摘要"）、窗口关闭拦截、大厅客户端退出房间按钮、对局棋盘场景实体化、音效系统 + ESC 设置菜单。设计见 `docs/superpowers/specs/2026-08-20-ui-scene-board-design.md`。
 - **贴牌系统（已重做动画）**：固定 2.5s 窗口 → `slap_open` 标志（弃牌/用技能后开启，下一玩家抽牌关闭）；同一窗口**不限次数**尝试（贴错每次罚牌，贴对先到者胜）；多人同时贴中 → 400ms 收集 → `SLAP_DUEL` 比拼 bar（随机加粗区中心红心，服务器到达时间判最近者）；调试开关 **O 键**切换 `debug_duel`（不判正确性 + 双贴即比拼）。
 - **贴牌动画事件（`card_exchange_animated` 新 kind）**：`slap_penalty`（罚牌 fly 抽牌堆→手牌）、`slap_resolved`（赢家被贴的牌 fly→弃牌堆，弃牌堆延迟显示）、`slap_gift`（交换时行动者的牌 fly→对方槽，不带牌面防泄漏）。贴牌 reveal target 带 `correct` 标记 → 客户端打**绿（对）/红（错）炫光**；正确贴牌**绿光 hold**（v2，不翻回）等结算后 fly，比拼输家翻回。
+- **手牌超限规则（R-07）**：任一玩家手牌总数 `> MAX_HAND_CARDS(6)` 时对局立即结束（GAME_OVER），该玩家判定失败并扣 1 生命，其余玩家按各自手牌点数结算排名（失败者不参与排名）。触发点：贴错罚抽后 `game_state._check_over_hand(seat)`。
+- **Kongbaya 最终轮**：一场对局只允许喊一次（`kong_caller != -1` 后任何玩家再喊均拒绝）；喊出者不再行动，其余玩家按顺时针各执行一轮最终行动后统一结算。`kong_caller` 哨兵值为 **-1**（不能用 0，房主座位是 0）。
+- **卡牌视图重建约定**：`game_view._clear_area` 一律先 `remove_child` 立即移出网格、再 `queue_free` 延迟释放（**不要直接 `free()`**——卡牌点击触发重建时被点击的卡正被信号锁定，free 会报 "Object is locked"）。
 - **罚牌附加卡布局**：前 4 张主网格固定 2 列永不位移；第 5+ 张在 `ExtraLayer` 按**槽号固定绝对定位**（统一向上增长、行列固定，加新罚牌已存在卡不移动）。
 - Git：仓库 `git@github.com:XiShaoDong/Cambio-Rouglike.git`，分支 `main`。
 - 项目路径：`~/dev/gameDev/cambio-rouglike/`。
@@ -139,6 +142,7 @@ UI 层已拆分（main.gd 是组合根）：
 - **B8 比拼无人 STOP 崩溃**：`resolve_duel` 里 `best` 初值 0，全员未按 STOP 时访问 `slap_duel.correct[0]` 报错 → 结算后 `best==0` 时兜底选第一个候选人。
 - **B9 DuelBar 弹窗不可见**：弹层加进 `overlay` 时自身尺寸为 0（默认锚点），内部全屏遮罩/居中容器随之 0 尺寸 → `_build_ui` 开头 `set_anchors_and_offsets_preset(PRESET_FULL_RECT)`。
 - **B10-B13（贴牌动画）**：贴错无红光/罚牌无 fly（reveal 按"是否贴牌"分发 + 罚牌槽挂起补飞）、罚牌 fly 位置错/提前落位（同步定位 + 先标记动画槽）、罚牌附加卡随卡数重排（按槽号固定绝对定位）、罚牌持久正面（已回退为背面 fly）。详见 `BUG档案.md`。
+- **B18-B22（本次会话新增）**：重连后手牌永久正面（移除 `_resume_hand_map` 渲染）、replace 落位后闪烁（每段 fly 各自落位刷新 `_replace_landed`）、discard-replace 后所有手牌两行 gap + J 能力 locked 报错（`_clear_area` 改为 remove_child + queue_free）、Kongbaya 不结算/可重复喊叫（`kong_caller` 哨兵 0→-1 + declare 拦截）。详见 `BUG档案.md`。
 
 ## 8. 验证命令（headless 单元测试，不启动 GUI）
 
@@ -153,6 +157,8 @@ UI 层已拆分（main.gd 是组合根）：
 ... --headless --path . res://tests/verify_duel.tscn
 # 断线重连测试（41/41：seat 身份/离线标记/条件暂停/踢出/中止/解散/token 认领/手牌恢复）
 ... --headless --path . res://tests/verify_reconnect.tscn
+# Kongbaya 最终轮测试（15/15：正常最终轮结算/重复喊叫被拒/首·非首回合标记）
+... --headless --path . res://tests/verify_kongbaya.tscn
 # hint 生成测试（7/8；既有失败：断言 "replace" 大小写敏感，main 分支同样失败，非本次引入）
 ... --headless --path . res://tests/verify_hint.tscn
 # 双实例网络回归（host + client 各跑，均 exit 0）
@@ -160,7 +166,7 @@ UI 层已拆分（main.gd 是组合根）：
 ... --headless --path . res://tests/verify_net.tscn -- -role client
 ```
 
-> **开发约定**：按用户的指示**不启动 GUI**，用上述 unit test 验证后总结。每次改动后跑 `verify_protocol` + `verify_swap` + `verify_duel` + `verify_reconnect` + 双实例 `verify_net`。
+> **开发约定**：按用户的指示**不启动 GUI**，用上述 unit test 验证后总结。每次改动后跑 `verify_protocol` + `verify_swap` + `verify_duel` + `verify_reconnect` + `verify_kongbaya` + 双实例 `verify_net`。
 
 ## 9. 给后续 Agent 的工作方式
 
