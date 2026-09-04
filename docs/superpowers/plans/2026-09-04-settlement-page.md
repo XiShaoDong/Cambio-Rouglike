@@ -359,23 +359,81 @@ git commit -m "feat: 再来一局 RPC（GAME_OVER 后房主开新局）+ 抽取 
 
 ---
 
-### Task 3: 结算弹层 `settlement_page.gd`
+### Task 3: 结算弹层 `settlement_page.tscn` 场景实体 + `settlement_page.gd`
 
 **Files:**
+- Create: `scenes/ui/settlement_page.tscn`（静态骨架进编辑器，仿 `game_board.tscn`/`player_area.tscn` 惯例）
 - Create: `scripts/ui/settlement_page.gd`
 
 **Interfaces:**
 - Consumes: `SettlementModel.build()` 产出（`layout_order`/`rounds`）；`UITheme.color(token)`；`main.overlay`；`AudioManager`。
 - Produces: `class_name SettlementPage extends Control`；`setup(model: Dictionary, is_host: bool, match_number: int, on_winner: Callable, on_next_match: Callable, on_abort: Callable, auto_play := true) -> void`。`setup` 同步构建 UI；`auto_play=true` 时启动算分动画协程。冠军时刻回调 `on_winner`；footer 按钮回调 `on_next_match`/`on_abort`。
-- **构建约束**：整页 `mouse_filter = IGNORE`（面板内部按钮默认 STOP 可点）；居中浮动面板宽度 `ROW_W + 56`，**不遮挡四块玩家手牌区**（棋盘卡牌可见）。
+- **场景实体约定**：场景只承载静态骨架（容器、锚点、尺寸、占位文本、mouse_filter）；动态内容（排名行数、行内容、主题样式、标题、按钮）由脚本填充。主题颜色走代码 `UITheme.color()` 运行时覆写（与 `game_board.tscn` 一致，保证 dark/light 切换正确）。整页根节点 `mouse_filter = 2`（IGNORE，不挡棋盘），Footer `mouse_filter = 0`（STOP，按钮可点）。居中面板宽度 `ROW_W + 56`，**不遮挡四块玩家手牌区**。
 
-- [ ] **Step 1: 实现 `scripts/ui/settlement_page.gd`**
+- [ ] **Step 1: 创建 `scenes/ui/settlement_page.tscn` 静态骨架**
+
+```
+[gd_scene format=3 uid="uid://csettlementp0001"]
+
+[ext_resource type="Script" path="res://scripts/ui/settlement_page.gd" id="1"]
+
+[node name="SettlementPage" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Center" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Panel" type="PanelContainer" parent="Center"]
+custom_minimum_size = Vector2(536, 0)
+layout_mode = 2
+
+[node name="VBox" type="VBoxContainer" parent="Center/Panel"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Title" type="Label" parent="Center/Panel/VBox"]
+custom_minimum_size = Vector2(0, 30)
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "结算"
+horizontal_alignment = 1
+
+[node name="RankingArea" type="Control" parent="Center/Panel/VBox"]
+custom_minimum_size = Vector2(480, 184)
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Footer" type="Control" parent="Center/Panel/VBox"]
+custom_minimum_size = Vector2(480, 46)
+layout_mode = 2
+mouse_filter = 0
+visible = false
+```
+
+> `RankingArea` 高度 `184 = 4×46` 为占位，脚本在 `setup` 按实际人数覆盖 `custom_minimum_size.y = layout_order.size() × ROW_H`。
+
+- [ ] **Step 2: 实现 `scripts/ui/settlement_page.gd`（绑骨架 + 填动态行）**
 
 ```gdscript
 class_name SettlementPage
 extends Control
 ## 结算弹层：居中排名窗口 + 同步轮算分动画（Balatro 式）+ 冠军特效。
-## 纯客户端展示层：数据来自 settlement_model.build()；动作经回调注入（解耦 main）。
+## 场景实体承载静态骨架（scenes/ui/settlement_page.tscn），脚本负责：
+##   - 填动态排名行（每行 = 一名玩家）
+##   - 主题样式/标题/按钮运行时注入（UITheme token）
+##   - 同步轮算分动画 + 冠军特效（回调解耦 main）
 
 const ROW_H := 46
 const ROW_W := 480
@@ -401,48 +459,26 @@ func setup(model: Dictionary, is_host: bool, match_number: int,
 	_on_next_match = on_next_match
 	_on_abort = on_abort
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_build_ui(match_number)
+	_bind_ui(match_number)
 	if auto_play:
 		_run_sequence()
 
-func _build_ui(match_number: int) -> void:
-	var center := CenterContainer.new()
-	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(center)
-
-	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(ROW_W + 56, 0)
+## 绑定场景节点 + 填动态内容（行、主题样式、标题）。
+func _bind_ui(match_number: int) -> void:
+	var center: CenterContainer = get_node("Center")
+	var panel: PanelContainer = center.get_node("Panel")
 	panel.add_theme_stylebox_override("panel", _panel_style())
-	center.add_child(panel)
-
-	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 10)
-	panel.add_child(vbox)
-
-	_title = Label.new()
+	_title = get_node("Center/Panel/VBox/Title")
 	_title.text = "结算 · 第 %d 局" % match_number
-	_title.add_theme_font_size_override("font_size", 20)
 	_title.add_theme_color_override("font_color", UITheme.color("accent"))
-	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	vbox.add_child(_title)
+	_rank_area = get_node("Center/Panel/VBox/RankingArea")
+	_footer = get_node("Center/Panel/VBox/Footer")
 
-	_rank_area = Control.new()
 	var n := _model.layout_order.size()
 	_rank_area.custom_minimum_size = Vector2(ROW_W, n * ROW_H)
-	_rank_area.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	vbox.add_child(_rank_area)
-
 	var layout_order: Array = _model.layout_order
 	for index in layout_order.size():
 		_rank_area.add_child(_make_row(int(layout_order[index]), index))
-
-	_footer = Control.new()
-	_footer.custom_minimum_size = Vector2(ROW_W, 46)
-	_footer.mouse_filter = Control.MOUSE_FILTER_STOP
-	_footer.visible = false
-	vbox.add_child(_footer)
 
 func _make_row(seat: int, index: int) -> Control:
 	var row := Control.new()
@@ -588,16 +624,16 @@ func _show_footer() -> void:
 		box.add_child(wait)
 ```
 
-- [ ] **Step 2: 编译检查**
+- [ ] **Step 3: 编译检查**
 
 Run: `/Applications/Godot.app/Contents/MacOS/Godot --headless --path . --quit-after 5`
-Expected: 无 ERROR（上一任务已接手的 `settlement_page.gd` 引用在 `main.gd` 前不产生解析错误——本任务暂不接入 main，仅验证脚本本身可解析）。
+Expected: 无 ERROR（`settlement_page.tscn` 与脚本可正常解析）。
 
-- [ ] **Step 3: 提交**
+- [ ] **Step 4: 提交**
 
 ```bash
-git add scripts/ui/settlement_page.gd
-git commit -m "feat: 结算弹层（居中排名窗口 + 同步轮算分动画 + 冠军特效）"
+git add scenes/ui/settlement_page.tscn scripts/ui/settlement_page.gd
+git commit -m "feat: 结算弹层场景实体 + 同步轮算分动画 + 冠军特效"
 ```
 
 ---
@@ -718,7 +754,7 @@ func _on_sfx(kind: String) -> void:
 ```gdscript
 func _test_page_construct() -> void:
 	var model: Dictionary = SettlementModel.build(_players_even())
-	var page := preload("res://scripts/ui/settlement_page.gd").new()
+	var page: Control = preload("res://scenes/ui/settlement_page.tscn").instantiate()
 	get_tree().root.add_child(page)
 	page.setup(model, true, 1, Callable(), Callable(), Callable(), false)
 	await get_tree().process_frame
@@ -769,7 +805,7 @@ git commit -m "feat: 结算页接入 main（开/关、延迟胜利音效、再�
 
 - [ ] **Step 3: 更新 `docs/功能实现文档.md` 文件树与 Feature 映射**
 
-文件树补：`scripts/core/settlement_model.gd`、`scripts/ui/settlement_page.gd`、`tests/verify_settlement.gd/.tscn`；Feature 映射补「结算页展示 + 再来一局」。
+文件树补：`scripts/core/settlement_model.gd`、`scenes/ui/settlement_page.tscn`、`scripts/ui/settlement_page.gd`、`tests/verify_settlement.gd/.tscn`；Feature 映射补「结算页展示 + 再来一局」。
 
 - [ ] **Step 4: 更新 `docs/AI_AGENT_交接说明.md`**
 
