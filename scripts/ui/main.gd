@@ -123,9 +123,6 @@ var _rejoin_addr := ""
 var _rejoin_port := KongNetwork.DEFAULT_PORT
 var _was_in_match := false
 var _reconnect_panel: Control = null
-var _resume_hand: Array = []
-var _resume_pending: Dictionary = {}
-var _resume_hand_map: Dictionary = {}
 var _reconnect_expected := false
 
 ## 标记某个玩家槽位正在动画（渲染时该槽位显示虚线占位，不显示原卡）。
@@ -216,16 +213,10 @@ func _on_registered_token(token: String) -> void:
 	_my_token = token
 	_save_identity()
 
-## 重连成功：服务器补回本人手牌面 + 待处理牌，刷新界面。
-func _on_resume_hand(hand: Array, pending: Dictionary) -> void:
+## 重连成功：隐藏重连面板并重渲染界面（本人手牌按快照显示为背面）。
+func _on_resume_hand(_hand: Array, _pending: Dictionary) -> void:
 	_hide_reconnect_panel()
 	_remove_rejoin_entry()
-	_resume_hand_map.clear()
-	for index in hand.size():
-		var card: Dictionary = hand[index]
-		if not card.is_empty():
-			_resume_hand_map[index] = card
-	_resume_pending = pending
 	if not latest_state.is_empty():
 		_render_game()
 

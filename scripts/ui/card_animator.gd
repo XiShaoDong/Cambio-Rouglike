@@ -26,37 +26,35 @@ func animate_replace(actor: int, slot: int, old_data: Dictionary, big_data: Dict
 		return
 	var old_rect: Rect2 = old_card.get_global_rect()
 	main.mark_anim_slot(actor, slot)
-	# 统计实际执行的动画数，全部完成后才清除标记并重建
-	
-	var total := 0
-	if is_instance_valid(main.discard_button):
-		total += 1
-	if is_instance_valid(main.pending_card_button):
-		total += 1
-	if total == 0:
-		main.unmark_anim_slot(actor, slot)
-		return
-	var counter := {"remaining": total}
-	var done := _replace_done.bind(counter, actor, slot)
-	# 玩家旧牌 → 弃牌堆：隐藏源卡，副本翻成正面移动到弃牌堆（延迟显示，落位后解锁）
-	if is_instance_valid(main.discard_button):
+	var state := {"actor": actor, "slot": slot}
+	var has_discard := is_instance_valid(main.discard_button)
+	var has_pending := is_instance_valid(main.pending_card_button)
+	# 两张 fly 落位后各自处理自身并刷新，互不等待（避免先落位的一段被清理后其目标短暂回到旧状态 = 落位后闪烁）：
+	# 弃牌 fly 落位 → 立即解锁弃牌堆并刷新（弃牌顶显示新弃牌，不闪回旧顶）；
+	# 抽到的牌 fly 落位 → 立即清除槽位标记并刷新（槽位显示新牌，不空挡）。
+	if has_discard:
 		main._discard_anim_lock = true
 		_fly(old_rect, main.discard_button.get_global_rect(), old_data, _face_up_of(old_card), true,
-			old_card, done)
-	# 大牌 → 玩家 slot：隐藏大牌反馈，副本从两堆中心移动到玩家牌位置并翻成目标槽位当前面
-	if is_instance_valid(main.pending_card_button):
+			old_card, _replace_landed.bind(state, true))
+	if has_pending:
 		var big_rect: Rect2 = _big_card_rect()
 		main.pending_card_box.visible = false
 		var big_start_face_up := int(main.latest_state.get("viewer_id", 0)) == actor
-		_fly(big_rect, old_rect, big_data, big_start_face_up, _face_up_of(old_card), null, done)
-
-## replace 完成回调：两个副本都完成后清除标记、解锁弃牌堆并重建。
-func _replace_done(counter: Dictionary, actor: int, slot: int) -> void:
-	counter["remaining"] = int(counter["remaining"]) - 1
-	if int(counter["remaining"]) <= 0:
+		_fly(big_rect, old_rect, big_data, big_start_face_up, _face_up_of(old_card), null,
+			_replace_landed.bind(state, false))
+	else:
+		# 无抽牌 fly（理论分支）：槽位无动画，直接恢复
 		main.unmark_anim_slot(actor, slot)
-		main._discard_anim_lock = false
 		main._render_game()
+
+## replace 单段 fly 落位：弃牌段解锁弃牌堆，抽牌段清除槽位动画标记；每段落位都刷新一次，
+## 保证先落位的目标立即显示正确内容，不被"等另一段落位"拖住而闪回旧状态。
+func _replace_landed(state: Dictionary, is_discard: bool) -> void:
+	if is_discard:
+		main._discard_anim_lock = false
+	else:
+		main.unmark_anim_slot(int(state["actor"]), int(state["slot"]))
+	main._render_game()
 
 ## 场景1：玩家间交换（J/Q）。a 换 a_slot，b 换 b_slot。
 func animate_swap(a: int, a_slot: int, b: int, b_slot: int, a_data: Dictionary, b_data: Dictionary) -> void:
