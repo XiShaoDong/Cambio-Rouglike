@@ -3,11 +3,13 @@ extends Node
 
 var failures := 0
 var checks := 0
+var _rejections := 0
 
 func _ready() -> void:
 	await _test_model_even()
 	await _test_model_uneven()
 	await _test_model_final_matches_score_system()
+	await _test_next_match()
 	var status: String = " (FAILURES!)" if failures > 0 else ""
 	print("=== SETTLEMENT RESULT: %d/%d passed%s ===" % [checks - failures, checks, status])
 	get_tree().quit(1 if failures > 0 else 0)
@@ -90,3 +92,36 @@ func _test_model_final_matches_score_system() -> void:
 	for entry in final_ranking:
 		ids_final.append(int(entry.id))
 	_check("最终排名与 ScoreSystem 全量一致", ids_final == ids_full)
+
+func _test_next_match() -> void:
+	GameState.command_rejected.connect(func(_code: int, _msg: String) -> void: _rejections += 1)
+
+	_rejections = 0
+	_open()
+	GameState._server_next_match(0, "nm-1")
+	_check("非 GAME_OVER 拒绝", GameState.phase == GameState.Phase.TURN_DRAW and _rejections == 1)
+
+	GameState._finish_game()
+	_check("已进入 GAME_OVER", GameState.phase == GameState.Phase.GAME_OVER)
+	var before_number: int = GameState.match_number
+	GameState._server_next_match(0, "nm-2")
+	_check("match_number 递增", GameState.match_number == before_number + 1)
+	_check("回 INITIAL_PEEK", GameState.phase == GameState.Phase.INITIAL_PEEK)
+	_check("手牌重发每人 HAND_SIZE 张", GameState.players[0].cards.size() == KongRules.HAND_SIZE and GameState.players[1].cards.size() == KongRules.HAND_SIZE and GameState.players[2].cards.size() == KongRules.HAND_SIZE)
+	_check("initial_confirmed 清空", GameState.initial_confirmed.is_empty())
+
+	GameState._finish_game()
+	var before_phase: int = GameState.phase
+	var before_number2: int = GameState.match_number
+	GameState._server_next_match(1, "nm-3")
+	_check("非房主拒绝（阶段与局数不变）", GameState.phase == before_phase and GameState.match_number == before_number2)
+
+func _open() -> void:
+	GameState._reset_match()
+	GameState._add_player(1, "A")
+	GameState._add_player(2, "B")
+	GameState._add_player(3, "C")
+	GameState._server_start_match(0)
+	GameState._server_initial_ready(0)
+	GameState._server_initial_ready(1)
+	GameState._server_initial_ready(2)

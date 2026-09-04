@@ -15,6 +15,7 @@ signal card_exchange_animated(data: Dictionary)
 signal peek_highlighted(data: Dictionary)
 signal registered_token_received(token: String)
 signal resume_hand_received(hand: Array, pending: Dictionary)
+signal sfx_played(kind: String)
 
 enum Phase { LOBBY, INITIAL_PEEK, TURN_DRAW, TURN_DECISION, Q_DECISION, SLAP_WINDOW, SLAP_EXCHANGE, GAME_OVER, SLAP_DUEL }
 
@@ -365,6 +366,9 @@ func _server_start_match(sender: int) -> void:
 	if players.size() < KongRules.MIN_PLAYERS:
 		_reject(sender, RejectCode.NOT_ENOUGH_PLAYERS)
 		return
+	_deal_new_match()
+
+func _deal_new_match() -> void:
 	match_id = _new_match_id()
 	_create_deck()
 	for seat in turn_order:
@@ -374,8 +378,34 @@ func _server_start_match(sender: int) -> void:
 			players[seat].cards.append(_draw_from_deck())
 	phase = Phase.INITIAL_PEEK
 	initial_confirmed.clear()
+	last_result.clear()
 	_add_log("对局开始：请记住自己下方的两张牌。")
 	_broadcast_state()
+
+## 再来一局：GAME_OVER 后房主一键开新局（无需回大厅）。match_number 递增。
+func request_next_match(action_id := "") -> void:
+	if multiplayer.is_server():
+		_server_next_match(_peer_to_seat(1), action_id)
+	else:
+		server_next_match.rpc_id(1, action_id)
+
+@rpc("any_peer", "reliable")
+func server_next_match(action_id: String) -> void:
+	if multiplayer.is_server():
+		_server_next_match(_peer_to_seat(multiplayer.get_remote_sender_id()), action_id)
+
+func _server_next_match(sender: int, action_id := "") -> void:
+	if phase != Phase.GAME_OVER:
+		_reject(sender, RejectCode.INVALID_PHASE, action_id)
+		return
+	if sender != 0:
+		_reject(sender, RejectCode.NOT_HOST, action_id)
+		return
+	if players.size() < KongRules.MIN_PLAYERS:
+		_reject(sender, RejectCode.NOT_ENOUGH_PLAYERS, action_id)
+		return
+	match_number += 1
+	_deal_new_match()
 
 func _create_deck() -> void:
 	deck.clear()
@@ -828,6 +858,7 @@ func _finish_game(reason := "") -> void:
 		players[peer_id].health = max(0, int(players[peer_id].health) - 1)
 	last_result = {"ranking": ranking, "winners": winners, "penalized": losers, "first_turn_kong": kong_called_first_turn}
 	_add_log("对局结束，所有手牌已翻开。")
+	_broadcast_sfx("winner")
 	_broadcast_state()
 
 func _calculate_ranking() -> Array:
@@ -893,6 +924,7 @@ func _finish_game_over_hand(failed_seat: int) -> void:
 		"penalized": [failed_seat],
 		"failed_hand": failed_seat,
 	}
+	_broadcast_sfx("winner")
 	_broadcast_state()
 
 func _player_snapshot(seat: int, reveal_all: bool, viewer_id := 0, peek_slots: Array[int] = []) -> Dictionary:
@@ -957,6 +989,21 @@ func _broadcast_exchange(data: Dictionary) -> void:
 			_receive_exchange_animated(data)
 		else:
 			receive_exchange_animated.rpc_id(peer, data)
+
+## 广播音效事件到所有玩家（服务器权威发出，客户端各自在本地播放对应音效）。
+## kind 约定：`bell`（Kongbaya 铃铛）/ `winner`（结算胜利声）。不携带具体音频资源，客户端自行映射。
+func _broadcast_sfx(kind: String) -> void:
+	for seat in players.keys():
+		var peer := int(players[seat].peer_id)
+		if peer <= 0:
+			continue
+		if peer == 1:
+			_receive_sfx(kind)
+		else:
+			receive_play_sfx.rpc_id(peer, kind)
+
+func _receive_sfx(kind: String) -> void:
+	sfx_played.emit(kind)
 
 ## 广播查看高亮事件给除 viewer 外的所有玩家（不含牌面，仅标记被查看牌的位置）。
 func _broadcast_peek_highlight(viewer: int, data: Dictionary) -> void:
@@ -1035,6 +1082,11 @@ func receive_peek_highlight(data: Dictionary) -> void:
 @rpc("authority", "call_remote", "reliable")
 func receive_toast(message: String) -> void:
 	toast_received.emit(message)
+
+## 服务器广播的音效事件（kind: bell/winner），客户端据此播放本地音效。
+@rpc("authority", "call_remote", "reliable")
+func receive_play_sfx(kind: String) -> void:
+	sfx_played.emit(kind)
 
 ## 服务器把玩家身份 token 发给刚注册的玩家（仅本人），用于断线后重连认领座位。
 @rpc("authority", "call_remote", "reliable")
