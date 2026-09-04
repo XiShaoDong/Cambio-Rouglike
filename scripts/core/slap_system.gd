@@ -44,9 +44,12 @@ func attempt(sender: int, target_player: int, slot: int, action_id := "") -> voi
 		game._send_reveal(int(pid), "贴牌：翻出 %s 的牌" % target_name, [card_public], {"player_id": target_player, "slot": slot, "correct": correct})
 	if not correct:
 		var penalty_slot := add_penalty(sender)
+		game._add_log("%s 贴错了，罚抽一张牌。" % game.players[sender].name)
+		# 手牌超限（> MAX_HAND_CARDS）：立即结算，该玩家判定失败，不再广播罚牌动画
+		if game._check_over_hand(sender):
+			return
 		if penalty_slot >= 0:
 			game._broadcast_exchange({"kind": "slap_penalty", "peer": sender, "slot": penalty_slot})
-		game._add_log("%s 贴错了，罚抽一张牌。" % game.players[sender].name)
 		game._broadcast_state()
 		return
 	_add_to_collection(sender, target_player, slot, target_card)

@@ -57,7 +57,7 @@ var pending_draw: Dictionary = {}
 var q_context: Dictionary = {}
 var initial_confirmed: Dictionary = {}
 var final_queue: Array[int] = []
-var kong_caller := 0
+var kong_caller := -1  # Kongbaya 喊出者 seat；-1 = 未喊（不能用 0，房主座位是 0）
 var kong_called_first_turn := false
 var slap_rank := ""
 var slap_open := false
@@ -143,7 +143,7 @@ func _reset_match() -> void:
 	q_context.clear()
 	initial_confirmed.clear()
 	final_queue.clear()
-	kong_caller = 0
+	kong_caller = -1
 	kong_called_first_turn = false
 	slap_rank = ""
 	slap_open = false
@@ -705,7 +705,7 @@ func _kick_offline_seat(target_seat: int) -> void:
 	initial_confirmed.erase(target_seat)
 	final_queue.erase(target_seat)
 	if kong_caller == target_seat:
-		kong_caller = 0
+		kong_caller = -1
 	_add_log("%s 已被房主移出对局。" % name)
 	# 剩余人数不足以继续对局 → 直接中止回大厅（不可把仅剩 1 人的对局留在空转）
 	if players.size() < KongRules.MIN_PLAYERS:
@@ -780,11 +780,11 @@ func _advance_turn(final_mode := false) -> void:
 	if players.has(current_player_id):
 		players[current_player_id].has_acted = true
 	var decision: Dictionary
-	if kong_caller != 0 or final_mode:
+	if kong_caller != -1 or final_mode:
 		decision = {"type": TurnSystem.Decision.FINAL if not final_queue.is_empty() else TurnSystem.Decision.FINISH,
 			"next_player": int(final_queue[0]) if not final_queue.is_empty() else 0}
 	else:
-		decision = TurnSystem.decide(turn_order, current_player_id, 0, [])
+		decision = TurnSystem.decide(turn_order, current_player_id, kong_caller, [])
 	match decision.type:
 		TurnSystem.Decision.FINISH:
 			_finish_game()
@@ -844,6 +844,56 @@ func _valid_slot(seat: int, slot: int) -> bool:
 
 func _card_public(card_id: String) -> Dictionary:
 	return HiddenInfo.public_card(self, card_id)
+
+## 玩家当前非空手牌数。
+func _hand_count(seat: int) -> int:
+	var n := 0
+	for card_id in players[seat].cards:
+		if not str(card_id).is_empty():
+			n += 1
+	return n
+
+## 手牌超限检查：seat 玩家总牌数超过 MAX_HAND_CARDS → 该玩家失败，立即结算。
+## 触发结算后返回 true，调用方应停止后续流程（不再广播普通状态/动画）。
+func _check_over_hand(seat: int) -> bool:
+	if not players.has(seat):
+		return false
+	if _hand_count(seat) > KongRules.MAX_HAND_CARDS:
+		_finish_game_over_hand(seat)
+		return true
+	return false
+
+## 手牌超限立即结算（R-07）：超限玩家判定失败并扣 1 点生命，
+## 其余玩家按各自手牌点数结算排名（最低分者胜），失败玩家不参与排名。
+func _finish_game_over_hand(failed_seat: int) -> void:
+	slap_open = false
+	slap_collect.clear()
+	slap_duel.clear()
+	slap_collect_timer.stop()
+	slap_duel_timer.stop()
+	phase = Phase.GAME_OVER
+	if players.has(failed_seat):
+		players[failed_seat].health = max(0, int(players[failed_seat].health) - 1)
+	var others: Array[int] = []
+	for seat in turn_order:
+		if int(seat) != failed_seat:
+			others.append(int(seat))
+	var ranking := ScoreSystem.calculate_ranking(players, cards, others)
+	var winners: Array[int] = []
+	if not ranking.is_empty():
+		for entry in ranking:
+			if _same_score(entry, ranking[0]):
+				winners.append(int(entry.id))
+	var failed_name: String = players.get(failed_seat, {}).get("name", "玩家")
+	_add_log("%s 手牌超过 %d 张，判定失败。" % [failed_name, KongRules.MAX_HAND_CARDS])
+	last_result = {
+		"reason": "%s 手牌超过 %d 张，判定失败。" % [failed_name, KongRules.MAX_HAND_CARDS],
+		"ranking": ranking,
+		"winners": winners,
+		"penalized": [failed_seat],
+		"failed_hand": failed_seat,
+	}
+	_broadcast_state()
 
 func _player_snapshot(seat: int, reveal_all: bool, viewer_id := 0, peek_slots: Array[int] = []) -> Dictionary:
 	return HiddenInfo._player_snapshot(self, seat, reveal_all, viewer_id, peek_slots)

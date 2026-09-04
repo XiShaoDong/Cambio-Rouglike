@@ -11,7 +11,11 @@ func _init(state: Node) -> void:
 	game = state
 
 ## 喊出 Kongbaya。sender 为行动者。
+## 一场对局只允许一次：已有人喊过（kong_caller != -1）即拒绝，最终轮玩家不可再喊。
 func declare(sender: int, action_id := "") -> void:
+	if game.kong_caller != -1:
+		game._reject(sender, game.RejectCode.INVALID_PHASE, action_id)
+		return
 	if game.phase != game.Phase.TURN_DRAW:
 		game._reject(sender, game.RejectCode.INVALID_PHASE, action_id)
 		return

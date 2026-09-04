@@ -7,6 +7,8 @@ extends RefCounted
 const MAX_PLAYERS := 4
 const MIN_PLAYERS := 2
 const HAND_SIZE := 4
+## 手牌数上限：玩家总牌数超过该值（> MAX_HAND_CARDS）时对局立即结算，该玩家判定失败。
+const MAX_HAND_CARDS := 6
 
 ## 贴牌比拼：首个正确贴牌后的收集窗口（毫秒），期间其他正确贴牌加入比拼。
 const SLAP_DUEL_COLLECT_MS := 400

@@ -17,6 +17,7 @@ func _ready() -> void:
 	await _test_duel_timeout()
 	await _test_debug_duel()
 	await _test_duel_nobody_stops()
+	await _test_over_hand_fail()
 	print("=== DUEL RESULT: %d/%d passed%s ===" % [checks - failures, checks, " (FAILURES!)" if failures else ""])
 	get_tree().quit(1 if failures else 0)
 
@@ -142,3 +143,29 @@ func _test_duel_nobody_stops() -> void:
 	GameState.slap.duel_timeout()
 	_check("无人 STOP 超时后正常解决", GameState.phase != GameState.Phase.SLAP_DUEL)
 	_check("无人 STOP 兜底胜者是候选人", int(GameState.slap_exchange.get("actor", 0)) == 0 or int(GameState.slap_exchange.get("actor", 0)) == 1)
+
+func _test_over_hand_fail() -> void:
+	# R-07 手牌超限：任一玩家总牌数 > MAX_HAND_CARDS(6) 时对局立即结算，该玩家失败（扣生命），
+	# 其余玩家按点数结算排名，失败玩家不参与排名。
+	_open_window_with_rank("7")
+	# seat0 先补到 6 张（开局 4 张 + 补 2 张 = 上限内不触发）
+	var cards0: Array = GameState.players[0].cards
+	var extras: Array = []
+	for cid in GameState.cards:
+		if str(GameState.cards[cid].rank) != "7":
+			extras.append(cid)
+	for index in range(2):
+		cards0.append(extras[index])
+	_check("6 张手牌不触发超限", _count_nonempty(GameState.players[0].cards) == 6)
+	_check("6 张时对局继续", not GameState._check_over_hand(0))
+	# seat0 贴错（目标 seat1 slot0 放非 7 的牌）→ 罚抽第 7 张 → 立即结算
+	GameState.players[1].cards[0] = extras[5]
+	var health_before: int = GameState.players[0].health
+	GameState._server_slap(0, 1, 0, "oh-1")
+	_check("贴错罚牌后手牌 7 张", _count_nonempty(GameState.players[0].cards) == 7)
+	_check("手牌超限立即结算 GAME_OVER", GameState.phase == GameState.Phase.GAME_OVER)
+	_check("超限玩家被标记失败", int(GameState.last_result.get("failed_hand", -1)) == 0)
+	_check("超限玩家扣生命", int(GameState.players[0].health) == health_before - 1)
+	_check("其余玩家纳入点数结算", (GameState.last_result.get("ranking", []) as Array).size() == 1)
+	var rank_id: int = int((GameState.last_result.get("ranking", []) as Array)[0].id)
+	_check("失败玩家不在排名", rank_id != 0)

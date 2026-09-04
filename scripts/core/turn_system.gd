@@ -11,10 +11,10 @@ extends RefCounted
 enum Decision { NEXT, FINAL, FINISH }
 
 ## 判断下一步。
-## turn_order: 玩家顺序；current_player_id: 当前行动者；kong_caller: Kongbaya 喊出者（0=无）；
+## turn_order: 玩家顺序；current_player_id: 当前行动者；kong_caller: Kongbaya 喊出者（-1=无）；
 ## final_queue: 最终轮剩余队列。返回决策。
 static func decide(turn_order: Array, current_player_id: int, kong_caller: int, final_queue: Array) -> Dictionary:
-	if kong_caller != 0:
+	if kong_caller != -1:
 		if final_queue.is_empty():
 			return {"type": Decision.FINISH, "next_player": 0}
 		return {"type": Decision.FINAL, "next_player": int(final_queue[0])}
