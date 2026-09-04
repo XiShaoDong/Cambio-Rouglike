@@ -41,7 +41,7 @@ func _bind_ui(match_number: int) -> void:
 	_rank_area = get_node("Center/Panel/VBox/RankingArea")
 	_footer = get_node("Center/Panel/VBox/Footer")
 
-	var n := _model.layout_order.size()
+	var n: int = _model.layout_order.size()
 	_rank_area.custom_minimum_size = Vector2(ROW_W, n * ROW_H)
 	var layout_order: Array = _model.layout_order
 	for index in layout_order.size():

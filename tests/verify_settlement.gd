@@ -10,6 +10,7 @@ func _ready() -> void:
 	await _test_model_uneven()
 	await _test_model_final_matches_score_system()
 	await _test_next_match()
+	await _test_page_construct()
 	var status: String = " (FAILURES!)" if failures > 0 else ""
 	print("=== SETTLEMENT RESULT: %d/%d passed%s ===" % [checks - failures, checks, status])
 	get_tree().quit(1 if failures > 0 else 0)
@@ -125,3 +126,16 @@ func _open() -> void:
 	GameState._server_initial_ready(0)
 	GameState._server_initial_ready(1)
 	GameState._server_initial_ready(2)
+
+func _test_page_construct() -> void:
+	await get_tree().process_frame
+	var model: Dictionary = SettlementModel.build(_players_even())
+	var page: Control = preload("res://scenes/ui/settlement_page.tscn").instantiate()
+	get_tree().root.add_child(page)
+	page.setup(model, true, 1, Callable(), Callable(), Callable(), false)
+	await get_tree().process_frame
+	_check("结算页行数=玩家数", page._rows.size() == 3)
+	_check("结算页标题正确", page._title.text == "结算 · 第 1 局")
+	_check("初始每行累计分=0", page._rows[0].total.text == "0" and page._rows[1].total.text == "0" and page._rows[2].total.text == "0")
+	_check("footer 初始隐藏", page._footer.visible == false)
+	page.queue_free()

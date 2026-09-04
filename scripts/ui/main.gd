@@ -60,6 +60,7 @@ const SLAP_WRONG_GLOW := Color("ff7b7b")  # 贴错红色炫光（同 UITheme dan
 const SLAP_GLOW_SIZE := 14
 const DuelBarScript := preload("res://scripts/ui/duel_bar.gd")
 const SettingsMenuScript := preload("res://scripts/ui/settings_menu.gd")
+const SettlementPageScript := preload("res://scenes/ui/settlement_page.tscn")
 
 var latest_lobby: Dictionary = {}
 var latest_state: Dictionary = {}
@@ -124,6 +125,8 @@ var _rejoin_port := KongNetwork.DEFAULT_PORT
 var _was_in_match := false
 var _reconnect_panel: Control = null
 var _reconnect_expected := false
+var settlement_page: Control = null
+var _pending_winner_sfx := false
 
 ## 标记某个玩家槽位正在动画（渲染时该槽位显示虚线占位，不显示原卡）。
 func mark_anim_slot(pid: int, slot: int) -> void:
@@ -178,6 +181,7 @@ func _ready() -> void:
 	GameState.match_aborted.connect(_on_match_aborted)
 	GameState.registered_token_received.connect(_on_registered_token)
 	GameState.resume_hand_received.connect(_on_resume_hand)
+	GameState.sfx_played.connect(_on_sfx)
 	Network.connection_status_changed.connect(_set_status)
 	Network.connection_failed.connect(_show_toast)
 	Network.joined_server.connect(_on_joined_server_for_reconnect)
@@ -203,6 +207,7 @@ func _on_match_aborted(_code: int, message: String) -> void:
 		interaction.selected_own_slot = -1
 		interaction.selected_their_slot = -1
 	lobby.reset_lobby()
+	_close_settlement()
 	_set_status("对局中止：%s" % message)
 	# 断线后回大厅：若持有 token，在初始界面显示"重连上次对局"入口
 	if not Network.is_host and not _my_token.is_empty():
@@ -378,6 +383,14 @@ func _apply_dev_join() -> void:
 func _request_kongbaya() -> void:
 	GameState.request_kongbaya(_next_action_id())
 
+## 服务器广播的音效事件：本地播放对应音效（bell=铃铛，winner=延迟到冠军出场再播）。
+func _on_sfx(kind: String) -> void:
+	match kind:
+		"bell":
+			AudioManager.play_bell()
+		"winner":
+			_pending_winner_sfx = true
+
 func _entered_name() -> String:
 	var chosen := name_input.text.strip_edges().left(16)
 	return chosen if not chosen.is_empty() else "玩家"
@@ -397,6 +410,10 @@ func _on_state_updated(state: Dictionary) -> void:
 	lobby_panel.visible = false
 	game_panel.visible = true
 	_render_game()
+	if int(state.phase) == PHASE_GAME_OVER:
+		_open_settlement()
+	else:
+		_close_settlement()
 
 func _render_game() -> void:
 	game_view.render(latest_state)
@@ -435,6 +452,37 @@ func _render_duel(state: Dictionary) -> void:
 
 func _on_slap_duel_stop() -> void:
 	GameState.request_slap_duel_stop(_next_action_id())
+
+## GAME_OVER 时打开结算弹层（幂等：已打开则跳过）。reason-only 结算不开弹层，保留右下角摘要。
+func _open_settlement() -> void:
+	if settlement_page != null and is_instance_valid(settlement_page):
+		return
+	var result: Dictionary = latest_state.get("result", {})
+	if result.get("ranking", []).is_empty():
+		return
+	var model: Dictionary = SettlementModel.build(latest_state.players)
+	var page := SettlementPageScript.instantiate()
+	page.name = "SettlementPage"
+	overlay.add_child(page)
+	page.setup(model, Network.is_host, int(latest_state.get("match_number", 1)),
+		_play_pending_winner, _request_next_match, GameState.request_abort_match)
+	settlement_page = page
+
+## 关闭结算弹层（收到新局/中止时调用）。
+func _close_settlement() -> void:
+	if settlement_page != null and is_instance_valid(settlement_page):
+		settlement_page.queue_free()
+	settlement_page = null
+
+## 冠军时刻：若服务器已广播过 winner 音效事件，此刻播放（延迟到冠军出场）。
+func _play_pending_winner() -> void:
+	if _pending_winner_sfx:
+		AudioManager.play_winner()
+		_pending_winner_sfx = false
+
+## 结算页「再来一局」→ 服务器开新局。
+func _request_next_match() -> void:
+	GameState.request_next_match(_next_action_id())
 
 ## ESC 切换设置菜单：懒创建一次，反复切 visible。
 func _toggle_settings() -> void:
