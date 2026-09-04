@@ -5,6 +5,11 @@
 [ext_resource type="AudioStream" uid="uid://bjjtfe6mooha0" path="res://assets/Sounds/card-flip-quick.mp3" id="3_quick"]
 [ext_resource type="AudioStream" uid="uid://bcjok1umlcaul" path="res://assets/Sounds/card-fly.wav" id="4_fly"]
 [ext_resource type="AudioStream" uid="uid://cb7dwamgn3sab" path="res://assets/Sounds/mouse-click.mp3" id="5_select"]
+[ext_resource type="AudioStream" uid="uid://dksn7uskv6jtu" path="res://assets/Sounds/Bell.mp3" id="6_bell"]
+[ext_resource type="AudioStream" uid="uid://dbdn57sr7dgm" path="res://assets/Sounds/Winner01.mp3" id="7_w01"]
+[ext_resource type="AudioStream" uid="uid://cgsro1flq1nme" path="res://assets/Sounds/winner02.mp3" id="8_w02"]
+[ext_resource type="AudioStream" uid="uid://bsujab1l1vlv6" path="res://assets/Sounds/Winner03.mp3" id="9_w03"]
+[ext_resource type="AudioStream" uid="uid://bstowidgexmsi" path="res://assets/Sounds/Winner04.mp3" id="10_w04"]
 
 [node name="AudioManager" type="Node"]
 script = ExtResource("1_script")
@@ -12,3 +17,5 @@ select_sfx = ExtResource("5_select")
 flip_sfx = ExtResource("2_flip")
 flip_quick_sfx = ExtResource("3_quick")
 fly_sfx = ExtResource("4_fly")
+bell_sfx = ExtResource("6_bell")
+winner_sfx = Array[AudioStream]([ExtResource("7_w01"), ExtResource("8_w02"), ExtResource("9_w03"), ExtResource("10_w04")])
