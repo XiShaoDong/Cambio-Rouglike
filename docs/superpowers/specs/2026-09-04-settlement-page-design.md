@@ -15,8 +15,8 @@
 ## 2. 目标
 
 1. GAME_OVER 时自动弹出居中的结算弹层（全屏遮罩 + 宽面板，仿 `settings_menu` 但更宽），替代右下角摘要。
-2. 弹层内播放 Balatro 式算分动画：按左上顺时针顺序，每名玩家手牌**逐张翻面**、每张弹 `+值` 气泡、总分数字滚动累加；每算完一名玩家，排名榜**实时重排**（低分=冠军置顶）。
-3. 全部算完 → 排名榜首名字播放**金色脉冲光环 + ★ 徽章**，并同步播放胜利音效（`AudioManager.play_winner()` 随机 1-4）。
+2. 弹层内播放 Balatro 式算分动画：**同步轮记分**——每轮所有玩家手牌的第 N 张**同时翻面**、各自累计分实时累加，每轮翻完排名表**实时重排**（低分=冠军置顶，整行上移/下移）。
+3. 全部算完 → 排名榜首行名字播放**金色脉冲光环 + ★ 徽章**，并同步播放胜利音效（`AudioManager.play_winner()` 随机 1-4）。
 4. 新增「再来一局」：房主在结算页一键开新局（无需回大厅），`match_number` 递增、重发手牌、回 INITIAL_PEEK。
 
 ## 3. 架构与新增文件
@@ -25,7 +25,7 @@
 
 | 文件 | 职责 | 可测试性 |
 | --- | --- | --- |
-| `scripts/core/settlement_model.gd` | 纯计算（RefCounted，不依赖 Node）：算分顺序、逐张翻牌增量序列、实时排名重排。 | headless 单测 |
+| `scripts/core/settlement_model.gd` | 纯计算（RefCounted，不依赖 Node）：`layout_order`（左上顺时针）、`rounds`（同步轮记分）、`ranking_states`（每轮实时排名）。 | headless 单测 |
 | `scripts/ui/settlement_page.gd` | 结算弹层（Control，代码构建，仿 `settings_menu`/`duel_bar`）：布局 + 动画时序 + 冠军特效 + 出口按钮。 | 不单测（UI 动画） |
 | `tests/verify_settlement.gd`（+`.tscn`） | 验证结算模型 + `_server_next_match` 流程。 | headless |
 
@@ -73,35 +73,36 @@ func _server_next_match(sender: int, action_id := "") -> void:
 
 ## 5. 结算弹层 UI（`settlement_page.gd`）
 
-- 全屏遮罩 `ColorRect`（点击不关闭，防误触）+ 居中 `CenterContainer` + 宽面板（`custom_minimum_size` ~ 720×540，`StyleBoxFlat` 圆角 + 边框，复用 UITheme token）。
+- 无全屏遮罩拦截（避免挡棋盘）：结算页为**居中浮动排名窗口**，`StyleBoxFlat` 圆角 + 边框（复用 UITheme token），宽度紧凑（~520px），**不遮挡四块玩家手牌区**（棋盘卡牌全程可见，逐个翻牌需看到棋盘）。
 - 布局：
-  - 顶部：标题「结算」+ 第 N 局。
-  - 中部：**中央牌桌区**——玩家按座位围成圆圈（seat0 在左上，其余顺时针排），每位玩家显示名字 + 手牌（初始全部背面）。
-  - 右侧：**排名榜**（纵向列表）实时重排，低分在前（冠军置顶），初始显示「…」待算。
+  - 顶部：标题「结算 · 第 N 局」。
+  - 中央：**排名表（tab）**，表头 `名次 / 玩家 / 已翻开的牌 / 累计分`，**每行 = 一名玩家**：`[名次] [名字] [已翻开的牌] [累计分]`。
+  - 已翻开的牌 v1 用**字母/数字文本**展示（如 `♠7`），后续可升级为 `assets/SmallCards` 小牌图（本期不做）。
 - 关闭时机：收到新局快照（phase != GAME_OVER）或房主点「返回大厅」（`request_abort_match`）。
 
-## 6. 算分动画（Balatro 式，逐张翻牌）
+## 6. 算分动画（Balatro 式，同步轮记分）
 
-### 6.1 算分顺序（`settlement_model.gd`）
+### 6.1 模型（`settlement_model.gd`）
 
-- 座位按「左上为 seat0、顺时针」排布；**算分顺序 = 座位顺序 0,1,2,…（顺时针）**。
+- 座位按「左上为 seat0、顺时针」排布（仅作视觉排布，非算分次序）。
+- **算分 = 同步轮记分**：每轮所有玩家一起翻开各自第 N 张牌，各人 `running_total += 该牌值`；每轮翻完按累计分实时重排（低分=冠军置顶）。
 - 模型输入：`turn_order`（座位数组）+ 快照 players（含手牌值）+ `result.ranking`。
 - 产出：
-  1. `scoring_order`：座位顺序（顺时针起点左上）。
-  2. 每玩家 `steps`：逐张牌的 `{slot, value, running_total}` 增量序列。
-  3. 每玩家算完后的 `ranking_states`：每次插入后已算完玩家的排名重排结果（复用 `ScoreSystem._is_lower_score` 排序）。
+  1. `layout_order`：座位顺序（左上起顺时针，视觉排布用）。
+  2. `rounds`：每轮 = `{slot, flips: [{seat, value}], totals: [{seat, running_total}]}`（第 N 轮 = 所有人第 N 张牌的值 + 翻完后累计分）。
+  3. `ranking_states`：每轮结束后的全量排名（复用 `ScoreSystem._is_lower_score` 排序，低分在前）。
 
 ### 6.2 动画时序（`settlement_page.gd` 本地播放）
 
-- 对算分顺序中每名玩家：
-  1. 依次翻开其每张手牌（正面显示 rank/suit），每张弹出 `+值` 气泡（缩放淡出），总分 Label 数字滚动到新值。
-  2. 每张间隔 ~0.6s（`create_tween` 串联）。
-- 该玩家算完 → 把其条目插入排名榜，按 `_is_lower_score` 实时重排（条目做位移动画或直接刷新）。
-- 全部算完 → 进入冠军特效。整场动画目标 ≤10s（2-4 人 × 2-6 张 × 0.6s，上限 N 大时抽样加速：每张间隔可降到 0.3s）。
+- 对每一轮：
+  1. 所有玩家该轮卡在各自行内**同时翻转**（v1 文本出现，带缩放/淡入），行内累计分 Label 数字滚动到新 `running_total`。
+  2. 每轮间隔 ~0.6s（`create_tween` 串联）。
+- 每轮翻完 → 排名表按 `ranking_states` **实时重排**：整行（含已翻的牌）做纵向上升/下降位移动画（如 ABC → CAB：C 上移、A/B 下移）。
+- 全部轮次算完 → 进入冠军特效。整场动画目标 ≤10s（轮数 = 最大手牌数 ≤6，每轮 0.6s + 重排 0.4s）。
 
 ### 6.3 冠军特效
 
-- 排名榜首名字：金色脉冲光环（`scale` 呼吸 + `modulate` 明暗闪烁）+ 名字旁 ★ 徽章 Label。
+- 排名榜首行（冠军）：行内名字**金色脉冲光环**（`scale` 呼吸 + `modulate` 明暗闪烁）+ 名字旁 ★ 徽章 Label。
 - 胜利音效：`main.gd:_on_sfx("winner")` 改为先缓存标志，冠军时刻由结算页回调触发 `AudioManager.play_winner()`（随机 1-4）。
 - 例外：GAME_OVER 由 `reason` 路径触发（无 ranking，如全员离开）时结算页直接显示 reason 文本，不播放算分动画与冠军特效（reason 路径不广播 `winner` 事件，维持现状静默）。
 
@@ -115,9 +116,9 @@ func _server_next_match(sender: int, action_id := "") -> void:
 
 ## 8. 测试（`tests/verify_settlement.gd`）
 
-1. 算分顺序：`scoring_order` = 座位顺序（左上起顺时针）；2/3/4 人均正确。
-2. 增量序列：每玩家 steps 求和 = 快照 score；running_total 单调递增。
-3. 实时排名重排：每次插入后的 `ranking_states` 与全量 `calculate_ranking` 一致（低分在前）。
+1. `layout_order`：座位顺序（左上起顺时针）；2/3/4 人均正确。
+2. `rounds`：轮数 = 最大手牌数；每轮 flips 含全员该张牌值；每轮 totals 的 running_total = 前几轮累计 + 本轮值。
+3. `ranking_states`：每轮结束排名与全量 `calculate_ranking`（按已翻牌的累计分）一致，低分在前。
 4. `_server_next_match`：GAME_OVER + 房主 → 成功，`match_number`+1、回 INITIAL_PEEK、手牌重发（每人 6 张）、`initial_confirmed` 清空。
 5. 拒绝分支：非 GAME_OVER（TURN_DRAW）拒绝；非房主（seat1）拒绝；`_reject` 走 `command_rejected`。
 6. 回归：`verify_protocol`/`verify_swap`/`verify_duel`/`verify_reconnect`/`verify_kongbaya`/`verify_hint`/双实例 `verify_net` 全绿。
