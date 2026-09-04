@@ -463,7 +463,11 @@ func _open_settlement() -> void:
 	var model: Dictionary = SettlementModel.build(latest_state.players)
 	var page := SettlementPageScript.instantiate()
 	page.name = "SettlementPage"
-	overlay.add_child(page)
+	# 直接挂 main 末尾 + z_index（仿 settings_menu 已验证模式）：main 子节点逆序 pick，
+	# 末位子节点优先于棋盘（margin）接收点击；overlay 是 IGNORE，挂它下面会被 4.6 的
+	# get_mouse_filter_with_override 判定为整棵子树不可点。
+	page.z_index = 100
+	add_child(page)
 	page.setup(model, Network.is_host, int(latest_state.get("match_number", 1)),
 		_play_pending_winner, _request_next_match, GameState.request_abort_match)
 	settlement_page = page
