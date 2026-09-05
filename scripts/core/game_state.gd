@@ -371,6 +371,22 @@ func _server_start_match(sender: int) -> void:
 func _deal_new_match() -> void:
 	match_id = _new_match_id()
 	_create_deck()
+	# 清理上一局可能残留的按局状态（弃牌堆/待处理/贴牌/最终轮），
+	# 否则快照引用的旧卡牌 id 在新 cards 字典中不存在 → public_card 报错。
+	discard_pile.clear()
+	pending_draw.clear()
+	q_context.clear()
+	final_queue.clear()
+	kong_caller = -1
+	kong_called_first_turn = false
+	slap_rank = ""
+	slap_open = false
+	slap_exchange.clear()
+	slap_collect.clear()
+	slap_duel.clear()
+	slap_collect_timer.stop()
+	slap_duel_timer.stop()
+	event_log.clear()
 	for seat in turn_order:
 		players[seat].cards.clear()
 		players[seat].has_acted = false

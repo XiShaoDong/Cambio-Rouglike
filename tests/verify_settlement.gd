@@ -10,6 +10,7 @@ func _ready() -> void:
 	await _test_model_uneven()
 	await _test_model_final_matches_score_system()
 	await _test_next_match()
+	await _test_next_match_clears_stale()
 	await _test_page_construct()
 	var status: String = " (FAILURES!)" if failures > 0 else ""
 	print("=== SETTLEMENT RESULT: %d/%d passed%s ===" % [checks - failures, checks, status])
@@ -116,6 +117,21 @@ func _test_next_match() -> void:
 	var before_number2: int = GameState.match_number
 	GameState._server_next_match(1, "nm-3")
 	_check("非房主拒绝（阶段与局数不变）", GameState.phase == before_phase and GameState.match_number == before_number2)
+
+## 回归：真实对局残留弃牌/待处理牌后「再来一局」，旧卡 id 不得泄漏进新局快照。
+func _test_next_match_clears_stale() -> void:
+	_open()
+	GameState._server_take(0, "draw", "st-1")
+	GameState._server_discard_draw(0, "st-2")   # 弃牌堆有 1 张旧卡
+	GameState._server_take(1, "draw", "st-3")   # 残留待处理牌
+	GameState._finish_game()
+	_check("结算前弃牌堆非空", not GameState.discard_pile.is_empty())
+	_check("结算前存在待处理牌", not GameState.pending_draw.is_empty())
+	GameState._server_next_match(0, "st-4")
+	_check("next_match 清空弃牌堆", GameState.discard_pile.is_empty())
+	_check("next_match 清空待处理牌", GameState.pending_draw.is_empty())
+	var snap: Dictionary = GameState._snapshot_for(0)
+	_check("新局快照构建无旧卡泄漏", snap.players.size() == 3 and snap.discard.is_empty())
 
 func _open() -> void:
 	GameState._reset_match()
