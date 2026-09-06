@@ -469,8 +469,17 @@ func _open_settlement() -> void:
 	page.z_index = 100
 	add_child(page)
 	page.setup(model, Network.is_host, int(latest_state.get("match_number", 1)),
-		_play_pending_winner, _request_next_match, GameState.request_abort_match)
+		_play_pending_winner, _request_next_match, GameState.request_abort_match,
+		_on_settlement_flip)
 	settlement_page = page
+
+## 结算联动：每轮翻牌时刻把对应棋盘卡牌从背面翻到正面（与结算页行内记分同步）。
+func _on_settlement_flip(seat: int, slot: int, card: Dictionary) -> void:
+	if not _card_slots.has(seat) or not _card_slots[seat].has(slot):
+		return
+	var card_node: Control = _card_slots[seat][slot]
+	if is_instance_valid(card_node) and card_node is CardView:
+		(card_node as CardView).flip_reveal(card)
 
 ## 关闭结算弹层（收到新局/中止时调用）。
 func _close_settlement() -> void:

@@ -407,7 +407,10 @@ func _render_card_slot(container: Control, player: Dictionary, slot_index: int, 
 			main._card_slots[pid] = {}
 		main._card_slots[pid][slot_index] = empty
 		return
-	var card_button: Button = main._make_card_button(slot.get("card", {}), card_size)
+	var card_data: Dictionary = slot.get("card", {})
+	if int(main.latest_state.phase) == PHASE_GAME_OVER:
+		card_data = {}  # 结算阶段初始背面，由结算页算分动画逐张联动翻面
+	var card_button: Button = main._make_card_button(card_data, card_size)
 	card_button.tooltip_text = "记忆牌面后，点击以执行当前操作"
 	card_button.pressed.connect(main._on_card_pressed.bind(pid, slot_index))
 	main._highlight(card_button, main._card_actionable(pid, slot_index))

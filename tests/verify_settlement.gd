@@ -12,6 +12,8 @@ func _ready() -> void:
 	await _test_next_match()
 	await _test_next_match_clears_stale()
 	await _test_page_construct()
+	await _test_page_flip_callback()
+	await _test_cardview_flip_reveal()
 	var status: String = " (FAILURES!)" if failures > 0 else ""
 	print("=== SETTLEMENT RESULT: %d/%d passed%s ===" % [checks - failures, checks, status])
 	get_tree().quit(1 if failures > 0 else 0)
@@ -148,10 +150,39 @@ func _test_page_construct() -> void:
 	var model: Dictionary = SettlementModel.build(_players_even())
 	var page: Control = preload("res://scenes/ui/settlement_page.tscn").instantiate()
 	get_tree().root.add_child(page)
-	page.setup(model, true, 1, Callable(), Callable(), Callable(), false)
+	page.setup(model, true, 1, Callable(), Callable(), Callable(), Callable(), false)
 	await get_tree().process_frame
 	_check("结算页行数=玩家数", page._rows.size() == 3)
 	_check("结算页标题正确", page._title.text == "结算 · 第 1 局")
 	_check("初始每行累计分=0", page._rows[0].total.text == "0" and page._rows[1].total.text == "0" and page._rows[2].total.text == "0")
 	_check("footer 初始隐藏", page._footer.visible == false)
 	page.queue_free()
+
+## 结算页逐张翻牌时联动回调（棋盘翻面）与行内文本揭示同步触发。
+func _test_page_flip_callback() -> void:
+	await get_tree().process_frame
+	var model: Dictionary = SettlementModel.build(_players_even())
+	var flip_log: Array = []
+	var page: Control = preload("res://scenes/ui/settlement_page.tscn").instantiate()
+	get_tree().root.add_child(page)
+	page.setup(model, true, 1, Callable(), Callable(), Callable(),
+		func(_seat: int, _slot: int, _card: Dictionary) -> void: flip_log.append(_seat),
+		false)
+	await get_tree().process_frame
+	page._reveal_flip(0, 0, {"seat": 0, "value": 7, "rank": "7", "suit": "♠", "total": 7}, 0.0)
+	_check("结算页联动回调触发", flip_log.size() == 1 and flip_log[0] == 0)
+	_check("行内新增翻牌文本", page._rows[0].cards.get_child_count() == 1)
+	page.queue_free()
+
+## CardView.flip_reveal：设正面数据后纵轴从背面翻到正面。
+func _test_cardview_flip_reveal() -> void:
+	await get_tree().process_frame
+	var card: Button = preload("res://scenes/ui/card.tscn").instantiate()
+	get_tree().root.add_child(card)
+	await get_tree().process_frame
+	card.flip_reveal({"rank": "7", "suit": "♠"})
+	_check("flip_reveal 设正面数据", (card as CardView).is_face_up)
+	_check("flip_reveal 起始背面", (card as CardView).back.visible)
+	await get_tree().create_timer(0.7).timeout
+	_check("flip_reveal 翻到正面", (card as CardView).front.visible)
+	card.queue_free()

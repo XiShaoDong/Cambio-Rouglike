@@ -14,18 +14,21 @@ var _is_host := false
 var _on_winner: Callable = Callable()
 var _on_next_match: Callable = Callable()
 var _on_abort: Callable = Callable()
+var _on_flip: Callable = Callable()
 var _rows: Dictionary = {}
 var _rank_area: Control
 var _footer: Control
 var _title: Label
 
 func setup(model: Dictionary, is_host: bool, match_number: int,
-		on_winner: Callable, on_next_match: Callable, on_abort: Callable, auto_play := true) -> void:
+		on_winner: Callable, on_next_match: Callable, on_abort: Callable,
+		on_flip := Callable(), auto_play := true) -> void:
 	_model = model
 	_is_host = is_host
 	_on_winner = on_winner
 	_on_next_match = on_next_match
 	_on_abort = on_abort
+	_on_flip = on_flip
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_bind_ui(match_number)
 	if auto_play:
@@ -101,18 +104,21 @@ func _run_sequence() -> void:
 	for round in _model.rounds:
 		var flips: Array = round.flips
 		for flip in flips:
-			_reveal_flip(int(flip.seat), flip, flips.find(flip) * FLIP_STEP)
+			_reveal_flip(int(flip.seat), int(round.slot), flip, flips.find(flip) * FLIP_STEP)
 		await get_tree().create_timer(ROUND_DELAY).timeout
 		await _resort(round.ranking)
 		await get_tree().create_timer(0.2).timeout
 	await _champion()
 	_show_footer()
 
-func _reveal_flip(seat: int, flip: Dictionary, delay: float) -> void:
+func _reveal_flip(seat: int, slot: int, flip: Dictionary, delay: float) -> void:
 	if delay > 0.0:
 		await get_tree().create_timer(delay).timeout
 	if not _rows.has(seat):
 		return
+	# 联动棋盘翻牌：与行内文本揭示同一时刻触发（逐张、与算分同步）。
+	if _on_flip.is_valid():
+		_on_flip.call(seat, slot, {"rank": str(flip.rank), "suit": str(flip.suit)})
 	var entry: Dictionary = _rows[seat]
 	var card_lbl := Label.new()
 	card_lbl.text = "%s%s" % [str(flip.rank), str(flip.suit)]

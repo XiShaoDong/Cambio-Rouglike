@@ -152,6 +152,16 @@ func flip_show() -> void:
 	var from := front if front.visible else back
 	var to := back if front.visible else front
 	_create_flip(from, to)
+
+## 结算联动翻牌：设置正面数据但不立即显示，纵轴从背面翻到正面（棋盘卡牌随算分逐张翻开）。
+func flip_reveal(data: Dictionary) -> void:
+	card_data = data
+	is_face_up = not data.is_empty()
+	if is_inside_tree() and is_instance_valid(front_texture):
+		front_texture.texture = _front_texture()
+	back.visible = true
+	front.visible = false
+	flip_to_face(true)
 	
 func _create_flip(from: Control, to: Control) -> void:
 	pivot_offset = size / 2.0
