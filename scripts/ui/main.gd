@@ -416,6 +416,9 @@ func _on_state_updated(state: Dictionary) -> void:
 		_close_settlement()
 
 func _render_game() -> void:
+	# 每次渲染前清空卡牌槽位映射：渲染会全量重建，防止上一局残留槽位
+	#（如超出手牌数的罚牌槽位）指向已释放节点，致后续动画报 freed instance。
+	_card_slots.clear()
 	game_view.render(latest_state)
 	_render_duel(latest_state)
 	# ExtraLayer 附加卡已同步定位，罚牌 fly 可直接取到正确锚点
@@ -457,6 +460,12 @@ func _on_slap_duel_stop() -> void:
 func _open_settlement() -> void:
 	if settlement_page != null and is_instance_valid(settlement_page):
 		return
+	# 对局已结束：清空可能残留的动画/挂起状态，避免带入下一局
+	_anim_slots.clear()
+	_pending_slap_penalties.clear()
+	_pending_flips.clear()
+	_slap_reveal_count = 0
+	_slap_reveal_lock = false
 	var result: Dictionary = latest_state.get("result", {})
 	if result.get("ranking", []).is_empty():
 		return

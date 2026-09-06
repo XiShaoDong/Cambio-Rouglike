@@ -14,6 +14,7 @@ func _ready() -> void:
 	await _test_page_construct()
 	await _test_page_flip_callback()
 	await _test_cardview_flip_reveal()
+	await _test_next_match_card_slots()
 	var status: String = " (FAILURES!)" if failures > 0 else ""
 	print("=== SETTLEMENT RESULT: %d/%d passed%s ===" % [checks - failures, checks, status])
 	get_tree().quit(1 if failures > 0 else 0)
@@ -186,3 +187,42 @@ func _test_cardview_flip_reveal() -> void:
 	await get_tree().create_timer(0.7).timeout
 	_check("flip_reveal 翻到正面", (card as CardView).front.visible)
 	card.queue_free()
+
+## 回归：再来一局后 _card_slots 不得残留上一局超出手牌数的槽位引用（已释放节点）。
+func _test_next_match_card_slots() -> void:
+	await get_tree().process_frame
+	Network.is_host = true
+	var main: Node = preload("res://scenes/main.tscn").instantiate()
+	get_tree().root.add_child(main)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	GameState._reset_match()
+	GameState._add_player(1, "A")
+	GameState._add_player(2, "B")
+	GameState._add_player(3, "C")
+	GameState._server_start_match(0)
+	GameState._server_initial_ready(0)
+	GameState._server_initial_ready(1)
+	GameState._server_initial_ready(2)
+	GameState.players[0].cards.append(GameState._draw_from_deck())  # 罚牌：seat0 第 5 张
+	GameState._broadcast_state()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	GameState._finish_game()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	GameState._server_next_match(0, "nm-cs")
+	await get_tree().process_frame
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var stale := false
+	var over_slot := false
+	for pid in main._card_slots:
+		for slot in main._card_slots[pid]:
+			if not is_instance_valid(main._card_slots[pid][slot]):
+				stale = true
+			if int(slot) >= KongRules.HAND_SIZE:
+				over_slot = true
+	_check("next_match 后 _card_slots 无已释放节点", not stale)
+	_check("next_match 后 _card_slots 仅含当前槽位", not over_slot)
+	main.queue_free()
