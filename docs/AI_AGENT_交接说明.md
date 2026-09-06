@@ -34,7 +34,8 @@
 - **贴牌系统（已重做动画）**：固定 2.5s 窗口 → `slap_open` 标志（弃牌/用技能后开启，下一玩家抽牌关闭）；同一窗口**不限次数**尝试（贴错每次罚牌，贴对先到者胜）；多人同时贴中 → 400ms 收集 → `SLAP_DUEL` 比拼 bar（随机加粗区中心红心，服务器到达时间判最近者）；调试开关 **O 键**切换 `debug_duel`（不判正确性 + 双贴即比拼）。
 - **贴牌动画事件（`card_exchange_animated` 新 kind）**：`slap_penalty`（罚牌 fly 抽牌堆→手牌）、`slap_resolved`（赢家被贴的牌 fly→弃牌堆，弃牌堆延迟显示）、`slap_gift`（交换时行动者的牌 fly→对方槽，不带牌面防泄漏）。贴牌 reveal target 带 `correct` 标记 → 客户端打**绿（对）/红（错）炫光**；正确贴牌**绿光 hold**（v2，不翻回）等结算后 fly，比拼输家翻回。
 - **手牌超限规则（R-07）**：任一玩家手牌总数 `> MAX_HAND_CARDS(6)` 时对局立即结束（GAME_OVER），该玩家判定失败并扣 1 生命，其余玩家按各自手牌点数结算排名（失败者不参与排名）。触发点：贴错罚抽后 `game_state._check_over_hand(seat)`。
-- **结算页（同步轮记分，R-08）**：GAME_OVER 后弹出居中浮动排名窗口（`scenes/ui/settlement_page.tscn` 场景实体 + `settlement_page.gd`，不遮挡棋盘卡牌区）；**每轮所有玩家同时翻开各自第 N 张牌**、行内累计分滚动累加，每轮后排名表整行上移/下移实时重排（数据来自 `settlement_model.gd` 纯计算 `layout_order`/`rounds`/`ranking`）；全部翻完冠军行名字金色脉冲光环 + ★ 徽章，胜利音效（Winner01-04 随机）**延迟到冠军时刻**播放（`main._pending_winner_sfx`）；房主可「再来一局」（`request_next_match`，GAME_OVER 后直接开新局，`match_number` 递增）/「返回大厅」，客户端显示等待提示。reason-only 结算（无 ranking）不弹结算页。
+- **结算页（同步轮记分，R-08）**：GAME_OVER 后弹出居中浮动排名窗口（`scenes/ui/settlement_page.tscn` 场景实体 + `settlement_page.gd`，不遮挡棋盘卡牌区）；**棋盘卡牌结算时初始为背面**，由算分动画**逐张联动翻面**（`_on_settlement_flip` → `CardView.flip_reveal`，与行内记分同一时刻，每张间隔 `FLIP_STEP`）；行内累计分滚动累加，每轮后排名表整行上移/下移实时重排（数据来自 `settlement_model.gd` 纯计算 `layout_order`/`rounds`/`ranking`）；全部翻完冠军行名字金色脉冲光环 + ★ 徽章，胜利音效（Winner01-04 随机）**延迟到冠军时刻**播放（`main._pending_winner_sfx`）；房主可「再来一局」（`request_next_match`，GAME_OVER 后直接开新局，`match_number` 递增）/「返回大厅」，客户端显示等待提示。reason-only 结算（无 ranking）不弹结算页。
+- **结算页输入约定（B23）**：结算页根节点 `mouse_filter=STOP` 且**直挂 main 末尾 + z100**（不可挂 overlay/IGNORE，否则 4.6 picking 判不可点）；对局进入 GAME_OVER 时先 `_clear_settlement_anim_state()` 清残留动画再渲染；动画完成回调一律走 `_render_game_if_active()`（GAME_OVER 时跳过，防在途揭示延迟重渲染把翻开的牌翻回，见 B26）。
 - **Kongbaya 最终轮**：一场对局只允许喊一次（`kong_caller != -1` 后任何玩家再喊均拒绝）；喊出者不再行动，其余玩家按顺时针各执行一轮最终行动后统一结算。`kong_caller` 哨兵值为 **-1**（不能用 0，房主座位是 0）。
 - **卡牌视图重建约定**：`game_view._clear_area` 一律先 `remove_child` 立即移出网格、再 `queue_free` 延迟释放（**不要直接 `free()`**——卡牌点击触发重建时被点击的卡正被信号锁定，free 会报 "Object is locked"）。
 - **罚牌附加卡布局**：前 4 张主网格固定 2 列永不位移；第 5+ 张在 `ExtraLayer` 按**槽号固定绝对定位**（统一向上增长、行列固定，加新罚牌已存在卡不移动）。
@@ -146,23 +147,24 @@ UI 层已拆分（main.gd 是组合根）：
 - **B9 DuelBar 弹窗不可见**：弹层加进 `overlay` 时自身尺寸为 0（默认锚点），内部全屏遮罩/居中容器随之 0 尺寸 → `_build_ui` 开头 `set_anchors_and_offsets_preset(PRESET_FULL_RECT)`。
 - **B10-B13（贴牌动画）**：贴错无红光/罚牌无 fly（reveal 按"是否贴牌"分发 + 罚牌槽挂起补飞）、罚牌 fly 位置错/提前落位（同步定位 + 先标记动画槽）、罚牌附加卡随卡数重排（按槽号固定绝对定位）、罚牌持久正面（已回退为背面 fly）。详见 `BUG档案.md`。
 - **B18-B22（本次会话新增）**：重连后手牌永久正面（移除 `_resume_hand_map` 渲染）、replace 落位后闪烁（每段 fly 各自落位刷新 `_replace_landed`）、discard-replace 后所有手牌两行 gap + J 能力 locked 报错（`_clear_area` 改为 remove_child + queue_free）、Kongbaya 不结算/可重复喊叫（`kong_caller` 哨兵 0→-1 + declare 拦截）。详见 `BUG档案.md`。
+- **B23-B26（结算页相关，本次会话新增）**：结算页按钮点不到（根 STOP + 直挂 main 末尾 + z100）；再来一局泄漏旧卡 id 致 public_card 错（`_deal_new_match` 补按局清理）；`_card_slots` 残留已释放节点致贴牌 freed instance（渲染前清空）；结算时被 peek 的牌翻回背面（`_render_game_if_active` 守卫 + 结算渲染前清动画残留）。详见 `BUG档案.md`。
 
 ## 8. 验证命令（headless 单元测试，不启动 GUI）
 
 ```bash
 # 编译检查
 /Applications/Godot.app/Contents/MacOS/Godot --headless --path . --quit-after 5
-# 协议测试（36/36）
+# 协议测试（37/37）
 ... --headless --path . res://tests/verify_protocol.tscn
 # 交换动画测试（10/10）
 ... --headless --path . res://tests/verify_swap.tscn
-# 贴牌比拼测试（23/23：单正确/双正确比拼/超时/无人 STOP/调试模式/错误码）
+# 贴牌比拼测试（31/31：单正确/双正确比拼/超时/无人 STOP/调试模式/错误码）
 ... --headless --path . res://tests/verify_duel.tscn
 # 断线重连测试（41/41：seat 身份/离线标记/条件暂停/踢出/中止/解散/token 认领/手牌恢复）
 ... --headless --path . res://tests/verify_reconnect.tscn
 # Kongbaya 最终轮测试（15/15：正常最终轮结算/重复喊叫被拒/首·非首回合标记）
 ... --headless --path . res://tests/verify_kongbaya.tscn
-# 结算模型 + 再来一局 + 结算页冒烟测试（25/25）
+# 结算模型 + 再来一局 + 结算页/棋盘联动 + 回归（38/38）
 ... --headless --path . res://tests/verify_settlement.tscn
 # hint 生成测试（7/8；既有失败：断言 "replace" 大小写敏感，main 分支同样失败，非本次引入）
 ... --headless --path . res://tests/verify_hint.tscn
