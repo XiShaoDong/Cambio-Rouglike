@@ -298,3 +298,44 @@
 **修复**：`kong_caller` 哨兵 **0 → -1**（game_state 声明/`_reset_match`/踢出重置、`_advance_turn` 判断与传参、`turn_system.decide` 判断）；`kongbaya_system.declare` 加 `kong_caller != -1` 拦截重复喊叫（返 `INVALID_PHASE`）。
 
 **诊断方法**：新增 `verify_kongbaya`（15/15）覆盖正常最终轮结算、重复喊叫被拒、首/非首回合 `kong_called_first_turn` 标记。
+
+## B23：结算页「再来一局」/「返回大厅」按钮点不到
+
+**现象**：结算动画播完，footer 出现「再来一局」「返回大厅」按钮，但点击无任何反应（按钮显示了却收不到鼠标）。
+
+**根因**：结算页根节点 `mouse_filter = IGNORE(2)` 且挂在 `overlay` 下。Godot 4.6 的 GUI picking 用 `get_mouse_filter_with_override()` 判定，IGNORE 祖先使整棵子树被判为不可点击（`settings_menu` 根节点为 STOP、直接挂 main 末尾则正常）。
+**另**：同 root 内 picking 按**逆树顺序**递归（不按 z_index），`overlay` 在 `margin`（棋盘）之前，结算页若留在 overlay 内会被棋盘上重叠的 STOP 控件抢点击。
+
+**修复**：`settlement_page.tscn` 根节点 `mouse_filter` 2→**0 (STOP)**；`main._open_settlement` 由 `overlay.add_child(page)` 改为 **`add_child(page)` 直挂 main 末尾 + `z_index=100`**（与已验证的 `settings_menu` 模式一致，末位子节点优先接收点击）。
+
+**诊断方法**：headless 无法测真实鼠标；对比 `settings_menu`（STOP + 直挂 main）与结算页（IGNORE + overlay）的结构差异；真实游戏点击按钮看回调是否触发。
+
+## B24：再来一局后新局快照引旧卡 id 报 public_card 错
+
+**现象**：房主点「再来一局」后，新对局某处报 `public_card: Invalid access to property or key 'c_xxxxxx' on a base object of type 'Dictionary'`。
+
+**根因**：`_deal_new_match()`（从 `_server_start_match` 抽取）只清了 `initial_confirmed`/`last_result`，没清 `discard_pile`/`pending_draw` 等按局状态。`_create_deck()` 重建了 `cards` 字典（新卡 id），但上一局弃牌堆还留着旧卡 id；新局快照构建弃牌顶时 `public_card` 用旧 id 查新字典即报错。此前从 LOBBY 开局没问题是因为 `_reset_match` 已清空；从 GAME_OVER 直接再来一局暴露。
+
+**修复**：`_deal_new_match` 补齐清理 `discard_pile`/`pending_draw`/`q_context`/`final_queue`/`kong_caller`/`slap_rank`/`slap_open`/`slap_exchange`/`slap_collect`/`slap_duel`/两个定时器/`event_log`。
+
+**诊断方法**：制造真实对局（含弃牌+残留待处理牌）→ 再来一局 → 断言新快照无旧卡泄漏（`verify_settlement._test_next_match_clears_stale`）。
+
+## B25：再来一局后贴错牌报 "Trying to assign invalid previously freed instance"
+
+**现象**：再来一局后，新局里贴错牌触发罚牌动画时报 `CardAnimator._animate_slap_penalty: Trying to assign invalid previously freed instance`（card_animator.gd:129）。
+
+**根因**：`main._card_slots`（卡牌节点映射）从未在局间清空。上一局某玩家有罚牌超出手牌数（第 5/6 张槽位），这些槽位在新局不重渲染；新局贴错时 `_animate_slap_penalty` 读取 `_card_slots[seat][slot]` 命中残留的**已释放节点**（类型化赋值那一刻报错，`is_instance_valid` 检查来不及执行）。
+
+**修复**：`main._render_game()` 开头 `_card_slots.clear()`（每次渲染全量重建）；`_open_settlement` 清 `_anim_slots`/`_pending_slap_penalties`/`_pending_flips` 并复位贴牌锁。
+
+**诊断方法**：上一局造 5 张手牌 → 再来一局 → 断言 `_card_slots` 无已释放节点且仅含当前槽位（`verify_settlement._test_next_match_card_slots`）。
+
+## B26：结算时被 peek 过的牌翻回背面
+
+**现象**：结算算分动画逐张翻牌，被（别人）peek 过的牌翻到正面后会再翻转回背面，其他牌正常。
+
+**根因**：结算开始时若仍有**在途看牌揭示**（`reveal_controller._play_flip_at`，~1.5s 后调用 `main._render_game()`），该延迟重渲染在结算动画期间把整个棋盘重绘回背面，把已翻开的牌翻回；同时该槽位在揭示期间被 `mark_anim_slot` 标记，GAME_OVER 首次渲染会变成透明占位而非真实卡。
+
+**修复**：新增 `main._render_game_if_active()`（phase == GAME_OVER 时跳过重渲染），把 `reveal_controller`/`card_animator` 所有**动画完成回调**的 `_render_game()` 替换为它；`_on_state_updated` 进入 GAME_OVER 时先 `_clear_settlement_anim_state()`（清 `_anim_slots`/`_pending_*`/贴牌锁）再渲染；`apply_theme` 同步用守卫。
+
+**诊断方法**：结算时触发一个在途 peek 揭示 → 跑完整结算动画 → 断言所有卡牌正面朝上（`verify_settlement._test_settlement_peek_card`）。

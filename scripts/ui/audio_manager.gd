@@ -12,6 +12,9 @@ extends Node
 @export var flip_sfx: AudioStream
 @export var flip_quick_sfx: AudioStream
 @export var fly_sfx: AudioStream
+@export var bell_sfx: AudioStream  # Kongbaya 铃铛声
+@export var bell_pitch := 0.667  # 铃铛音高偏高，降为 2/3（减少三分之一），可在 audio_manager.tscn 调试
+@export var winner_sfx: Array[AudioStream] = []  # 结算胜利声（Winner01-04，随机播一个）
 
 ## 播放器池：交换/替换动画多张卡同时飞，单节点会互相打断，故用池支持重叠。
 const POOL_SIZE := 6
@@ -49,12 +52,23 @@ func play_flip_quick() -> void:
 func play_fly() -> void:
 	_play(fly_sfx)
 
+## Kongbaya 铃铛声（全员收到；音高已按 bell_pitch 降低）。
+func play_bell() -> void:
+	_play(bell_sfx, bell_pitch)
+
+## 结算胜利声：从 Winner01-04 随机抽一个播放。
+func play_winner() -> void:
+	if winner_sfx.is_empty():
+		return
+	_play(winner_sfx[randi() % winner_sfx.size()])
+
 ## 播放一个音效；素材未绑定（stream 为 null）时静默跳过，不报错。
-func _play(stream: AudioStream) -> void:
+func _play(stream: AudioStream, pitch := 1.0) -> void:
 	if stream == null:
 		return
 	var player := _next_player()
 	player.stream = stream
+	player.pitch_scale = pitch
 	player.play()
 
 ## 取一个空闲播放器；全部占用时覆盖池中第一个（可接受丢弃最早音效）。

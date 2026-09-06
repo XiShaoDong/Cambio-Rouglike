@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://bsettlement0001"]
+
+[ext_resource type="Script" path="res://tests/verify_settlement.gd" id="1"]
+
+[node name="VerifySettlement" type="Node"]
+script = ExtResource("1")

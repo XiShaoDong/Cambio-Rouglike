@@ -1,0 +1,260 @@
+extends Node
+## headless 单元测试：结算模型（同步轮记分）
+
+var failures := 0
+var checks := 0
+var _rejections := 0
+
+func _ready() -> void:
+	await _test_model_even()
+	await _test_model_uneven()
+	await _test_model_final_matches_score_system()
+	await _test_next_match()
+	await _test_next_match_clears_stale()
+	await _test_page_construct()
+	await _test_page_flip_callback()
+	await _test_cardview_flip_reveal()
+	await _test_next_match_card_slots()
+	await _test_settlement_peek_card()
+	var status: String = " (FAILURES!)" if failures > 0 else ""
+	print("=== SETTLEMENT RESULT: %d/%d passed%s ===" % [checks - failures, checks, status])
+	get_tree().quit(1 if failures > 0 else 0)
+
+func _check(name: String, ok: bool) -> void:
+	checks += 1
+	if ok:
+		print("[PASS] " + name)
+	else:
+		failures += 1
+		printerr("[FAIL] " + name)
+
+func _players_even() -> Array:
+	return [
+		{"id": 0, "name": "A", "count": 2, "slots": [
+			{"card_id": "a0", "card": {"rank": "7", "suit": "♠", "value": 7, "label": "7♠"}},
+			{"card_id": "a1", "card": {"rank": "7", "suit": "♥", "value": 7, "label": "7♥"}}]},
+		{"id": 1, "name": "B", "count": 2, "slots": [
+			{"card_id": "b0", "card": {"rank": "2", "suit": "♠", "value": 2, "label": "2♠"}},
+			{"card_id": "b1", "card": {"rank": "10", "suit": "♠", "value": 10, "label": "10♠"}}]},
+		{"id": 2, "name": "C", "count": 2, "slots": [
+			{"card_id": "c0", "card": {"rank": "5", "suit": "♠", "value": 5, "label": "5♠"}},
+			{"card_id": "c1", "card": {"rank": "K", "suit": "♠", "value": -1, "label": "K♠"}}]},
+	]
+
+func _test_model_even() -> void:
+	var model: Dictionary = SettlementModel.build(_players_even())
+	_check("layout_order=座位顺序[0,1,2]", model.layout_order == [0, 1, 2])
+	_check("轮数=最大手牌数=2", model.rounds.size() == 2)
+	var r0: Dictionary = model.rounds[0]
+	_check("第0轮 flips 顺序=玩家数组顺序", r0.flips[0].seat == 0 and r0.flips[1].seat == 1 and r0.flips[2].seat == 2)
+	_check("第0轮每人 total=自身值", r0.flips[0].total == 7 and r0.flips[1].total == 2 and r0.flips[2].total == 5)
+	_check("第0轮排名按累计分升序 B,C,A", [r0.ranking[0].id, r0.ranking[1].id, r0.ranking[2].id] == [1, 2, 0])
+	var r1: Dictionary = model.rounds[1]
+	_check("第1轮累计 A=14 B=12 C=4", r1.flips[0].total == 14 and r1.flips[1].total == 12 and r1.flips[2].total == 4)
+	_check("第1轮排名 C,B,A", [r1.ranking[0].id, r1.ranking[1].id, r1.ranking[2].id] == [2, 1, 0])
+	_check("冠军=最低分 C", r1.ranking[0].id == 2)
+
+func _players_uneven() -> Array:
+	return [
+		{"id": 0, "name": "A", "count": 2, "slots": [
+			{"card_id": "a0", "card": {"rank": "A", "suit": "♠", "value": 1, "label": "A♠"}},
+			{"card_id": "a1", "card": {"rank": "2", "suit": "♥", "value": 2, "label": "2♥"}}]},
+		{"id": 1, "name": "B", "count": 1, "slots": [
+			{"card_id": "b0", "card": {"rank": "A", "suit": "♣", "value": 1, "label": "A♣"}}]},
+		{"id": 2, "name": "C", "count": 3, "slots": [
+			{"card_id": "c0", "card": {"rank": "3", "suit": "♠", "value": 3, "label": "3♠"}},
+			{"card_id": "c1", "card": {"rank": "4", "suit": "♠", "value": 4, "label": "4♠"}},
+			{"card_id": "c2", "card": {"rank": "5", "suit": "♠", "value": 5, "label": "5♠"}}]},
+	]
+
+func _test_model_uneven() -> void:
+	var model: Dictionary = SettlementModel.build(_players_uneven())
+	_check("轮数=最大手牌数=3", model.rounds.size() == 3)
+	_check("第1轮只有 A,C 翻牌（B 无第2张）", model.rounds[1].flips.size() == 2)
+	_check("第2轮只有 C 翻牌", model.rounds[2].flips.size() == 1 and model.rounds[2].flips[0].seat == 2)
+	_check("B 无牌轮总分保持不变", model.rounds[1].flips[0].total == 3 and model.rounds[1].flips[1].total == 7)
+	_check("未翻牌玩家 total 不回退（B=1）", model.rounds[2].flips[0].total == 12)
+
+func _test_model_final_matches_score_system() -> void:
+	var players: Array = _players_even()
+	var model: Dictionary = SettlementModel.build(players)
+	var final_ranking: Array = model.rounds[model.rounds.size() - 1].ranking
+	var full: Array = []
+	for player in players:
+		var values: Array[int] = []
+		for slot in player.slots:
+			if slot.has("card"):
+				values.append(int(slot.card.value))
+		values.sort()
+		var total := 0
+		for v in values:
+			total += v
+		full.append({"id": int(player.id), "name": str(player.name), "score": total, "count": values.size(), "values": values})
+	full.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return ScoreSystem._is_lower_score(a, b))
+	var ids_full: Array = []
+	for entry in full:
+		ids_full.append(int(entry.id))
+	var ids_final: Array = []
+	for entry in final_ranking:
+		ids_final.append(int(entry.id))
+	_check("最终排名与 ScoreSystem 全量一致", ids_final == ids_full)
+
+func _test_next_match() -> void:
+	GameState.command_rejected.connect(func(_code: int, _msg: String) -> void: _rejections += 1)
+
+	_rejections = 0
+	_open()
+	GameState._server_next_match(0, "nm-1")
+	_check("非 GAME_OVER 拒绝", GameState.phase == GameState.Phase.TURN_DRAW and _rejections == 1)
+
+	GameState._finish_game()
+	_check("已进入 GAME_OVER", GameState.phase == GameState.Phase.GAME_OVER)
+	var before_number: int = GameState.match_number
+	GameState._server_next_match(0, "nm-2")
+	_check("match_number 递增", GameState.match_number == before_number + 1)
+	_check("回 INITIAL_PEEK", GameState.phase == GameState.Phase.INITIAL_PEEK)
+	_check("手牌重发每人 HAND_SIZE 张", GameState.players[0].cards.size() == KongRules.HAND_SIZE and GameState.players[1].cards.size() == KongRules.HAND_SIZE and GameState.players[2].cards.size() == KongRules.HAND_SIZE)
+	_check("initial_confirmed 清空", GameState.initial_confirmed.is_empty())
+
+	GameState._finish_game()
+	var before_phase: int = GameState.phase
+	var before_number2: int = GameState.match_number
+	GameState._server_next_match(1, "nm-3")
+	_check("非房主拒绝（阶段与局数不变）", GameState.phase == before_phase and GameState.match_number == before_number2)
+
+## 回归：真实对局残留弃牌/待处理牌后「再来一局」，旧卡 id 不得泄漏进新局快照。
+func _test_next_match_clears_stale() -> void:
+	_open()
+	GameState._server_take(0, "draw", "st-1")
+	GameState._server_discard_draw(0, "st-2")   # 弃牌堆有 1 张旧卡
+	GameState._server_take(1, "draw", "st-3")   # 残留待处理牌
+	GameState._finish_game()
+	_check("结算前弃牌堆非空", not GameState.discard_pile.is_empty())
+	_check("结算前存在待处理牌", not GameState.pending_draw.is_empty())
+	GameState._server_next_match(0, "st-4")
+	_check("next_match 清空弃牌堆", GameState.discard_pile.is_empty())
+	_check("next_match 清空待处理牌", GameState.pending_draw.is_empty())
+	var snap: Dictionary = GameState._snapshot_for(0)
+	_check("新局快照构建无旧卡泄漏", snap.players.size() == 3 and snap.discard.is_empty())
+
+func _open() -> void:
+	GameState._reset_match()
+	GameState._add_player(1, "A")
+	GameState._add_player(2, "B")
+	GameState._add_player(3, "C")
+	GameState._server_start_match(0)
+	GameState._server_initial_ready(0)
+	GameState._server_initial_ready(1)
+	GameState._server_initial_ready(2)
+
+func _test_page_construct() -> void:
+	await get_tree().process_frame
+	var model: Dictionary = SettlementModel.build(_players_even())
+	var page: Control = preload("res://scenes/ui/settlement_page.tscn").instantiate()
+	get_tree().root.add_child(page)
+	page.setup(model, true, 1, Callable(), Callable(), Callable(), Callable(), false)
+	await get_tree().process_frame
+	_check("结算页行数=玩家数", page._rows.size() == 3)
+	_check("结算页标题正确", page._title.text == "结算 · 第 1 局")
+	_check("初始每行累计分=0", page._rows[0].total.text == "0" and page._rows[1].total.text == "0" and page._rows[2].total.text == "0")
+	_check("footer 初始隐藏", page._footer.visible == false)
+	page.queue_free()
+
+## 结算页逐张翻牌时联动回调（棋盘翻面）与行内文本揭示同步触发。
+func _test_page_flip_callback() -> void:
+	await get_tree().process_frame
+	var model: Dictionary = SettlementModel.build(_players_even())
+	var flip_log: Array = []
+	var page: Control = preload("res://scenes/ui/settlement_page.tscn").instantiate()
+	get_tree().root.add_child(page)
+	page.setup(model, true, 1, Callable(), Callable(), Callable(),
+		func(_seat: int, _slot: int, _card: Dictionary) -> void: flip_log.append(_seat),
+		false)
+	await get_tree().process_frame
+	page._reveal_flip(0, 0, {"seat": 0, "value": 7, "rank": "7", "suit": "♠", "total": 7}, 0.0)
+	_check("结算页联动回调触发", flip_log.size() == 1 and flip_log[0] == 0)
+	_check("行内新增翻牌文本", page._rows[0].cards.get_child_count() == 1)
+	page.queue_free()
+
+## CardView.flip_reveal：设正面数据后纵轴从背面翻到正面。
+func _test_cardview_flip_reveal() -> void:
+	await get_tree().process_frame
+	var card: Button = preload("res://scenes/ui/card.tscn").instantiate()
+	get_tree().root.add_child(card)
+	await get_tree().process_frame
+	card.flip_reveal({"rank": "7", "suit": "♠"})
+	_check("flip_reveal 设正面数据", (card as CardView).is_face_up)
+	_check("flip_reveal 起始背面", (card as CardView).back.visible)
+	await get_tree().create_timer(0.7).timeout
+	_check("flip_reveal 翻到正面", (card as CardView).front.visible)
+	card.queue_free()
+
+## 回归：再来一局后 _card_slots 不得残留上一局超出手牌数的槽位引用（已释放节点）。
+func _test_next_match_card_slots() -> void:
+	await get_tree().process_frame
+	Network.is_host = true
+	var main: Node = preload("res://scenes/main.tscn").instantiate()
+	get_tree().root.add_child(main)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	GameState._reset_match()
+	GameState._add_player(1, "A")
+	GameState._add_player(2, "B")
+	GameState._add_player(3, "C")
+	GameState._server_start_match(0)
+	GameState._server_initial_ready(0)
+	GameState._server_initial_ready(1)
+	GameState._server_initial_ready(2)
+	GameState.players[0].cards.append(GameState._draw_from_deck())  # 罚牌：seat0 第 5 张
+	GameState._broadcast_state()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	GameState._finish_game()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	GameState._server_next_match(0, "nm-cs")
+	await get_tree().process_frame
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var stale := false
+	var over_slot := false
+	for pid in main._card_slots:
+		for slot in main._card_slots[pid]:
+			if not is_instance_valid(main._card_slots[pid][slot]):
+				stale = true
+			if int(slot) >= KongRules.HAND_SIZE:
+				over_slot = true
+	_check("next_match 后 _card_slots 无已释放节点", not stale)
+	_check("next_match 后 _card_slots 仅含当前槽位", not over_slot)
+	main.queue_free()
+
+## 回归：结算开始时若仍有在途看牌揭示（peek），其延迟 _render_game 不得把结算翻开的牌翻回背面。
+func _test_settlement_peek_card() -> void:
+	await get_tree().process_frame
+	Network.is_host = true
+	var main: Node = preload("res://scenes/main.tscn").instantiate()
+	get_tree().root.add_child(main)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	GameState._reset_match()
+	GameState._add_player(1, "A")
+	GameState._add_player(2, "B")
+	GameState._server_start_match(0)
+	GameState._server_initial_ready(0)
+	GameState._server_initial_ready(1)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var cid: String = GameState.players[0].cards[2]
+	main.reveal.show_private_reveal("", [GameState.cards[cid]], {"player_id": 0, "slot": 2})
+	GameState._finish_game()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	await get_tree().create_timer(8.0).timeout
+	var all_up := true
+	for pid in main._card_slots:
+		for slot in main._card_slots[pid]:
+			var c: Control = main._card_slots[pid][slot]
+			if c is CardView and not (c as CardView).front.visible:
+				all_up = false
+	_check("结算动画后被 peek 的牌保持正面", all_up)
+	main.queue_free()

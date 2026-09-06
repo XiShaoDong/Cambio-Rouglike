@@ -60,6 +60,7 @@ const SLAP_WRONG_GLOW := Color("ff7b7b")  # 贴错红色炫光（同 UITheme dan
 const SLAP_GLOW_SIZE := 14
 const DuelBarScript := preload("res://scripts/ui/duel_bar.gd")
 const SettingsMenuScript := preload("res://scripts/ui/settings_menu.gd")
+const SettlementPageScript := preload("res://scenes/ui/settlement_page.tscn")
 
 var latest_lobby: Dictionary = {}
 var latest_state: Dictionary = {}
@@ -124,6 +125,8 @@ var _rejoin_port := KongNetwork.DEFAULT_PORT
 var _was_in_match := false
 var _reconnect_panel: Control = null
 var _reconnect_expected := false
+var settlement_page: Control = null
+var _pending_winner_sfx := false
 
 ## 标记某个玩家槽位正在动画（渲染时该槽位显示虚线占位，不显示原卡）。
 func mark_anim_slot(pid: int, slot: int) -> void:
@@ -178,6 +181,7 @@ func _ready() -> void:
 	GameState.match_aborted.connect(_on_match_aborted)
 	GameState.registered_token_received.connect(_on_registered_token)
 	GameState.resume_hand_received.connect(_on_resume_hand)
+	GameState.sfx_played.connect(_on_sfx)
 	Network.connection_status_changed.connect(_set_status)
 	Network.connection_failed.connect(_show_toast)
 	Network.joined_server.connect(_on_joined_server_for_reconnect)
@@ -203,6 +207,7 @@ func _on_match_aborted(_code: int, message: String) -> void:
 		interaction.selected_own_slot = -1
 		interaction.selected_their_slot = -1
 	lobby.reset_lobby()
+	_close_settlement()
 	_set_status("对局中止：%s" % message)
 	# 断线后回大厅：若持有 token，在初始界面显示"重连上次对局"入口
 	if not Network.is_host and not _my_token.is_empty():
@@ -378,6 +383,14 @@ func _apply_dev_join() -> void:
 func _request_kongbaya() -> void:
 	GameState.request_kongbaya(_next_action_id())
 
+## 服务器广播的音效事件：本地播放对应音效（bell=铃铛，winner=延迟到冠军出场再播）。
+func _on_sfx(kind: String) -> void:
+	match kind:
+		"bell":
+			AudioManager.play_bell()
+		"winner":
+			_pending_winner_sfx = true
+
 func _entered_name() -> String:
 	var chosen := name_input.text.strip_edges().left(16)
 	return chosen if not chosen.is_empty() else "玩家"
@@ -396,9 +409,35 @@ func _on_state_updated(state: Dictionary) -> void:
 		last_phase = int(state.phase)
 	lobby_panel.visible = false
 	game_panel.visible = true
+	if int(state.phase) == PHASE_GAME_OVER:
+		# 结算接管棋盘：先清残留动画/挂起状态再渲染，
+		# 保证卡牌以真实卡（而非在途揭示的动画占位）出现。
+		_clear_settlement_anim_state()
+	_render_game()
+	if int(state.phase) == PHASE_GAME_OVER:
+		_open_settlement()
+	else:
+		_close_settlement()
+
+## 清空上一局可能残留的动画/挂起状态（对局结束时在途的看牌/贴牌揭示）。
+func _clear_settlement_anim_state() -> void:
+	_anim_slots.clear()
+	_pending_slap_penalties.clear()
+	_pending_flips.clear()
+	_slap_reveal_count = 0
+	_slap_reveal_lock = false
+
+## 动画完成刷新：对局已进入结算（GAME_OVER，结算页接管棋盘）时跳过重渲染，
+## 防止在途揭示动画的延迟 _render_game 把结算翻开的牌翻回背面。
+func _render_game_if_active() -> void:
+	if int(latest_state.phase) == PHASE_GAME_OVER:
+		return
 	_render_game()
 
 func _render_game() -> void:
+	# 每次渲染前清空卡牌槽位映射：渲染会全量重建，防止上一局残留槽位
+	#（如超出手牌数的罚牌槽位）指向已释放节点，致后续动画报 freed instance。
+	_card_slots.clear()
 	game_view.render(latest_state)
 	_render_duel(latest_state)
 	# ExtraLayer 附加卡已同步定位，罚牌 fly 可直接取到正确锚点
@@ -436,6 +475,50 @@ func _render_duel(state: Dictionary) -> void:
 func _on_slap_duel_stop() -> void:
 	GameState.request_slap_duel_stop(_next_action_id())
 
+## GAME_OVER 时打开结算弹层（幂等：已打开则跳过）。reason-only 结算不开弹层，保留右下角摘要。
+func _open_settlement() -> void:
+	if settlement_page != null and is_instance_valid(settlement_page):
+		return
+	var result: Dictionary = latest_state.get("result", {})
+	if result.get("ranking", []).is_empty():
+		return
+	var model: Dictionary = SettlementModel.build(latest_state.players)
+	var page := SettlementPageScript.instantiate()
+	page.name = "SettlementPage"
+	# 直接挂 main 末尾 + z_index（仿 settings_menu 已验证模式）：main 子节点逆序 pick，
+	# 末位子节点优先于棋盘（margin）接收点击；overlay 是 IGNORE，挂它下面会被 4.6 的
+	# get_mouse_filter_with_override 判定为整棵子树不可点。
+	page.z_index = 100
+	add_child(page)
+	page.setup(model, Network.is_host, int(latest_state.get("match_number", 1)),
+		_play_pending_winner, _request_next_match, GameState.request_abort_match,
+		_on_settlement_flip)
+	settlement_page = page
+
+## 结算联动：每轮翻牌时刻把对应棋盘卡牌从背面翻到正面（与结算页行内记分同步）。
+func _on_settlement_flip(seat: int, slot: int, card: Dictionary) -> void:
+	if not _card_slots.has(seat) or not _card_slots[seat].has(slot):
+		return
+	var card_node: Control = _card_slots[seat][slot]
+	if is_instance_valid(card_node) and card_node is CardView:
+		(card_node as CardView).flip_reveal(card)
+
+## 关闭结算弹层（收到新局/中止时调用）。
+func _close_settlement() -> void:
+	if settlement_page != null and is_instance_valid(settlement_page):
+		settlement_page.queue_free()
+	settlement_page = null
+
+## 冠军时刻：若服务器已广播过 winner 音效事件，此刻播放（延迟到冠军出场）。
+func _play_pending_winner() -> void:
+	if _pending_winner_sfx:
+		AudioManager.play_winner()
+		_pending_winner_sfx = false
+
+## 结算页「再来一局」→ 服务器开新局。
+func _request_next_match() -> void:
+	GameState.request_next_match(_next_action_id())
+
 ## ESC 切换设置菜单：懒创建一次，反复切 visible。
 func _toggle_settings() -> void:
 	if settings_menu == null or not is_instance_valid(settings_menu):
@@ -447,7 +530,7 @@ func _toggle_settings() -> void:
 func apply_theme() -> void:
 	background.color = UITheme.color("bg_table")
 	if not latest_state.is_empty():
-		_render_game()
+		_render_game_if_active()
 	else:
 		_set_status("主题已切换：%s" % UITheme.current)
 

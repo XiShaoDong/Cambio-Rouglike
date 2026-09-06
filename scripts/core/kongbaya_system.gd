@@ -30,4 +30,5 @@ func declare(sender: int, action_id := "") -> void:
 	game.final_queue = TurnSystem.build_final_queue(game.turn_order, sender)
 	game.slap_open = false
 	game._add_log("%s 喊出了 Kongbaya！其他玩家各有最后一次行动。" % game.players[sender].name)
+	game._broadcast_sfx("bell")
 	game._advance_turn(true)

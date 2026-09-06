@@ -73,7 +73,7 @@ func _play_flip_at(anchor: Control, card: Dictionary, target_id: int = 0, slot: 
 	# 清除动画标记并刷新槽位
 	if slot >= 0:
 		main.unmark_anim_slot(target_id, slot)
-	main._render_game()
+	main._render_game_if_active()
 	main._slap_reveal_end()
 	if is_instance_valid(anchor):
 		anchor.visible = true
@@ -147,7 +147,7 @@ func release_slap_except(keep_target: int, keep_slot: int) -> void:
 			if is_instance_valid(layer):
 				layer.queue_free()
 			main.unmark_anim_slot(pid, slot)
-			main._render_game())
+			main._render_game_if_active())
 
 ## 贴牌翻牌收尾：清理 overlay、解除槽位标记、渲染并解锁判定锁。
 func _cleanup_slap(layer: Control, target_id: int, slot: int, anchor: Control) -> void:
@@ -155,7 +155,7 @@ func _cleanup_slap(layer: Control, target_id: int, slot: int, anchor: Control) -
 		layer.queue_free()
 	if slot >= 0:
 		main.unmark_anim_slot(target_id, slot)
-	main._render_game()
+	main._render_game_if_active()
 	main._slap_reveal_end()
 	if is_instance_valid(anchor):
 		anchor.visible = true
