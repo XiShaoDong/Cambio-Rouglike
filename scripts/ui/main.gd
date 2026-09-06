@@ -409,11 +409,30 @@ func _on_state_updated(state: Dictionary) -> void:
 		last_phase = int(state.phase)
 	lobby_panel.visible = false
 	game_panel.visible = true
+	if int(state.phase) == PHASE_GAME_OVER:
+		# 结算接管棋盘：先清残留动画/挂起状态再渲染，
+		# 保证卡牌以真实卡（而非在途揭示的动画占位）出现。
+		_clear_settlement_anim_state()
 	_render_game()
 	if int(state.phase) == PHASE_GAME_OVER:
 		_open_settlement()
 	else:
 		_close_settlement()
+
+## 清空上一局可能残留的动画/挂起状态（对局结束时在途的看牌/贴牌揭示）。
+func _clear_settlement_anim_state() -> void:
+	_anim_slots.clear()
+	_pending_slap_penalties.clear()
+	_pending_flips.clear()
+	_slap_reveal_count = 0
+	_slap_reveal_lock = false
+
+## 动画完成刷新：对局已进入结算（GAME_OVER，结算页接管棋盘）时跳过重渲染，
+## 防止在途揭示动画的延迟 _render_game 把结算翻开的牌翻回背面。
+func _render_game_if_active() -> void:
+	if int(latest_state.phase) == PHASE_GAME_OVER:
+		return
+	_render_game()
 
 func _render_game() -> void:
 	# 每次渲染前清空卡牌槽位映射：渲染会全量重建，防止上一局残留槽位
@@ -460,12 +479,6 @@ func _on_slap_duel_stop() -> void:
 func _open_settlement() -> void:
 	if settlement_page != null and is_instance_valid(settlement_page):
 		return
-	# 对局已结束：清空可能残留的动画/挂起状态，避免带入下一局
-	_anim_slots.clear()
-	_pending_slap_penalties.clear()
-	_pending_flips.clear()
-	_slap_reveal_count = 0
-	_slap_reveal_lock = false
 	var result: Dictionary = latest_state.get("result", {})
 	if result.get("ranking", []).is_empty():
 		return
@@ -517,7 +530,7 @@ func _toggle_settings() -> void:
 func apply_theme() -> void:
 	background.color = UITheme.color("bg_table")
 	if not latest_state.is_empty():
-		_render_game()
+		_render_game_if_active()
 	else:
 		_set_status("主题已切换：%s" % UITheme.current)
 

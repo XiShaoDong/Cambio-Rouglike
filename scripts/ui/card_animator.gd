@@ -45,7 +45,7 @@ func animate_replace(actor: int, slot: int, old_data: Dictionary, big_data: Dict
 	else:
 		# 无抽牌 fly（理论分支）：槽位无动画，直接恢复
 		main.unmark_anim_slot(actor, slot)
-		main._render_game()
+		main._render_game_if_active()
 
 ## replace 单段 fly 落位：弃牌段解锁弃牌堆，抽牌段清除槽位动画标记；每段落位都刷新一次，
 ## 保证先落位的目标立即显示正确内容，不被"等另一段落位"拖住而闪回旧状态。
@@ -54,7 +54,7 @@ func _replace_landed(state: Dictionary, is_discard: bool) -> void:
 		main._discard_anim_lock = false
 	else:
 		main.unmark_anim_slot(int(state["actor"]), int(state["slot"]))
-	main._render_game()
+	main._render_game_if_active()
 
 ## 场景1：玩家间交换（J/Q）。a 换 a_slot，b 换 b_slot。
 func animate_swap(a: int, a_slot: int, b: int, b_slot: int, a_data: Dictionary, b_data: Dictionary) -> void:
@@ -81,7 +81,7 @@ func _swap_done(counter: Dictionary, a: int, a_slot: int, b: int, b_slot: int) -
 	if int(counter["remaining"]) <= 0:
 		main.unmark_anim_slot(a, a_slot)
 		main.unmark_anim_slot(b, b_slot)
-		main._render_game()
+		main._render_game_if_active()
 
 ## 处理 server 广播的交换动画事件（各 client 用自己视角定位）。
 func handle_exchange(data: Dictionary) -> void:
@@ -116,7 +116,7 @@ func _animate_discard_pending(big_data: Dictionary, actor: int) -> void:
 		_fly(big_rect, main.discard_button.get_global_rect(), big_data, big_start_face_up, true,
 			null, func():
 				main._discard_anim_lock = false
-				main._render_game())
+				main._render_game_if_active())
 
 ## 贴错罚牌动画：从抽牌堆位置飞一张背面卡到目标玩家槽位（他人看背面，落地后由状态快照显示）。
 ## 先标记动画槽位（即使槽位尚未渲染——追加的第 5+ 张），保证状态广播渲染时显示占位而非已落位的罚牌；
@@ -133,7 +133,7 @@ func _animate_slap_penalty(peer: int, slot: int) -> void:
 	var target_rect: Rect2 = target.get_global_rect()
 	_fly(main.deck_button.get_global_rect(), target_rect, {}, false, false, null, func():
 		main.unmark_anim_slot(peer, slot)
-		main._render_game())
+		main._render_game_if_active())
 
 ## 正确贴牌结算动画：释放其余 hold（输家翻回），把赢家被贴的牌从槽位 fly 到弃牌堆。
 ## 弃牌堆用 _discard_anim_lock 延迟显示，落地后才出现。
@@ -152,7 +152,7 @@ func _animate_slap_resolved(target_id: int, slot: int, card: Dictionary) -> void
 	_fly(from_rect, main.discard_button.get_global_rect(), card, true, true, null, func():
 		main.unmark_anim_slot(target_id, slot)
 		main._discard_anim_lock = false
-		main._render_game())
+		main._render_game_if_active())
 
 ## 贴中他人后的交换动画：行动者选的牌 fly 到对方槽位（行动者视角显正面，他人看背面）。
 func _animate_slap_gift(actor: int, own_slot: int, target: int, target_slot: int) -> void:
@@ -173,7 +173,7 @@ func _animate_slap_gift(actor: int, own_slot: int, target: int, target_slot: int
 	_fly(src.get_global_rect(), dst.get_global_rect(), data, face_up, face_up, null, func():
 		main.unmark_anim_slot(actor, own_slot)
 		main.unmark_anim_slot(target, target_slot)
-		main._render_game())
+		main._render_game_if_active())
 
 ## 大牌显示位置（两堆中心，1.5 倍尺寸）。
 func _big_card_rect() -> Rect2:

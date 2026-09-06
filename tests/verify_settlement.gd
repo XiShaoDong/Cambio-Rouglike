@@ -15,6 +15,7 @@ func _ready() -> void:
 	await _test_page_flip_callback()
 	await _test_cardview_flip_reveal()
 	await _test_next_match_card_slots()
+	await _test_settlement_peek_card()
 	var status: String = " (FAILURES!)" if failures > 0 else ""
 	print("=== SETTLEMENT RESULT: %d/%d passed%s ===" % [checks - failures, checks, status])
 	get_tree().quit(1 if failures > 0 else 0)
@@ -225,4 +226,35 @@ func _test_next_match_card_slots() -> void:
 				over_slot = true
 	_check("next_match 后 _card_slots 无已释放节点", not stale)
 	_check("next_match 后 _card_slots 仅含当前槽位", not over_slot)
+	main.queue_free()
+
+## 回归：结算开始时若仍有在途看牌揭示（peek），其延迟 _render_game 不得把结算翻开的牌翻回背面。
+func _test_settlement_peek_card() -> void:
+	await get_tree().process_frame
+	Network.is_host = true
+	var main: Node = preload("res://scenes/main.tscn").instantiate()
+	get_tree().root.add_child(main)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	GameState._reset_match()
+	GameState._add_player(1, "A")
+	GameState._add_player(2, "B")
+	GameState._server_start_match(0)
+	GameState._server_initial_ready(0)
+	GameState._server_initial_ready(1)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var cid: String = GameState.players[0].cards[2]
+	main.reveal.show_private_reveal("", [GameState.cards[cid]], {"player_id": 0, "slot": 2})
+	GameState._finish_game()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	await get_tree().create_timer(8.0).timeout
+	var all_up := true
+	for pid in main._card_slots:
+		for slot in main._card_slots[pid]:
+			var c: Control = main._card_slots[pid][slot]
+			if c is CardView and not (c as CardView).front.visible:
+				all_up = false
+	_check("结算动画后被 peek 的牌保持正面", all_up)
 	main.queue_free()
