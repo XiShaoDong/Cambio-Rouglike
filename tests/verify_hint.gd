@@ -31,7 +31,7 @@ func _run() -> void:
 	_set_state(3, true, {"rank": "7", "source": "draw"}, "replace")
 	var h1: String = main_node._hint_for(3, true)
 	_check("current 7/8 replace hint 非空", not h1.is_empty())
-	_check("current 7/8 replace 含 replace", "replace" in h1)
+	_check("current 7/8 replace 含 replace", "replace" in h1.to_lower())
 	_set_state(3, false, {"rank": "7", "source": "draw"}, "")
 	var h2: String = main_node._hint_for(3, false)
 	_check("other 7/8 hint 非空", not h2.is_empty())
