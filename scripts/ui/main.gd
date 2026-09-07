@@ -187,6 +187,8 @@ func _ready() -> void:
 	Network.joined_server.connect(_on_joined_server_for_reconnect)
 	_apply_dev_join()
 	_restore_identity()
+	if has_node("Cursor"):
+		$Cursor.set_card_resolver(game_view.card_cursor_state)
 	_set_status("输入昵称后创建或加入局域网房间。默认端口 7007。")
 
 var _action_counter := 0

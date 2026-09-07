@@ -18,6 +18,9 @@ var _data := {
 		"theme": "dark",
 		"language": "zh",
 	},
+	"cursor": {
+		"enabled": false,
+	},
 }
 
 func _ready() -> void:

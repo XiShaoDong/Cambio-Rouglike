@@ -109,6 +109,7 @@ UI 层已拆分（main.gd 是组合根）：
 | `dashed_border.gd` | 虚线边框占位（当前对局空槽已改透明占位，不用虚线） |
 | `scenes/ui/game_board.tscn` | 对局棋盘静态骨架（锚点+容器，布局可在编辑器拖拽）：TitleBar/HintArea/4×PlayerArea/MiddleRow·PileArea/Corner |
 | `scenes/ui/player_area.tscn` + `scripts/ui/player_area.gd` | 玩家区域模板，`@export var card_size`（默认 62×90），名字在卡牌正下方；GameBoard 直接子节点，运行时复用填充 |
+| `cursor.gd` + `scenes/ui/cursor.tscn` | 光标系统（方案 A 混合式，挂 main 根 CanvasLayer layer=100）：**总开关 `Settings.cursor.enabled`，默认关闭**（关闭=原生箭头；设置菜单 CheckButton「自定义光标」即时启停）。启用时**无原生箭头**，`pointer`(默认=open_hand 挂 POINTING_HAND)/`peek`(挂 CROSS) 走 OS 自定义光标，`flip` 走场景内 AnimatedSprite2D（`MOUSE_MODE_HIDDEN` 跟随鼠标）。触发：peek 能力悬停可点牌→peek、peek 按住→flip、贴牌窗口(`slap_open`&&TURN_DRAW)悬停**任意卡牌**（自己/他人）→flip。卡牌语义经 `set_card_resolver` 由 `game_view.card_cursor_state` 提供；状态解析为纯函数（`resolve_card_state`/`resolve_state`/`apply_hold`），测试 `verify_cursor.tscn`（19/19）。**flip 动画名须为 `flip`**，SpriteFrames 由开发者配置（注意：若设 `autoplay`，cursor.gd `_ready` 会停掉，避免启动即播放）。（**未合并到 main**：本行与光标代码在 `feature/cursor` 分支，main 不含） |
 
 ## 5. 状态机（`GameState.Phase` 数值不可随意变更，需同步 UI 与测试）
 

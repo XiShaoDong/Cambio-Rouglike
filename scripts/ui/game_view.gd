@@ -5,6 +5,8 @@ extends RefCounted
 ## 持有 main（组合根）引用，通过其工具方法（_button/_make_card_button/_highlight/_clear
 ## 等）与状态（latest_state/interaction/_cards/_card_slots/_pending_flips/overlay）协作。
 
+const CursorScript := preload("res://scripts/ui/cursor.gd")
+
 const PHASE_INITIAL_PEEK := 1
 const PHASE_TURN_DRAW := 2
 const PHASE_TURN_DECISION := 3
@@ -462,3 +464,21 @@ func _extra_slot_pos(grid_rect: Rect2, slot_index: int, card_size: Vector2) -> V
 	var x := grid_rect.position.x + col * (card_size.x + 6.0)
 	var y := grid_rect.position.y - (row + 1) * (card_size.y + 6.0)
 	return Vector2(x, y)
+
+## 卡牌光标状态（Cursor 的 resolver）：经 main._card_slots 反查 card→player/slot，读 latest_state
+## 与 interaction 判定语义。非棋盘卡牌（pid==-1）→ pointer(open_hand 默认)。
+func card_cursor_state(card: Control) -> String:
+	var pid := -1
+	var slot := -1
+	for p in main._card_slots:
+		for s in main._card_slots[p]:
+			if main._card_slots[p][s] == card:
+				pid = int(p)
+				slot = int(s)
+				break
+	if pid == -1:
+		return ""
+	return CursorScript.resolve_card_state(
+		main.latest_state,
+		main.interaction.action_mode,
+		main._card_actionable(pid, slot))

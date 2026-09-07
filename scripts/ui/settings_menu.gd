@@ -12,6 +12,7 @@ var _volume_label: Label
 var _mute_check: CheckButton
 var _theme_option: OptionButton
 var _lang_option: OptionButton
+var _cursor_check: CheckButton
 
 func _ready() -> void:
 	z_index = 100
@@ -74,6 +75,13 @@ func _build_ui() -> void:
 	_mute_check.button_pressed = bool(Settings.get_setting("audio", "muted", false))
 	_mute_check.toggled.connect(_on_mute_toggled)
 	vbox.add_child(_mute_check)
+
+	# 自定义光标（默认关闭；关闭时用原生箭头）
+	_cursor_check = CheckButton.new()
+	_cursor_check.set_meta("text_key", "cursor_enabled")
+	_cursor_check.button_pressed = bool(Settings.get_setting("cursor", "enabled", false))
+	_cursor_check.toggled.connect(_on_cursor_toggled)
+	vbox.add_child(_cursor_check)
 
 	# 主题
 	vbox.add_child(_row_label("theme"))
@@ -139,6 +147,9 @@ func _update_volume_label() -> void:
 
 func _on_mute_toggled(on: bool) -> void:
 	Settings.set_setting("audio", "muted", on)
+
+func _on_cursor_toggled(on: bool) -> void:
+	Settings.set_setting("cursor", "enabled", on)
 
 func _on_theme_selected(index: int) -> void:
 	var theme_name := "dark" if index == 0 else "light"
