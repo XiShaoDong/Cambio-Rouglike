@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://tests/verify_proxy.gd" id="1_proxy"]
+
+[node name="VerifyProxy" type="Node"]
+script = ExtResource("1_proxy")
