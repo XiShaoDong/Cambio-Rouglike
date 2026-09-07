@@ -151,6 +151,8 @@ UI 层已拆分（main.gd 是组合根）：
 
 ## 8. 验证命令（headless 单元测试，不启动 GUI）
 
+> **一键全量回归**：`tools/run_all_tests.sh`（编译检查 + 全部单进程/双实例/网络注入测试，汇总 PASS/FAIL；`--quick` 只跑单进程核心；`--include-hint` 连已知失败的 hint 一起跑；`GODOT=/path` 覆盖引擎路径）。
+
 ```bash
 # 编译检查
 /Applications/Godot.app/Contents/MacOS/Godot --headless --path . --quit-after 5
@@ -166,11 +168,34 @@ UI 层已拆分（main.gd 是组合根）：
 ... --headless --path . res://tests/verify_kongbaya.tscn
 # 结算模型 + 再来一局 + 结算页/棋盘联动 + 回归（38/38）
 ... --headless --path . res://tests/verify_settlement.tscn
-# hint 生成测试（7/8；既有失败：断言 "replace" 大小写敏感，main 分支同样失败，非本次引入）
+# hint 生成测试（8/8）
 ... --headless --path . res://tests/verify_hint.tscn
 # 双实例网络回归（host + client 各跑，均 exit 0）
 ... --headless --path . res://tests/verify_net.tscn -- -role host
 ... --headless --path . res://tests/verify_net.tscn -- -role client
+```
+
+### 8.1 网络条件注入测试（`verify_proxy`，ProxyRelay UDP 中继）
+
+> **作用**：在本地确定性复现公网问题。host 进程内挂 `scripts/net/proxy_relay.gd`（监听 7011 → 转发到真实服务器 7007），客户端连 7011。中继在**数据报层**注入条件，会真实影响 ENet 自身的 keepalive/ACK/重传——比"引擎内包一层 peer"更接近真实链路。
+> **语义注意**：丢包/乱序/重复发生在数据报层会被 ENet 可靠通道吸收（重传/排序/去重），所以中继验证的是"链路物理特性（延迟/丢包/抖动/中断）下的健壮性"；RPC 层重复请求幂等由 `verify_protocol` 的拒绝校验覆盖。启动参数可覆盖：`-latency X -loss X -jitter X -seed N`。
+> 场景与"人话"解释（每个场景启动时会打印本行，失败时打印对应排查提示）：
+
+| 命令（host / client 各一行，成对跑） | 人话：在测什么 | 失败时大概率说明什么 |
+| --- | --- | --- |
+| `... -role host -scenario baseline` / `... -role client -scenario baseline` | 基准无注入：链路与测试脚本自检（等价 verify_net） | 测试链路本身有问题，先查 verify_net |
+| `... -scenario latency` | 固定 200ms 延迟：回合制在公网级延迟下能否正常推进 | 某流程在等即时响应，或 ENet 超时过紧（可放宽 set_timeout） |
+| `... -scenario loss` | 20% 丢包：ENet 重发后状态是否最终一致、对局不卡死 | ENet 未按时收敛，超时太紧或 RPC 依赖瞬时到达 |
+| `... -scenario jitter` | 0~150ms 抖动：延迟波动下回合推进/快照是否正常 | 存在基于固定延时的逻辑 |
+| `... -scenario baseline -mode reconnect` | 中继"拔网线"（黑障 3s~11s）→ ENet 超时掉线 → 服务器标记离线 → 客户端凭 token 重连 → 手牌恢复 → 对局继续 | 离线标记 / token 认领 / 手牌恢复某环断裂 |
+
+```bash
+# 每个场景跑两遍（host 与 client 分别），例如：
+... --headless --path . res://tests/verify_proxy.tscn -- -role host -scenario latency
+... --headless --path . res://tests/verify_proxy.tscn -- -role client -scenario latency
+# 断线重连（relay 黑障模拟拔网线）：
+... --headless --path . res://tests/verify_proxy.tscn -- -role host -scenario baseline -mode reconnect
+... --headless --path . res://tests/verify_proxy.tscn -- -role client -scenario baseline -mode reconnect
 ```
 
 > **开发约定**：按用户的指示**不启动 GUI**，用上述 unit test 验证后总结。每次改动后跑 `verify_protocol` + `verify_swap` + `verify_duel` + `verify_reconnect` + `verify_kongbaya` + 双实例 `verify_net`。
