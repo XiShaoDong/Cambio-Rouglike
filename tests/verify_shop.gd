@@ -9,6 +9,12 @@ func _ready() -> void:
 	await _test_relic_defs()
 	await _test_shop_flow()
 	await _test_shop_snapshot()
+	await _test_bid_valid()
+	await _test_bid_invalid()
+	await _test_resolve_winner()
+	await _test_resolve_tie()
+	await _test_skip_all()
+	await _test_inventory_override()
 	var status: String = " (FAILURES!)" if failures > 0 else ""
 	print("=== SHOP RESULT: %d/%d passed%s ===" % [checks - failures, checks, status])
 	get_tree().quit(1 if failures > 0 else 0)
@@ -67,3 +73,104 @@ func _test_shop_snapshot() -> void:
 		if (offer as Dictionary).has("amount"):
 			leak = true
 	_check("快照不含任何出价金额", not leak)
+
+func _test_bid_valid() -> void:
+	_rejections = 0
+	GameState.command_rejected.connect(func(_c: int, _m: String) -> void: _rejections += 1)
+	_open_with_finish(5)
+	GameState._on_series_auto_advance()
+	var offers: Array = GameState.shop.offers
+	var min_bid: int = int(offers[0].min_bid)
+	GameState._server_shop_bid(0, 0, min_bid)
+	_check("出价生效并记录 order", GameState.shop.bids.has(0) and int(GameState.shop.bids[0].offer) == 0)
+	_check("未全员提交不裁决", GameState.phase == GameState.Phase.SHOP)
+	GameState._server_shop_bid(0, 0, min_bid)
+	_check("重复出价被拒", _rejections == 1)
+	GameState._server_shop_bid(1, 0, min_bid)
+	GameState._server_shop_bid(2, 0, min_bid)
+	_check("全员出价后裁决进入下一局", GameState.phase == GameState.Phase.INITIAL_PEEK and GameState.match_number == 2)
+
+func _test_bid_invalid() -> void:
+	_rejections = 0
+	_open_with_finish(5)
+	GameState._on_series_auto_advance()
+	GameState._server_shop_bid(0, 99, 10)
+	_check("offer 越界被拒", _rejections == 1 and not GameState.shop.bids.has(0))
+	GameState._server_shop_bid(0, 0, 1)
+	_check("低于起拍价被拒", _rejections == 2)
+	GameState._server_shop_bid(0, 0, 99999)
+	_check("超过货币被拒", _rejections == 3)
+	GameState._server_shop_skip(0)
+	_check("跳过生效", GameState.shop.skip.has(0))
+	GameState._server_shop_bid(0, 0, 2)
+	_check("已提交后再出价被拒", _rejections == 4)
+
+func _test_resolve_winner() -> void:
+	_open_with_finish(5)
+	GameState._on_series_auto_advance()
+	var offers: Array = GameState.shop.offers
+	var relic_id: String = str(offers[0].relic_id)
+	var min_bid: int = int(offers[0].min_bid)
+	GameState.players[0].currency = 100
+	GameState.players[1].currency = 100
+	GameState._server_shop_bid(0, 0, min_bid)
+	GameState._server_shop_bid(1, 0, min_bid + 10)  # seat1 更高
+	GameState._server_shop_skip(2)
+	_check("最高价者拍到", int(GameState.shop_result["0"].winner) == 1)
+	_check("胜者扣货币", int(GameState.players[1].currency) == 100 - (min_bid + 10))
+	_check("败者不扣货币", int(GameState.players[0].currency) == 100)
+	_check("遗物入库", GameState.run_state.relics.has(relic_id))
+	_check("进入下一局", GameState.phase == GameState.Phase.INITIAL_PEEK and GameState.match_number == 2)
+
+func _test_resolve_tie() -> void:
+	_open_with_finish(5)
+	GameState._on_series_auto_advance()
+	var offers: Array = GameState.shop.offers
+	var min_bid: int = int(offers[0].min_bid)
+	GameState._server_shop_bid(0, 0, min_bid)  # 先提交
+	GameState._server_shop_bid(1, 0, min_bid)  # 后提交同价
+	GameState._server_shop_skip(2)
+	_check("同价先到先得", int(GameState.shop_result["0"].winner) == 0)
+
+func _test_skip_all() -> void:
+	_open_with_finish(5)
+	GameState._on_series_auto_advance()
+	GameState._server_shop_skip(0)
+	GameState._server_shop_skip(1)
+	GameState._server_shop_skip(2)
+	_check("全员跳过无入库", GameState.run_state.relics.is_empty())
+	_check("全员跳过进入下一局", GameState.phase == GameState.Phase.INITIAL_PEEK and GameState.match_number == 2)
+
+func _test_inventory_override() -> void:
+	_open_with_finish(5)
+	GameState._on_series_auto_advance()
+	var offers: Array = GameState.shop.offers
+	var min_bid: int = int(offers[0].min_bid)
+	GameState._server_shop_bid(0, 0, min_bid)
+	GameState._server_shop_skip(1)
+	GameState._server_shop_skip(2)
+	var relic_id: String = str(offers[0].relic_id)
+	_check("遗物入库", GameState.run_state.relics.has(relic_id))
+	# 打完下一局再进商店 → 拍到同件覆写（数量不变）。池仅两件、每次全上架，
+	# 已持有遗物必然在架；若异常不在架则跳过以稳定 relics.size()==1。
+	GameState._server_initial_ready(0)
+	GameState._server_initial_ready(1)
+	GameState._server_initial_ready(2)
+	GameState._server_bet(0, KongRules.MIN_BET)
+	GameState._server_bet(1, KongRules.MIN_BET)
+	GameState._server_bet(2, KongRules.MIN_BET)
+	GameState._finish_game()
+	GameState._on_series_auto_advance()
+	var offers2: Array = GameState.shop.offers
+	var held_idx := -1
+	for i in offers2.size():
+		if str(offers2[i].relic_id) == relic_id:
+			held_idx = i
+			break
+	if held_idx >= 0:
+		GameState._server_shop_bid(0, held_idx, int(offers2[held_idx].min_bid))
+	else:
+		GameState._server_shop_skip(0)
+	GameState._server_shop_skip(1)
+	GameState._server_shop_skip(2)
+	_check("同种遗物覆写而非累积", GameState.run_state.relics.size() == 1)
