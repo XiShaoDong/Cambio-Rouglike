@@ -876,6 +876,10 @@ func _advance_turn(final_mode := false) -> void:
 			_add_log("轮到 %s 行动。" % players[current_player_id].name)
 			_broadcast_state()
 
+## 系列赛是否已结束：赛满局数 或 存活数<=1。
+func _series_finished() -> bool:
+	return match_number >= int(run_state.get("match_limit", KongRules.DEFAULT_MATCH_LIMIT)) or _alive_count() <= 1
+
 func _finish_game(reason := "") -> void:
 	slap_open = false
 	slap_collect.clear()
@@ -902,6 +906,10 @@ func _finish_game(reason := "") -> void:
 		players[peer_id].health = max(0, int(players[peer_id].health) - 1)
 	last_result = {"ranking": ranking, "winners": winners, "penalized": losers, "first_turn_kong": kong_called_first_turn}
 	_add_log("对局结束，所有手牌已翻开。")
+	for entry in winners:
+		players[entry].wins = int(players[entry].get("wins", 0)) + 1
+	if _series_finished():
+		last_result["series"] = {"finished": true, "ranking": SeriesRanking.final_ranking(players, turn_order)}
 	_broadcast_sfx("winner")
 	_broadcast_state()
 

@@ -8,6 +8,8 @@ var _rejections := 0
 func _ready() -> void:
 	await _test_match_limit()
 	await _test_lifecycle()
+	await _test_series_end()
+	await _test_ranking()
 	await _test_guard()
 	var status: String = " (FAILURES!)" if failures > 0 else ""
 	print("=== SERIES RESULT: %d/%d passed%s ===" % [checks - failures, checks, status])
@@ -56,6 +58,36 @@ func _test_lifecycle() -> void:
 	GameState.players[2].health = 0
 	_check("淘汰后存活计数=2", GameState._alive_count() == 2)
 	_check("淘汰者不在存活序", GameState._alive_order() == [0, 1])
+
+func _test_series_end() -> void:
+	_rejections = 0
+	_open(2)  # 局数下限=2；把 match_number 推到把末局（2/2）再结算 → 一局即把末
+	GameState.match_number = 2
+	GameState._server_initial_ready(0)
+	GameState._server_initial_ready(1)
+	GameState._server_initial_ready(2)
+	GameState._finish_game()
+	_check("赛满局数后 _series_finished", GameState._series_finished())
+	_check("把末 last_result.series.finished", bool(GameState.last_result.get("series", {}).get("finished", false)))
+	var series: Dictionary = GameState.last_result.get("series", {})
+	_check("把末 series.ranking 含 3 人", (series.get("ranking", []) as Array).size() == 3)
+
+func _test_ranking() -> void:
+	GameState._reset_match()
+	GameState._add_player(1, "A")
+	GameState._add_player(2, "B")
+	GameState._add_player(3, "C")
+	GameState.players[0].wins = 2
+	GameState.players[0].currency = 5
+	GameState.players[1].wins = 3
+	GameState.players[1].currency = 9
+	GameState.players[2].wins = 3
+	GameState.players[2].currency = 7
+	var r: Array = SeriesRanking.final_ranking(GameState.players, GameState.turn_order)
+	_check("排名按胜场降序、同胜场按货币降序", [int(r[0].id), int(r[1].id), int(r[2].id)] == [1, 2, 0])
+	GameState.players[2].health = 0
+	r = SeriesRanking.final_ranking(GameState.players, GameState.turn_order)
+	_check("淘汰者不入总排名", r.size() == 2 and int(r[0].id) != 2 and int(r[1].id) != 2)
 
 func _test_guard() -> void:
 	_rejections = 0
