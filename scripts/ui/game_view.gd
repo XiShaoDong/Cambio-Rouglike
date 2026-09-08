@@ -384,7 +384,8 @@ func _render_player_section(area: Control, player: Dictionary, viewer: int, is_t
 		ready_mark = "  [✓已准备]" if bool(player.get("ready", false)) else "  [等待]"
 	var eliminated := bool(player.get("eliminated", false))
 	var elim_suffix := "  [已淘汰·观战]" if eliminated else ""
-	name_label.text = "%s%s%s%s" % [player.name, suffix, ready_mark, elim_suffix]
+	name_label.text = "%s%s%s%s%s" % [player.name, suffix, ready_mark, elim_suffix,
+		"  ·  货币 %d" % int(player.get("currency", 0))]
 	name_label.add_theme_font_size_override("font_size", font_size)
 	name_label.add_theme_color_override("font_color", UITheme.color("player_self_text") if is_me else UITheme.color("player_other_text"))
 	if eliminated:

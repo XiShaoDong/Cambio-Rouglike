@@ -20,10 +20,11 @@ var _rank_area: Control
 var _footer: Control
 var _title: Label
 var _series: Dictionary = {}
+var _economy: Dictionary = {}
 
 func setup(model: Dictionary, is_host: bool, match_number: int,
 		on_winner: Callable, on_next_match: Callable, on_abort: Callable,
-		on_flip := Callable(), auto_play := true, match_limit := 0, series := {}) -> void:
+		on_flip := Callable(), auto_play := true, match_limit := 0, series := {}, economy := {}) -> void:
 	_model = model
 	_is_host = is_host
 	_on_winner = on_winner
@@ -31,6 +32,7 @@ func setup(model: Dictionary, is_host: bool, match_number: int,
 	_on_abort = on_abort
 	_on_flip = on_flip
 	_series = series
+	_economy = economy
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_bind_ui(match_number, match_limit)
 	if auto_play:
@@ -116,6 +118,7 @@ func _run_sequence() -> void:
 	await _champion()
 	if not _series.is_empty():
 		_show_series_summary(_series)
+	_show_economy(_economy)
 	_show_footer()
 
 func _reveal_flip(seat: int, slot: int, flip: Dictionary, delay: float) -> void:
@@ -193,6 +196,22 @@ func _show_series_summary(series: Dictionary) -> void:
 			row.add_theme_color_override("font_color", UITheme.color("accent"))
 		rows.add_child(row)
 	box.visible = true
+
+func _show_economy(economy: Dictionary) -> void:
+	if economy.is_empty():
+		return
+	var parts: Array = []
+	for seat in economy:
+		var gain: int = int(economy[seat])
+		var name := ""
+		for row in _rows:
+			if int(row) == int(seat):
+				name = str(_rows[row].name.text).replace("★ ", "").replace("▼ ", "").replace("▲ ", "")
+				break
+		parts.append("%s %+d" % [name, gain])
+	var lbl: Label = get_node("Center/Panel/VBox/EconomyLabel")
+	lbl.text = "本局货币：%s" % "　".join(parts)
+	lbl.visible = true
 
 func _show_footer() -> void:
 	_footer.visible = true
