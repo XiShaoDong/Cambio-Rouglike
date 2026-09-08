@@ -37,6 +37,7 @@
 - **结算页（同步轮记分，R-08）**：GAME_OVER 后弹出居中浮动排名窗口（`scenes/ui/settlement_page.tscn` 场景实体 + `settlement_page.gd`，不遮挡棋盘卡牌区）；**棋盘卡牌结算时初始为背面**，由算分动画**逐张联动翻面**（`_on_settlement_flip` → `CardView.flip_reveal`，与行内记分同一时刻，每张间隔 `FLIP_STEP`）；行内累计分滚动累加，每轮后排名表整行上移/下移实时重排（数据来自 `settlement_model.gd` 纯计算 `layout_order`/`rounds`/`ranking`）；全部翻完冠军行名字金色脉冲光环 + ★ 徽章，胜利音效（Winner01-04 随机）**延迟到冠军时刻**播放（`main._pending_winner_sfx`）；房主可「再来一局」（`request_next_match`，GAME_OVER 后直接开新局，`match_number` 递增）/「返回大厅」，客户端显示等待提示。reason-only 结算（无 ranking）不弹结算页。
 - **结算页输入约定（B23）**：结算页根节点 `mouse_filter=STOP` 且**直挂 main 末尾 + z100**（不可挂 overlay/IGNORE，否则 4.6 picking 判不可点）；对局进入 GAME_OVER 时先 `_clear_settlement_anim_state()` 清残留动画再渲染；动画完成回调一律走 `_render_game_if_active()`（GAME_OVER 时跳过，防在途揭示延迟重渲染把翻开的牌翻回，见 B26）。
 - **Kongbaya 最终轮**：一场对局只允许喊一次（`kong_caller != -1` 后任何玩家再喊均拒绝）；喊出者不再行动，其余玩家按顺时针各执行一轮最终行动后统一结算。`kong_caller` 哨兵值为 **-1**（不能用 0，房主座位是 0）。
+- **系列赛框架（已完成）**：房主开局设定 `match_limit` X（2-10 默认 5）把单局扩展为多局系列赛。`_server_start_match(match_limit)` 存 `run.match_limit`；每局 GAME_OVER 非把末由服务器 Timer 自动开下一局、把末（`_series_finished()`）不启动；`health==0` 者出局观战（`eliminated==true`，保留座位、仅公开信息、不可操作，`_guard_spectator()` 接入全部动作 RPC）；把末总排名 `series_ranking.gd` `SeriesRanking.final_ranking()`（存活者胜场降序→同胜场货币降序，淘汰不入榜），`result.series` 只在把末存在。测试 `verify_series.gd`。
 - **卡牌视图重建约定**：`game_view._clear_area` 一律先 `remove_child` 立即移出网格、再 `queue_free` 延迟释放（**不要直接 `free()`**——卡牌点击触发重建时被点击的卡正被信号锁定，free 会报 "Object is locked"）。
 - **罚牌附加卡布局**：前 4 张主网格固定 2 列永不位移；第 5+ 张在 `ExtraLayer` 按**槽号固定绝对定位**（统一向上增长、行列固定，加新罚牌已存在卡不移动）。
 - Git：仓库 `git@github.com:XiShaoDong/Cambio-Rouglike.git`，分支 `main`。
@@ -168,6 +169,8 @@ UI 层已拆分（main.gd 是组合根）：
 ... --headless --path . res://tests/verify_kongbaya.tscn
 # 结算模型 + 再来一局 + 结算页/棋盘联动 + 回归（38/38）
 ... --headless --path . res://tests/verify_settlement.tscn
+# 系列赛框架（33/33：多局/把末判定/出局观战/把末总排名）
+... --headless --path . res://tests/verify_series.tscn
 # hint 生成测试（8/8）
 ... --headless --path . res://tests/verify_hint.tscn
 # 双实例网络回归（host + client 各跑，均 exit 0）

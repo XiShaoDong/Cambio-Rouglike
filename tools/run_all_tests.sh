@@ -78,6 +78,7 @@ run_single "duel"       res://tests/verify_duel.tscn
 run_single "reconnect"  res://tests/verify_reconnect.tscn
 run_single "kongbaya"   res://tests/verify_kongbaya.tscn
 run_single "settlement" res://tests/verify_settlement.tscn
+run_single "series"     res://tests/verify_series.tscn
 run_single "hint"       res://tests/verify_hint.tscn
 
 if [ "$QUICK" -eq 1 ]; then
