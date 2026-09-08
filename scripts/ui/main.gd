@@ -98,6 +98,7 @@ var is_dev_join := false
 var start_button: Button = null
 var close_room_button: Button = null
 var leave_room_button: Button = null
+var match_limit_spin: SpinBox = null
 var _cards := CardFactory.new()
 var interaction: GameInteraction
 var lobby: LobbyView

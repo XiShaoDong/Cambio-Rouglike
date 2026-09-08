@@ -99,19 +99,32 @@ func render(state: Dictionary) -> void:
 	var viewer := int(state.viewer_id)
 	var is_current := viewer == int(state.current_player)
 	var total_players: int = state.players.size()
-	if phase == PHASE_INITIAL_PEEK:
-		var ready_count: int = int(state.get("ready_count", 0))
-		main.ready_button.visible = true
-		main.ready_button.disabled = ready_count >= total_players or _ready_clicked
-		if _ready_clicked:
-			main.ready_button.text = "已准备（%d/%d）" % [ready_count, total_players]
-		else:
-			main.ready_button.text = "Ready（%d/%d）" % [ready_count, total_players]
-	else:
+	var viewer_eliminated := false
+	for player in state.players:
+		if int(player.id) == viewer and bool(player.get("eliminated", false)):
+			viewer_eliminated = true
+			break
+	if viewer_eliminated:
 		main.ready_button.visible = false
-		_ready_clicked = false
-	main.center_hint.text = main._hint_for(phase, is_current)
-	main.round_label.text = "第 %d 局" % int(state.get("match_number", 1))
+		main.bell_button.disabled = true
+		main.deck_button.disabled = true
+		main._highlight(main.deck_button, false)
+		main.center_hint.text = "你已出局，正在观战。"
+	else:
+		if phase == PHASE_INITIAL_PEEK:
+			var ready_count: int = int(state.get("ready_count", 0))
+			main.ready_button.visible = true
+			main.ready_button.disabled = ready_count >= total_players or _ready_clicked
+			if _ready_clicked:
+				main.ready_button.text = "已准备（%d/%d）" % [ready_count, total_players]
+			else:
+				main.ready_button.text = "Ready（%d/%d）" % [ready_count, total_players]
+		else:
+			main.ready_button.visible = false
+			_ready_clicked = false
+		main.center_hint.text = main._hint_for(phase, is_current)
+	var limit: int = int((state.get("run", {}) as Dictionary).get("match_limit", KongRules.DEFAULT_MATCH_LIMIT))
+	main.round_label.text = "第 %d / %d 局" % [int(state.get("match_number", 1)), limit]
 	main.bell_button.disabled = not (phase == PHASE_TURN_DRAW and is_current)
 	main.bell_button.tooltip_text = "轮到你抽牌时，按下铃铛宣布 KONGBAYA！其他人各有一次最后行动。"
 	_update_pending_card(phase, is_current)
@@ -369,9 +382,13 @@ func _render_player_section(area: Control, player: Dictionary, viewer: int, is_t
 	var ready_mark := ""
 	if int(main.latest_state.phase) == PHASE_INITIAL_PEEK:
 		ready_mark = "  [✓已准备]" if bool(player.get("ready", false)) else "  [等待]"
-	name_label.text = "%s%s%s" % [player.name, suffix, ready_mark]
+	var eliminated := bool(player.get("eliminated", false))
+	var elim_suffix := "  [已淘汰·观战]" if eliminated else ""
+	name_label.text = "%s%s%s%s" % [player.name, suffix, ready_mark, elim_suffix]
 	name_label.add_theme_font_size_override("font_size", font_size)
 	name_label.add_theme_color_override("font_color", UITheme.color("player_self_text") if is_me else UITheme.color("player_other_text"))
+	if eliminated:
+		name_label.add_theme_color_override("font_color", UITheme.color("text_secondary"))
 	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var name_style := StyleBoxFlat.new()
 	name_style.bg_color = UITheme.color("player_self_bg") if is_me else UITheme.color("player_other_bg")

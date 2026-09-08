@@ -57,6 +57,20 @@ func build() -> void:
 	dev.add_theme_color_override("font_color", UITheme.color("success"))
 	dev.disabled = main.is_dev_join
 	inputs.add_child(dev)
+	var spin_row := HBoxContainer.new()
+	spin_row.add_theme_constant_override("separation", 8)
+	main.lobby_panel.add_child(spin_row)
+	var spin_lbl := Label.new()
+	spin_lbl.text = "系列赛局数 X："
+	spin_row.add_child(spin_lbl)
+	main.match_limit_spin = SpinBox.new()
+	main.match_limit_spin.min_value = KongRules.MIN_MATCH_LIMIT
+	main.match_limit_spin.max_value = KongRules.MAX_MATCH_LIMIT
+	main.match_limit_spin.step = 1
+	main.match_limit_spin.value = KongRules.DEFAULT_MATCH_LIMIT
+	main.match_limit_spin.custom_minimum_size = Vector2(100, 0)
+	main.match_limit_spin.visible = false
+	spin_row.add_child(main.match_limit_spin)
 	main.lobby_members = RichTextLabel.new()
 	main.lobby_members.bbcode_enabled = true
 	main.lobby_members.fit_content = true
@@ -66,6 +80,9 @@ func build() -> void:
 
 func host_game() -> void:
 	Network.host_game({"name": main._entered_name()}, main._entered_port())
+
+func _start_with_limit() -> void:
+	GameState.request_start_match(int(main.match_limit_spin.value))
 
 func join_game() -> void:
 	var address: String = main.address_input.text.strip_edges()
@@ -138,9 +155,10 @@ func update_lobby(lobby: Dictionary) -> void:
 		if main.start_button == null:
 			main.start_button = main._button("开始对局")
 			main.start_button.name = "StartMatch"
-			main.start_button.pressed.connect(GameState.request_start_match)
+			main.start_button.pressed.connect(_start_with_limit)
 			main.lobby_panel.add_child(main.start_button)
 		main.start_button.disabled = lobby.players.size() < int(lobby.min_players)
+		main.match_limit_spin.visible = true
 		# 房主可解散房间：通知全员回大厅并关闭服务器，回到初始界面
 		if main.close_room_button == null:
 			main.close_room_button = main._button("解散房间")
@@ -154,6 +172,7 @@ func update_lobby(lobby: Dictionary) -> void:
 			main.leave_room_button.name = "LeaveRoom"
 			main.leave_room_button.pressed.connect(_leave_room)
 			main.lobby_panel.add_child(main.leave_room_button)
+		main.match_limit_spin.visible = false
 	main.lobby_members.text = "\n".join(lines)
 
 ## 客户端主动退出房间：断开连接，回到初始大厅界面。
