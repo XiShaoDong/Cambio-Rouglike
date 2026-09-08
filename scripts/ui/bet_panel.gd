@@ -72,15 +72,15 @@ func _ready() -> void:
 	plus.pressed.connect(func() -> void: _change_step(1))
 	confirm.pressed.connect(_confirm)
 
-## 按键 hover 说明文本。
+## 按键 hover 说明文本（含 W/S/Enter 快捷键）。
 func _hint_text(kind: String) -> String:
 	match kind:
 		"minus":
-			return "" if _all_in else "押注 −%d（下限 %d）" % [KongRules.BET_STEP, KongRules.MIN_BET]
+			return "" if _all_in else "S/↓　押注 −%d（下限 %d）" % [KongRules.BET_STEP, KongRules.MIN_BET]
 		"plus":
-			return "" if _all_in else "押注 +%d（上限 %d 或 ≤ 货币）" % [KongRules.BET_STEP, KongRules.MAX_BET]
+			return "" if _all_in else "W/↑　押注 +%d（上限 %d 或 ≤ 货币）" % [KongRules.BET_STEP, KongRules.MAX_BET]
 		"confirm":
-			return "确认全押 + 灵魂币（输则出局）" if _all_in else "确认押注（%d），等待其他玩家…" % _amount
+			return "Enter　确认全押 + 灵魂币（输则出局）" if _all_in else "Enter　确认押注（%d），等待其他玩家…" % _amount
 	return ""
 
 func _refresh() -> void:
@@ -105,3 +105,4 @@ func _change_step(dir: int) -> void:
 func _confirm() -> void:
 	if _on_confirm.is_valid():
 		_on_confirm.call(0 if _all_in else _amount)
+	visible = false  # 确认后关闭押注窗口，等待其他玩家（phase 变更时由 main 释放）
