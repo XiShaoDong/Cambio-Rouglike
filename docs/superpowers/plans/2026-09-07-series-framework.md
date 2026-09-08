@@ -293,7 +293,8 @@ git commit -m "feat: start_match 携带系列赛局数 X（夹取 2-10，默认 
 ```gdscript
 func _test_series_end() -> void:
 	_rejections = 0
-	_open(1)  # match_limit=1，match_number 起步 1 → 一局即把末
+	_open(2)  # match_limit 下限 2 起；把末局数设为 2/2
+	GameState.match_number = 2
 	GameState._server_initial_ready(0)
 	GameState._server_initial_ready(1)
 	GameState._server_initial_ready(2)
@@ -546,7 +547,8 @@ func _test_auto_advance() -> void:
 
 func _test_next_match_guard() -> void:
 	_rejections = 0
-	_open(1)
+	_open(2)
+	GameState.match_number = 2  # 把末局 2/2（match_limit 下限 2 起，不能 _open(1)）
 	GameState._server_initial_ready(0)
 	GameState._server_initial_ready(1)
 	GameState._server_initial_ready(2)
