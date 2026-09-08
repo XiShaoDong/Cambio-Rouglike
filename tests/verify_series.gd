@@ -6,6 +6,7 @@ var checks := 0
 var _rejections := 0
 
 func _ready() -> void:
+	await _test_match_limit()
 	await _test_lifecycle()
 	await _test_guard()
 	var status: String = " (FAILURES!)" if failures > 0 else ""
@@ -20,12 +21,29 @@ func _check(name: String, ok: bool) -> void:
 		failures += 1
 		printerr("[FAIL] " + name)
 
-func _open(_limit := 0) -> void:
+func _open(limit := 0) -> void:
 	GameState._reset_match()
 	GameState._add_player(1, "A")
 	GameState._add_player(2, "B")
 	GameState._add_player(3, "C")
-	GameState._server_start_match(0)
+	GameState._server_start_match(0, limit)
+
+func _test_match_limit() -> void:
+	_rejections = 0
+	_open(3)
+	_check("start_match 设定局数=3", int(GameState.run_state.get("match_limit", 0)) == 3)
+	GameState._reset_match()
+	GameState._add_player(1, "A")
+	GameState._add_player(2, "B")
+	GameState._server_start_match(0, 99)
+	_check("局数超上限被夹到10", int(GameState.run_state.get("match_limit", 0)) == 10)
+	GameState._reset_match()
+	GameState._add_player(1, "A")
+	GameState._add_player(2, "B")
+	GameState._server_start_match(0, 1)
+	_check("局数低于下限回退默认5", int(GameState.run_state.get("match_limit", 0)) == 5)
+	GameState._server_start_match(1, 7)
+	_check("非房主拒绝(状态不变)", GameState.phase == GameState.Phase.INITIAL_PEEK and int(GameState.run_state.get("match_limit", 0)) == 5)
 
 func _test_lifecycle() -> void:
 	GameState.command_rejected.connect(func(_c: int, _m: String) -> void: _rejections += 1)

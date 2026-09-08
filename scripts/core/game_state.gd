@@ -371,18 +371,18 @@ func _send_resume_hand(seat: int) -> void:
 	else:
 		receive_resume_hand.rpc_id(peer, hand, pending)
 
-func request_start_match() -> void:
+func request_start_match(match_limit := 0) -> void:
 	if multiplayer.is_server():
-		_server_start_match(_peer_to_seat(1))
+		_server_start_match(_peer_to_seat(1), match_limit)
 	else:
-		server_start_match.rpc_id(1)
+		server_start_match.rpc_id(1, match_limit)
 
 @rpc("any_peer", "reliable")
-func server_start_match() -> void:
+func server_start_match(match_limit: int) -> void:
 	if multiplayer.is_server():
-		_server_start_match(_peer_to_seat(multiplayer.get_remote_sender_id()))
+		_server_start_match(_peer_to_seat(multiplayer.get_remote_sender_id()), match_limit)
 
-func _server_start_match(sender: int) -> void:
+func _server_start_match(sender: int, match_limit := 0) -> void:
 	if phase != Phase.LOBBY:
 		_reject(sender, RejectCode.ROOM_NOT_OPEN)
 		return
@@ -392,6 +392,8 @@ func _server_start_match(sender: int) -> void:
 	if players.size() < KongRules.MIN_PLAYERS:
 		_reject(sender, RejectCode.NOT_ENOUGH_PLAYERS)
 		return
+	var limit: int = match_limit if match_limit >= KongRules.MIN_MATCH_LIMIT else KongRules.DEFAULT_MATCH_LIMIT
+	run_state["match_limit"] = clampi(limit, KongRules.MIN_MATCH_LIMIT, KongRules.MAX_MATCH_LIMIT)
 	_deal_new_match()
 
 func _deal_new_match() -> void:
