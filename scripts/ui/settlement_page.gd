@@ -228,10 +228,10 @@ func _show_footer() -> void:
 			if _on_abort.is_valid():
 				_on_abort.call())
 		box.add_child(exit)
-		status.text = "系列赛结束" if series_done else "下一局即将自动开始…"
+		status.text = "系列赛结束" if series_done else "即将进入商店…"
 	else:
 		var wait := Label.new()
-		wait.text = "系列赛结束" if series_done else "等待进入下一局…"
+		wait.text = "系列赛结束" if series_done else "等待进入商店…"
 		wait.add_theme_color_override("font_color", UITheme.color("text_secondary"))
 		box.add_child(wait)
 	status.visible = true

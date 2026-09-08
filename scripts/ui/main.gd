@@ -53,6 +53,7 @@ const PHASE_SLAP_EXCHANGE := 6
 const PHASE_GAME_OVER := 7
 const PHASE_SLAP_DUEL := 8
 const PHASE_BET := 9
+const PHASE_SHOP := 10
 
 const PEEK_GLOW_COLOR := Color("3ef0f7ff")  # 查看牌蓝色光晕
 const PEEK_GLOW_DURATION := 1.5
@@ -64,6 +65,7 @@ const DuelBarScript := preload("res://scripts/ui/duel_bar.gd")
 const SettingsMenuScript := preload("res://scripts/ui/settings_menu.gd")
 const SettlementPageScript := preload("res://scenes/ui/settlement_page.tscn")
 const BetPanelScript := preload("res://scenes/ui/bet_panel.tscn")
+const ShopPanelScript := preload("res://scenes/ui/shop_panel.tscn")
 
 var latest_lobby: Dictionary = {}
 var latest_state: Dictionary = {}
@@ -131,6 +133,8 @@ var _reconnect_panel: Control = null
 var _reconnect_expected := false
 var settlement_page: Control = null
 var bet_panel: Control = null
+var shop_panel: Control = null
+var _shop_result_shown := ""
 var _pending_winner_sfx := false
 
 ## 标记某个玩家槽位正在动画（渲染时该槽位显示虚线占位，不显示原卡）。
@@ -428,6 +432,11 @@ func _on_state_updated(state: Dictionary) -> void:
 		_open_bet_panel()
 	else:
 		_close_bet_panel()
+	if int(state.phase) == PHASE_SHOP:
+		_open_shop_panel()
+	else:
+		_close_shop_panel()
+	_show_shop_result_toast(state)
 
 ## 清空上一局可能残留的动画/挂起状态（对局结束时在途的看牌/贴牌揭示）。
 func _clear_settlement_anim_state() -> void:
@@ -543,6 +552,48 @@ func _close_bet_panel() -> void:
 
 func _on_bet_confirm(amount: int) -> void:
 	GameState.request_bet(amount)
+
+## SHOP 阶段打开商店面板（幂等）。
+func _open_shop_panel() -> void:
+	if shop_panel != null and is_instance_valid(shop_panel):
+		return
+	var panel := ShopPanelScript.instantiate()
+	panel.name = "ShopPanel"
+	panel.z_index = 90
+	add_child(panel)
+	panel.setup(latest_state, _on_shop_bid, _on_shop_skip)
+	shop_panel = panel
+
+func _close_shop_panel() -> void:
+	if shop_panel != null and is_instance_valid(shop_panel):
+		shop_panel.queue_free()
+	shop_panel = null
+
+func _on_shop_bid(offer: int, amount: int) -> void:
+	GameState.request_shop_bid(offer, amount, _next_action_id())
+
+func _on_shop_skip() -> void:
+	GameState.request_shop_skip(_next_action_id())
+
+## 商店裁决结果一次性 toast（每个 shop_result 只提示一次）。
+func _show_shop_result_toast(state: Dictionary) -> void:
+	var result: Dictionary = state.get("shop_result", {})
+	if result.is_empty():
+		return
+	var key: String = JSON.stringify(result)
+	if key == _shop_result_shown:
+		return
+	_shop_result_shown = key
+	var parts: Array = []
+	for offer_idx in result:
+		var r: Dictionary = result[offer_idx]
+		var name := ""
+		for p in state.players:
+			if int(p.id) == int(r.winner):
+				name = str(p.name)
+				break
+		parts.append("%s 以 %d 拍得 %s" % [name, int(r.amount), str(r.name)])
+	_show_toast("商店：%s" % "　".join(parts))
 
 ## 冠军时刻：若服务器已广播过 winner 音效事件，此刻播放（延迟到冠军出场）。
 func _play_pending_winner() -> void:
