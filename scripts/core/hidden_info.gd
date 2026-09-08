@@ -45,6 +45,8 @@ static func snapshot_for(state: Node, viewer_id: int) -> Dictionary:
 		"event_log": state.event_log.duplicate(),
 		"result": state.last_result.duplicate(),
 		"run": state.run_state.duplicate(),
+		"shop": _shop_snapshot(state) if int(state.phase) == GameState.Phase.SHOP else {},
+		"shop_result": state.shop_result.duplicate() if not state.shop_result.is_empty() else {},
 	}
 	if (phase == GameState.Phase.TURN_DECISION or phase == GameState.Phase.Q_DECISION) and not state.pending_draw.is_empty():
 		if viewer_id == current_seat:
@@ -109,6 +111,22 @@ static func public_card(state: Node, card_id: String) -> Dictionary:
 	var card: Dictionary = state.cards[card_id]
 	return {"id": card.id, "rank": card.rank, "suit": card.suit, "value": card.value, "label": KongRules.display_name(card)}
 
+## 商店快照：只投影 offers 的 bidders 计数与已提交名单，绝不含出价金额（密封）。
+static func _shop_snapshot(state: Node) -> Dictionary:
+	var offers: Array = []
+	for offer in state.shop.get("offers", []):
+		var count := 0
+		for seat in state.shop.get("bids", {}):
+			if int(state.shop.bids[seat].offer) == int(offer.index):
+				count += 1
+		offers.append({"id": str(offer.relic_id), "name": str(offer.name), "min_bid": int(offer.min_bid), "bidders": count})
+	var submitted: Array = []
+	for seat in state.shop.get("bids", {}):
+		submitted.append(int(seat))
+	for seat in state.shop.get("skip", {}):
+		submitted.append(int(seat))
+	return {"offers": offers, "submitted": submitted}
+
 static func _phase_name(phase: int) -> String:
 	match phase:
 		GameState.Phase.LOBBY: return "大厅"
@@ -121,4 +139,5 @@ static func _phase_name(phase: int) -> String:
 		GameState.Phase.SLAP_DUEL: return "贴牌比拼"
 		GameState.Phase.GAME_OVER: return "结算"
 		GameState.Phase.BET: return "押注"
+		GameState.Phase.SHOP: return "商店"
 	return ""

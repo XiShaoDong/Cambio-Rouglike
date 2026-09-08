@@ -188,11 +188,17 @@ func _test_auto_advance() -> void:
 	GameState._server_initial_ready(0)
 	GameState._server_initial_ready(1)
 	GameState._server_initial_ready(2)
+	GameState._server_bet(0, KongRules.MIN_BET)
+	GameState._server_bet(1, KongRules.MIN_BET)
+	GameState._server_bet(2, KongRules.MIN_BET)
 	GameState._finish_game()
-	_check("非把末启动自动衔接 Timer", not GameState.series_timer.is_stopped())
+	_check("非把末启动衔接 Timer", not GameState.series_timer.is_stopped())
 	GameState._on_series_auto_advance()
-	_check("自动开下一局 match_number 递增", GameState.match_number == 2)
-	_check("回 INITIAL_PEEK", GameState.phase == GameState.Phase.INITIAL_PEEK)
+	_check("衔接进入商店", GameState.phase == GameState.Phase.SHOP)
+	GameState._server_shop_skip(0)
+	GameState._server_shop_skip(1)
+	GameState._server_shop_skip(2)
+	_check("商店后开下一局 match_number 递增", GameState.match_number == 2 and GameState.phase == GameState.Phase.INITIAL_PEEK)
 	GameState._finish_game()
 	GameState._server_next_match(0, "nm-ok")
 	_check("未把末仍可手动 next", GameState.phase == GameState.Phase.INITIAL_PEEK)
@@ -200,12 +206,15 @@ func _test_auto_advance() -> void:
 func _test_next_match_guard() -> void:
 	_rejections = 0
 	_open(2)
-	GameState.match_number = 2  # 把末局 2/2（match_limit 下限 2 起，不能 _open(1)）
+	GameState.match_number = 2  # 把末局 2/2
 	GameState._server_initial_ready(0)
 	GameState._server_initial_ready(1)
 	GameState._server_initial_ready(2)
+	GameState._server_bet(0, KongRules.MIN_BET)
+	GameState._server_bet(1, KongRules.MIN_BET)
+	GameState._server_bet(2, KongRules.MIN_BET)
 	GameState._finish_game()
-	_check("把末 Timer 不启动", GameState.series_timer.is_stopped())
+	_check("把末不启动衔接且不进商店", GameState.series_timer.is_stopped() and GameState.phase == GameState.Phase.GAME_OVER)
 	GameState._server_next_match(0, "nm-x")
 	_check("把末 next_match 被拒", _rejections == 1 and GameState.phase == GameState.Phase.GAME_OVER)
 

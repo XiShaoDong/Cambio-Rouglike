@@ -17,7 +17,7 @@ signal registered_token_received(token: String)
 signal resume_hand_received(hand: Array, pending: Dictionary)
 signal sfx_played(kind: String)
 
-enum Phase { LOBBY, INITIAL_PEEK, TURN_DRAW, TURN_DECISION, Q_DECISION, SLAP_WINDOW, SLAP_EXCHANGE, GAME_OVER, SLAP_DUEL, BET }
+enum Phase { LOBBY, INITIAL_PEEK, TURN_DRAW, TURN_DECISION, Q_DECISION, SLAP_WINDOW, SLAP_EXCHANGE, GAME_OVER, SLAP_DUEL, BET, SHOP }
 
 const PROTOCOL_VERSION := 1
 const MAX_ACTION_HISTORY := 64
@@ -73,6 +73,8 @@ var event_log: Array[String] = []
 var run_state: Dictionary = KongRules.new_default_run()
 var match_number := 1
 var bets: Dictionary = {}  # key: seat；value: {amount:int, all_in:bool}
+var shop: Dictionary = {}        # {offers:[{index,relic_id,name,min_bid}], bids:{seat:{offer,amount,order}}, skip:{seat:true}, _next_order:int}
+var shop_result: Dictionary = {} # 最近一次商店裁决 {offer_index:{relic_id,name,winner,amount}}；公开
 var match_id := ""
 var state_revision := 0
 var action_history: Dictionary = {}
@@ -164,6 +166,8 @@ func _reset_match() -> void:
 	last_result.clear()
 	event_log.clear()
 	bets.clear()
+	shop = {}
+	shop_result = {}
 	run_state = KongRules.new_default_run()
 	match_number = 1
 	match_id = ""
@@ -206,7 +210,7 @@ func _reject_code_message(code: int) -> String:
 func _is_suspended() -> bool:
 	if players.is_empty():
 		return false
-	if phase == Phase.INITIAL_PEEK or phase == Phase.BET:
+	if phase == Phase.INITIAL_PEEK or phase == Phase.BET or phase == Phase.SHOP:
 		for seat in _alive_order():
 			if bool(players[seat].get("offline", false)):
 				return true
@@ -463,6 +467,10 @@ func _server_next_match(sender: int, action_id := "") -> void:
 	if players.size() < KongRules.MIN_PLAYERS:
 		_reject(sender, RejectCode.NOT_ENOUGH_PLAYERS, action_id)
 		return
+	_deal_next_match()
+
+## 进入下一局（商店裁决 / 再来一局共用）。match_number 递增并开新局。
+func _deal_next_match() -> void:
 	match_number += 1
 	_deal_new_match()
 
@@ -1087,13 +1095,61 @@ func _finish_game(reason := "") -> void:
 func _start_series_timer() -> void:
 	series_timer.start(KongRules.SERIES_AUTO_ADVANCE_MS / 1000.0)
 
-## 局间自动衔接：到点且仍处结算、未把末时由服务器（房主权威）开下一局。
+## 进入商店阶段：随机展示至多 3 件遗物，等待全员出价或跳过。
+func _start_shop() -> void:
+	if _series_finished():
+		return
+	shop = {"offers": _pick_shop_offers(), "bids": {}, "skip": {}, "_next_order": 0}
+	shop_result = {}
+	phase = Phase.SHOP
+	_add_log("进入商店：每人限选 1 件竞拍（密封出价）。")
+	_broadcast_state()
+
+func _pick_shop_offers() -> Array:
+	var pool: Array = Relics.pool().duplicate()
+	pool.shuffle()
+	var offers: Array = []
+	var count := mini(3, pool.size())
+	for i in count:
+		var relic: Dictionary = pool[i]
+		offers.append({"index": i, "relic_id": str(relic.id), "name": str(relic.name), "min_bid": int(relic.get("min_bid", Relics.RELIC_MIN_BID))})
+	return offers
+
+## 跳过商店（Task 1 仅记录跳过；全员跳过 → 直接开下一局。竞拍与裁决属 Task 2）。
+func _server_shop_skip(sender: int, action_id := "") -> void:
+	if phase != Phase.SHOP:
+		_reject(sender, RejectCode.INVALID_PHASE, action_id)
+		return
+	if _guard_suspended(sender, action_id):
+		return
+	if _guard_spectator(sender, action_id):
+		return
+	if not players.has(sender) or _shop_submitted(sender):
+		_reject(sender, RejectCode.DUPLICATE_OR_EXPIRED_ACTION, action_id)
+		return
+	shop.skip[sender] = true
+	_add_log("%s 跳过商店。" % players[sender].name)
+	if _shop_all_submitted():
+		_deal_next_match()
+	else:
+		_broadcast_state()
+
+func _shop_submitted(seat: int) -> bool:
+	return shop.get("bids", {}).has(seat) or shop.get("skip", {}).has(seat)
+
+func _shop_all_submitted() -> bool:
+	for seat in _alive_order():
+		if not _shop_submitted(int(seat)):
+			return false
+	return true
+
+## 局间自动衔接：到点且仍处结算、未把末时进入商店（非把末结算展示后）。
 func _on_series_auto_advance() -> void:
 	if phase != Phase.GAME_OVER or _series_finished():
 		return
 	if _alive_count() < KongRules.MIN_PLAYERS:
 		return
-	_server_next_match(0)
+	_start_shop()
 
 func _calculate_ranking() -> Array:
 	return ScoreSystem.calculate_ranking(players, cards, _alive_order())
