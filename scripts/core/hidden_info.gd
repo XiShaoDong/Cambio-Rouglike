@@ -99,6 +99,7 @@ static func _player_snapshot(state: Node, seat: int, reveal_all: bool, viewer_id
 					slot["card"] = public_card(state, card_id)
 		slots.append(slot)
 	return {"id": seat, "name": player.name, "count": player.cards.size(), "health": player.health,
+		"eliminated": int(player.get("health", 1)) <= 0,
 		"ready": state.initial_confirmed.has(seat), "slots": slots}
 
 ## 卡牌公共表示（不含身份敏感信息之外的内容，仅用于展示/能力提示）。

@@ -11,6 +11,8 @@ func _ready() -> void:
 	await _test_series_end()
 	await _test_ranking()
 	await _test_guard()
+	await _test_elimination()
+	await _test_spectator_snapshot()
 	var status: String = " (FAILURES!)" if failures > 0 else ""
 	print("=== SERIES RESULT: %d/%d passed%s ===" % [checks - failures, checks, status])
 	get_tree().quit(1 if failures > 0 else 0)
@@ -96,3 +98,36 @@ func _test_guard() -> void:
 	_check("guard 拦截观战者", GameState._guard_spectator(0, "g-0"))
 	_check("guard 放行存活者", not GameState._guard_spectator(1, "g-1"))
 	_check("SPECTATOR 拒绝已发", _rejections == 1)
+
+func _test_elimination() -> void:
+	GameState._reset_match()
+	GameState._add_player(1, "A")
+	GameState._add_player(2, "B")
+	GameState._add_player(3, "C")
+	GameState.players[2].health = 0
+	GameState._server_start_match(0)
+	GameState._server_initial_ready(0)
+	GameState._server_initial_ready(1)
+	_check("存活者就绪即开局(不需淘汰者确认)", GameState.phase == GameState.Phase.TURN_DRAW)
+	_check("淘汰者未被发牌", GameState.players[2].cards.is_empty())
+	_check("存活者各发4张", GameState.players[0].cards.size() == KongRules.HAND_SIZE and GameState.players[1].cards.size() == KongRules.HAND_SIZE)
+	var d: Dictionary = TurnSystem.decide(GameState._alive_order(), 0, -1, [])
+	_check("回合跳过淘汰者 0->1", int(d.next_player) == 1)
+
+func _test_spectator_snapshot() -> void:
+	GameState._reset_match()
+	GameState._add_player(1, "A")
+	GameState._add_player(2, "B")
+	GameState._add_player(3, "C")
+	GameState.players[2].health = 0
+	GameState._server_start_match(0)
+	GameState._server_initial_ready(0)
+	GameState._server_initial_ready(1)
+	var snap: Dictionary = GameState._snapshot_for(2)
+	var leak := false
+	for p in snap.players:
+		for s in p.slots:
+			if (s as Dictionary).has("card"):
+				leak = true
+	_check("观战快照无任何暗牌面", not leak)
+	_check("观战者本人 eliminated 标记", bool(snap.players[2].get("eliminated", false)))

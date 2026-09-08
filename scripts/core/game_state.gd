@@ -418,6 +418,7 @@ func _deal_new_match() -> void:
 	for seat in turn_order:
 		players[seat].cards.clear()
 		players[seat].has_acted = false
+	for seat in _alive_order():
 		for _slot in KongRules.HAND_SIZE:
 			players[seat].cards.append(_draw_from_deck())
 	phase = Phase.INITIAL_PEEK
@@ -498,16 +499,18 @@ func _server_initial_ready(sender: int) -> void:
 		return
 	if _guard_suspended(sender, ""):
 		return
+	if _guard_spectator(sender, ""):
+		return
 	if not players.has(sender):
 		return
 	if initial_confirmed.has(sender):
 		_reject(sender, RejectCode.DUPLICATE_OR_EXPIRED_ACTION)
 		return
 	initial_confirmed[sender] = true
-	if initial_confirmed.size() < players.size():
+	if initial_confirmed.size() < _alive_count():
 		_broadcast_state()
 		return
-	current_player_id = turn_order[0]
+	current_player_id = _alive_order()[0]
 	phase = Phase.TURN_DRAW
 	_add_log("轮到 %s 行动。" % players[current_player_id].name)
 	_broadcast_state()
@@ -528,6 +531,8 @@ func _server_take(sender: int, source: String, action_id := "") -> void:
 		_reject(sender, RejectCode.INVALID_PHASE, action_id)
 		return
 	if _guard_suspended(sender, action_id):
+		return
+	if _guard_spectator(sender, action_id):
 		return
 	if sender != current_player_id:
 		_reject(sender, RejectCode.NOT_CURRENT_PLAYER, action_id)
@@ -572,6 +577,8 @@ func _server_replace(sender: int, slot: int, action_id := "") -> void:
 		return
 	if _guard_suspended(sender, action_id):
 		return
+	if _guard_spectator(sender, action_id):
+		return
 	if sender != current_player_id:
 		_reject(sender, RejectCode.NOT_CURRENT_PLAYER, action_id)
 		return
@@ -609,6 +616,8 @@ func _server_discard_draw(sender: int, action_id := "") -> void:
 		return
 	if _guard_suspended(sender, action_id):
 		return
+	if _guard_spectator(sender, action_id):
+		return
 	if sender != current_player_id:
 		_reject(sender, RejectCode.NOT_CURRENT_PLAYER, action_id)
 		return
@@ -638,6 +647,8 @@ func _server_use_ability(sender: int, data: Dictionary, action_id := "") -> void
 		_reject(sender, RejectCode.INVALID_PHASE, action_id)
 		return
 	if _guard_suspended(sender, action_id):
+		return
+	if _guard_spectator(sender, action_id):
 		return
 	if sender != current_player_id:
 		_reject(sender, RejectCode.NOT_CURRENT_PLAYER, action_id)
@@ -670,6 +681,8 @@ func _server_q_decision(sender: int, exchange: bool, own_slot: int, action_id :=
 		_reject(sender, RejectCode.INVALID_PHASE, action_id)
 		return
 	if _guard_suspended(sender, action_id):
+		return
+	if _guard_spectator(sender, action_id):
 		return
 	if sender != int(q_context.get("actor", 0)):
 		_reject(sender, RejectCode.NOT_CURRENT_PLAYER, action_id)
@@ -706,6 +719,8 @@ func server_slap(target_player: int, slot: int, action_id: String) -> void:
 func _server_slap(sender: int, target_player: int, slot: int, action_id := "") -> void:
 	if _guard_suspended(sender, action_id):
 		return
+	if _guard_spectator(sender, action_id):
+		return
 	slap.attempt(sender, target_player, slot, action_id)
 
 func request_slap_exchange(own_slot: int, action_id := "") -> void:
@@ -721,6 +736,8 @@ func server_slap_exchange(own_slot: int, action_id: String) -> void:
 
 func _server_slap_exchange(sender: int, own_slot: int, action_id := "") -> void:
 	if _guard_suspended(sender, action_id):
+		return
+	if _guard_spectator(sender, action_id):
 		return
 	slap.exchange(sender, own_slot, action_id)
 
@@ -738,6 +755,8 @@ func server_slap_duel_stop(action_id: String) -> void:
 func _server_slap_duel_stop(sender: int, action_id := "") -> void:
 	if _guard_suspended(sender, action_id):
 		return
+	if _guard_spectator(sender, action_id):
+		return
 	slap.duel_stop(sender, action_id)
 
 func request_kongbaya(action_id := "") -> void:
@@ -753,6 +772,8 @@ func server_kongbaya(action_id: String) -> void:
 
 func _server_kongbaya(sender: int, action_id := "") -> void:
 	if _guard_suspended(sender, action_id):
+		return
+	if _guard_spectator(sender, action_id):
 		return
 	kongbaya.declare(sender, action_id)
 
@@ -858,7 +879,7 @@ func _advance_turn(final_mode := false) -> void:
 		decision = {"type": TurnSystem.Decision.FINAL if not final_queue.is_empty() else TurnSystem.Decision.FINISH,
 			"next_player": int(final_queue[0]) if not final_queue.is_empty() else 0}
 	else:
-		decision = TurnSystem.decide(turn_order, current_player_id, kong_caller, [])
+		decision = TurnSystem.decide(_alive_order(), current_player_id, kong_caller, [])
 	match decision.type:
 		TurnSystem.Decision.FINISH:
 			_finish_game()
@@ -914,7 +935,7 @@ func _finish_game(reason := "") -> void:
 	_broadcast_state()
 
 func _calculate_ranking() -> Array:
-	return ScoreSystem.calculate_ranking(players, cards, turn_order)
+	return ScoreSystem.calculate_ranking(players, cards, _alive_order())
 
 func _is_lower_score(a: Dictionary, b: Dictionary) -> bool:
 	return ScoreSystem._is_lower_score(a, b)
