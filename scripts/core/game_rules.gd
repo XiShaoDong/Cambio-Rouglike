@@ -22,6 +22,11 @@ const SLAP_DUEL_TARGET_MAX := 0.85
 
 const SPECIAL_RANKS := ["7", "8", "9", "10", "J", "Q"]
 
+const START_CURRENCY := 10
+const DEFAULT_MATCH_LIMIT := 5
+const MIN_MATCH_LIMIT := 2
+const MAX_MATCH_LIMIT := 10
+
 static func card_value(rank: String) -> int:
 	match rank:
 		"A": return 1
@@ -47,4 +52,5 @@ static func new_default_run() -> Dictionary:
 		"relics": {},
 		"mutator_ids": [],
 		"enable_relics": false,
+		"match_limit": DEFAULT_MATCH_LIMIT,
 	}

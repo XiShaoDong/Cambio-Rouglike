@@ -44,6 +44,7 @@ enum RejectCode {
 	ALREADY_STOPPED,
 	MATCH_SUSPENDED,
 	INVALID_TOKEN,
+	SPECTATOR,
 }
 
 var phase: Phase = Phase.LOBBY
@@ -188,6 +189,7 @@ func _reject_code_message(code: int) -> String:
 		RejectCode.ALREADY_STOPPED: return "你已经在比拼中按过 STOP。"
 		RejectCode.MATCH_SUSPENDED: return "对局已暂停（有玩家离线），等待重连或房主处理。"
 		RejectCode.INVALID_TOKEN: return "重连凭据无效或座位已被移除。"
+		RejectCode.SPECTATOR: return "你已出局，只能观战。"
 	return "操作被拒绝。"
 
 ## 对局是否处于条件暂停（当前行动者离线 / 开局记忆阶段有人离线）。
@@ -246,6 +248,8 @@ func _add_player(peer_id: int, display_name: String) -> void:
 		"has_acted": false,
 		"offline": false,
 		"health": int(run_state.get("health", 3)),
+		"currency": KongRules.START_CURRENCY,
+		"wins": 0,
 	}
 	turn_order.append(seat)
 	# 注册时把 token 定向发给该玩家，用于断线后重连认领座位
@@ -274,6 +278,28 @@ func _peer_to_seat(peer_id: int) -> int:
 		if int(players[seat].get("peer_id", 0)) == peer_id:
 			return int(seat)
 	return -1
+
+## 玩家是否存活（health=灵魂币>0；本里程碑沿用现有 health 扣血机制，economy 里程碑再替换）。
+func _is_alive(seat: int) -> bool:
+	return players.has(seat) and int(players[seat].get("health", 0)) > 0
+
+## 存活座位按 turn_order 顺序。
+func _alive_order() -> Array[int]:
+	var arr: Array[int] = []
+	for seat in turn_order:
+		if _is_alive(int(seat)):
+			arr.append(int(seat))
+	return arr
+
+func _alive_count() -> int:
+	return _alive_order().size()
+
+## 已出局（观战）玩家操作拦截：返回 true 表示已拒绝。
+func _guard_spectator(sender: int, action_id: String) -> bool:
+	if not _is_alive(sender):
+		_reject(sender, RejectCode.SPECTATOR, action_id)
+		return true
+	return false
 
 @rpc("any_peer", "reliable")
 func request_register_player(display_name: String, protocol_version: int = KongGameState.PROTOCOL_VERSION) -> void:
