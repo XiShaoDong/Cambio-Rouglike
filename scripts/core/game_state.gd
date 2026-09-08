@@ -84,6 +84,7 @@ var slap: SlapSystem
 var kongbaya: KongbayaSystem
 var slap_collect_timer := Timer.new()
 var slap_duel_timer := Timer.new()
+var series_timer := Timer.new()
 
 func _ready() -> void:
 	peek = PeekSystem.new(self)
@@ -97,6 +98,9 @@ func _ready() -> void:
 	add_child(slap_duel_timer)
 	slap_collect_timer.timeout.connect(slap.collection_timeout)
 	slap_duel_timer.timeout.connect(slap.duel_timeout)
+	series_timer.one_shot = true
+	add_child(series_timer)
+	series_timer.timeout.connect(_on_series_auto_advance)
 	Network.host_started.connect(_on_host_started)
 	Network.joined_server.connect(_on_joined_server)
 	Network.peer_left.connect(_on_peer_left)
@@ -154,6 +158,7 @@ func _reset_match() -> void:
 	slap_duel.clear()
 	slap_collect_timer.stop()
 	slap_duel_timer.stop()
+	series_timer.stop()
 	last_result.clear()
 	event_log.clear()
 	run_state = KongRules.new_default_run()
@@ -414,6 +419,7 @@ func _deal_new_match() -> void:
 	slap_duel.clear()
 	slap_collect_timer.stop()
 	slap_duel_timer.stop()
+	series_timer.stop()
 	event_log.clear()
 	for seat in turn_order:
 		players[seat].cards.clear()
@@ -441,6 +447,9 @@ func server_next_match(action_id: String) -> void:
 
 func _server_next_match(sender: int, action_id := "") -> void:
 	if phase != Phase.GAME_OVER:
+		_reject(sender, RejectCode.INVALID_PHASE, action_id)
+		return
+	if _series_finished():
 		_reject(sender, RejectCode.INVALID_PHASE, action_id)
 		return
 	if sender != 0:
@@ -933,6 +942,19 @@ func _finish_game(reason := "") -> void:
 		last_result["series"] = {"finished": true, "ranking": SeriesRanking.final_ranking(players, turn_order)}
 	_broadcast_sfx("winner")
 	_broadcast_state()
+	if not last_result.get("ranking", []).is_empty() and not _series_finished():
+		_start_series_timer()
+
+func _start_series_timer() -> void:
+	series_timer.start(KongRules.SERIES_AUTO_ADVANCE_MS / 1000.0)
+
+## 局间自动衔接：到点且仍处结算、未把末时由服务器（房主权威）开下一局。
+func _on_series_auto_advance() -> void:
+	if phase != Phase.GAME_OVER or _series_finished():
+		return
+	if _alive_count() < KongRules.MIN_PLAYERS:
+		return
+	_server_next_match(0)
 
 func _calculate_ranking() -> Array:
 	return ScoreSystem.calculate_ranking(players, cards, _alive_order())

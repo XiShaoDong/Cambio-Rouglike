@@ -27,6 +27,9 @@ const DEFAULT_MATCH_LIMIT := 5
 const MIN_MATCH_LIMIT := 2
 const MAX_MATCH_LIMIT := 10
 
+## 局间自动衔接：结算展示多久后服务器自动开下一局（毫秒）。商店里程碑将替换为等全员。
+const SERIES_AUTO_ADVANCE_MS := 10000
+
 static func card_value(rank: String) -> int:
 	match rank:
 		"A": return 1

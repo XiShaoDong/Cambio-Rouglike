@@ -13,6 +13,8 @@ func _ready() -> void:
 	await _test_guard()
 	await _test_elimination()
 	await _test_spectator_snapshot()
+	await _test_auto_advance()
+	await _test_next_match_guard()
 	var status: String = " (FAILURES!)" if failures > 0 else ""
 	print("=== SERIES RESULT: %d/%d passed%s ===" % [checks - failures, checks, status])
 	get_tree().quit(1 if failures > 0 else 0)
@@ -131,3 +133,29 @@ func _test_spectator_snapshot() -> void:
 				leak = true
 	_check("观战快照无任何暗牌面", not leak)
 	_check("观战者本人 eliminated 标记", bool(snap.players[2].get("eliminated", false)))
+
+func _test_auto_advance() -> void:
+	_open(5)
+	GameState._server_initial_ready(0)
+	GameState._server_initial_ready(1)
+	GameState._server_initial_ready(2)
+	GameState._finish_game()
+	_check("非把末启动自动衔接 Timer", not GameState.series_timer.is_stopped())
+	GameState._on_series_auto_advance()
+	_check("自动开下一局 match_number 递增", GameState.match_number == 2)
+	_check("回 INITIAL_PEEK", GameState.phase == GameState.Phase.INITIAL_PEEK)
+	GameState._finish_game()
+	GameState._server_next_match(0, "nm-ok")
+	_check("未把末仍可手动 next", GameState.phase == GameState.Phase.INITIAL_PEEK)
+
+func _test_next_match_guard() -> void:
+	_rejections = 0
+	_open(2)
+	GameState.match_number = 2  # 把末局 2/2（match_limit 下限 2 起，不能 _open(1)）
+	GameState._server_initial_ready(0)
+	GameState._server_initial_ready(1)
+	GameState._server_initial_ready(2)
+	GameState._finish_game()
+	_check("把末 Timer 不启动", GameState.series_timer.is_stopped())
+	GameState._server_next_match(0, "nm-x")
+	_check("把末 next_match 被拒", _rejections == 1 and GameState.phase == GameState.Phase.GAME_OVER)
