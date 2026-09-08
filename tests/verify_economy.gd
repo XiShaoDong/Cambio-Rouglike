@@ -7,6 +7,8 @@ var _rejections := 0
 
 func _ready() -> void:
 	await _test_defaults()
+	await _test_bet_phase()
+	await _test_bet_all_in()
 	await _test_settlement()
 	await _test_all_in_loss()
 	await _test_all_in_win()
@@ -53,6 +55,48 @@ func _test_defaults() -> void:
 	_check("起始货币=100", int(GameState.players[0].currency) == KongRules.START_CURRENCY)
 	_check("灵魂币 health=1", int(GameState.players[0].health) == 1)
 	_check("押注常量 20/5/100", KongRules.MIN_BET == 20 and KongRules.BET_STEP == 5 and KongRules.MAX_BET == 100)
+
+func _test_bet_phase() -> void:
+	GameState.command_rejected.connect(func(_c: int, _m: String) -> void: _rejections += 1)
+	_rejections = 0
+	GameState._reset_match()
+	GameState._add_player(1, "A")
+	GameState._add_player(2, "B")
+	GameState._add_player(3, "C")
+	GameState._server_start_match(0)
+	GameState._server_initial_ready(0)
+	GameState._server_initial_ready(1)
+	GameState._server_initial_ready(2)
+	_check("开局确认后进入押注阶段", GameState.phase == GameState.Phase.BET)
+	GameState._server_bet(0, 15)
+	_check("低于入场被拒", _rejections == 1 and not GameState.bets.has(0))
+	GameState._server_bet(0, 22)
+	_check("非5倍数被拒", _rejections == 2)
+	GameState._server_bet(0, 500)
+	_check("超上限被拒", _rejections == 3)
+	GameState._server_bet(0, 20)
+	_check("正常押注生效并扣货币", GameState.bets.has(0) and int(GameState.players[0].currency) == 80)
+	GameState._server_bet(0, 20)
+	_check("重复押注被拒", _rejections == 4 and int(GameState.players[0].currency) == 80)
+	GameState._server_bet(1, 20)
+	_check("未全员押注不推进", GameState.phase == GameState.Phase.BET)
+	GameState._server_bet(2, 20)
+	_check("全员押注后进入抽牌", GameState.phase == GameState.Phase.TURN_DRAW and GameState.current_player_id == 0)
+	_check("快照含 bet_ready", (GameState._snapshot_for(0).get("bet_ready", []) as Array).size() == 0)  # BET 已结束
+
+func _test_bet_all_in() -> void:
+	GameState._reset_match()
+	GameState._add_player(1, "A")
+	GameState._add_player(2, "B")
+	GameState.players[1].currency = 10  # seat1 押不起入场
+	GameState._server_start_match(0)
+	GameState._server_initial_ready(0)
+	GameState._server_initial_ready(1)
+	GameState._server_bet(0, 20)
+	GameState._server_bet(1, 0)  # all-in：全货币+灵魂币
+	_check("all-in 押注记录全货币", GameState.bets.has(1) and int(GameState.bets[1].amount) == 10 and bool(GameState.bets[1].all_in))
+	_check("all-in 后货币归零", int(GameState.players[1].currency) == 0)
+	_check("双方押完进入抽牌", GameState.phase == GameState.Phase.TURN_DRAW)
 
 func _test_settlement() -> void:
 	_open_with_hands({0: {"amount": 20, "all_in": false}, 1: {"amount": 20, "all_in": false}, 2: {"amount": 20, "all_in": false}})

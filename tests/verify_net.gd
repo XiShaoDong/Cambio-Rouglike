@@ -13,6 +13,7 @@ var last_phase := -1
 var deadline := 90.0
 var started := false
 var ready_sent := false
+var bet_sent := false
 const TARGET_TURNS := 4
 var done := false
 
@@ -61,6 +62,11 @@ func _on_state(state: Dictionary) -> void:
 		ready_sent = true
 		GameState.request_initial_ready()
 		print("[%s] initial ready sent" % role)
+		return
+	if phase == GameState.Phase.BET and not bet_sent:
+		bet_sent = true
+		GameState.request_bet(KongRules.MIN_BET)
+		print("[%s] bet %d sent" % [role, KongRules.MIN_BET])
 		return
 	if phase == 2:
 		turn_draw_count += 1

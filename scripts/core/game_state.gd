@@ -17,7 +17,7 @@ signal registered_token_received(token: String)
 signal resume_hand_received(hand: Array, pending: Dictionary)
 signal sfx_played(kind: String)
 
-enum Phase { LOBBY, INITIAL_PEEK, TURN_DRAW, TURN_DECISION, Q_DECISION, SLAP_WINDOW, SLAP_EXCHANGE, GAME_OVER, SLAP_DUEL }
+enum Phase { LOBBY, INITIAL_PEEK, TURN_DRAW, TURN_DECISION, Q_DECISION, SLAP_WINDOW, SLAP_EXCHANGE, GAME_OVER, SLAP_DUEL, BET }
 
 const PROTOCOL_VERSION := 1
 const MAX_ACTION_HISTORY := 64
@@ -45,6 +45,7 @@ enum RejectCode {
 	MATCH_SUSPENDED,
 	INVALID_TOKEN,
 	SPECTATOR,
+	INVALID_AMOUNT,
 }
 
 var phase: Phase = Phase.LOBBY
@@ -162,6 +163,7 @@ func _reset_match() -> void:
 	series_timer.stop()
 	last_result.clear()
 	event_log.clear()
+	bets.clear()
 	run_state = KongRules.new_default_run()
 	match_number = 1
 	match_id = ""
@@ -196,6 +198,7 @@ func _reject_code_message(code: int) -> String:
 		RejectCode.MATCH_SUSPENDED: return "对局已暂停（有玩家离线），等待重连或房主处理。"
 		RejectCode.INVALID_TOKEN: return "重连凭据无效或座位已被移除。"
 		RejectCode.SPECTATOR: return "你已出局，只能观战。"
+		RejectCode.INVALID_AMOUNT: return "押注金额不合法（入场 %d，+%d 递增，上限 %d）。" % [KongRules.MIN_BET, KongRules.BET_STEP, KongRules.MAX_BET]
 	return "操作被拒绝。"
 
 ## 对局是否处于条件暂停（当前行动者离线 / 开局记忆阶段有人离线）。
@@ -203,8 +206,8 @@ func _reject_code_message(code: int) -> String:
 func _is_suspended() -> bool:
 	if players.is_empty():
 		return false
-	if phase == Phase.INITIAL_PEEK:
-		for seat in turn_order:
+	if phase == Phase.INITIAL_PEEK or phase == Phase.BET:
+		for seat in _alive_order():
 			if bool(players[seat].get("offline", false)):
 				return true
 		return false
@@ -422,6 +425,7 @@ func _deal_new_match() -> void:
 	slap_duel_timer.stop()
 	series_timer.stop()
 	event_log.clear()
+	bets.clear()
 	for seat in turn_order:
 		players[seat].cards.clear()
 		players[seat].has_acted = false
@@ -520,10 +524,69 @@ func _server_initial_ready(sender: int) -> void:
 	if initial_confirmed.size() < _alive_count():
 		_broadcast_state()
 		return
-	current_player_id = _alive_order()[0]
-	phase = Phase.TURN_DRAW
-	_add_log("轮到 %s 行动。" % players[current_player_id].name)
+	_start_bet_phase()
+
+## 进入押注阶段（开局记忆确认后、正式回合前）。
+func _start_bet_phase() -> void:
+	bets.clear()
+	phase = Phase.BET
+	_add_log("开始押注：入场 %d，+%d 递增。" % [KongRules.MIN_BET, KongRules.BET_STEP])
 	_broadcast_state()
+
+func request_bet(amount: int) -> void:
+	if multiplayer.is_server():
+		_server_bet(_peer_to_seat(1), amount)
+	else:
+		server_bet.rpc_id(1, amount)
+
+@rpc("any_peer", "reliable")
+func server_bet(amount: int) -> void:
+	if multiplayer.is_server():
+		_server_bet(_peer_to_seat(multiplayer.get_remote_sender_id()), amount)
+
+func _server_bet(sender: int, amount: int) -> void:
+	if phase != Phase.BET:
+		_reject(sender, RejectCode.INVALID_PHASE)
+		return
+	if _guard_suspended(sender, ""):
+		return
+	if _guard_spectator(sender, ""):
+		return
+	if not players.has(sender) or bets.has(sender):
+		_reject(sender, RejectCode.DUPLICATE_OR_EXPIRED_ACTION)
+		return
+	var currency: int = int(players[sender].currency)
+	var all_in := false
+	var bet_amount := amount
+	if amount == 0:
+		if currency >= KongRules.MIN_BET:
+			_reject(sender, RejectCode.INVALID_AMOUNT)
+			return
+		all_in = true
+		bet_amount = currency
+	else:
+		if amount < KongRules.MIN_BET or amount > KongRules.MAX_BET:
+			_reject(sender, RejectCode.INVALID_AMOUNT)
+			return
+		if (amount - KongRules.MIN_BET) % KongRules.BET_STEP != 0:
+			_reject(sender, RejectCode.INVALID_AMOUNT)
+			return
+		if amount > currency:
+			_reject(sender, RejectCode.INVALID_AMOUNT)
+			return
+	_commit_bet(sender, bet_amount, all_in)
+
+func _commit_bet(seat: int, amount: int, all_in := false) -> void:
+	players[seat].currency = int(players[seat].currency) - amount
+	bets[seat] = {"amount": amount, "all_in": all_in}
+	_add_log("%s 押注 %d%s。" % [players[seat].name, amount, "（all-in）" if all_in else ""])
+	if bets.size() >= _alive_count():
+		current_player_id = _alive_order()[0]
+		phase = Phase.TURN_DRAW
+		_add_log("轮到 %s 行动。" % players[current_player_id].name)
+		_broadcast_state()
+	else:
+		_broadcast_state()
 
 func request_take(source: String, action_id := "") -> void:
 	if multiplayer.is_server():

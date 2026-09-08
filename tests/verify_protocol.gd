@@ -65,8 +65,11 @@ func run_checks() -> void:
 
 	GameState._server_initial_ready(0)
 	GameState._server_initial_ready(1)
-	_check("全员确认后 phase=TURN_DRAW", GameState.phase == GameState.Phase.TURN_DRAW)
+	_check("全员确认后进入押注阶段", GameState.phase == GameState.Phase.BET)
 	_check("revision 已递增", GameState.state_revision > rev0)
+	GameState._server_bet(0, KongRules.MIN_BET)
+	GameState._server_bet(1, KongRules.MIN_BET)
+	_check("全员押注后 phase=TURN_DRAW", GameState.phase == GameState.Phase.TURN_DRAW)
 
 	GameState._server_take(0, "draw", "draw-1")
 	var phase_after := GameState.phase

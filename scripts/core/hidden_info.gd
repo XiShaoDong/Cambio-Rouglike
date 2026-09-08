@@ -41,6 +41,7 @@ static func snapshot_for(state: Node, viewer_id: int) -> Dictionary:
 		"kong_caller": state.kong_caller,
 		"match_number": state.match_number,
 		"ready_count": state.initial_confirmed.size() if phase == GameState.Phase.INITIAL_PEEK else 0,
+		"bet_ready": state.bets.keys() if phase == GameState.Phase.BET else [],
 		"event_log": state.event_log.duplicate(),
 		"result": state.last_result.duplicate(),
 		"run": state.run_state.duplicate(),
@@ -100,6 +101,7 @@ static func _player_snapshot(state: Node, seat: int, reveal_all: bool, viewer_id
 		slots.append(slot)
 	return {"id": seat, "name": player.name, "count": player.cards.size(), "health": player.health,
 		"eliminated": int(player.get("health", 1)) <= 0,
+		"currency": int(player.currency),
 		"ready": state.initial_confirmed.has(seat), "slots": slots}
 
 ## 卡牌公共表示（不含身份敏感信息之外的内容，仅用于展示/能力提示）。
@@ -118,4 +120,5 @@ static func _phase_name(phase: int) -> String:
 		GameState.Phase.SLAP_EXCHANGE: return "贴中他人：交出一张牌"
 		GameState.Phase.SLAP_DUEL: return "贴牌比拼"
 		GameState.Phase.GAME_OVER: return "结算"
+		GameState.Phase.BET: return "押注"
 	return ""

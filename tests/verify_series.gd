@@ -114,9 +114,12 @@ func _test_elimination() -> void:
 	GameState._server_start_match(0)
 	GameState._server_initial_ready(0)
 	GameState._server_initial_ready(1)
-	_check("存活者就绪即开局(不需淘汰者确认)", GameState.phase == GameState.Phase.TURN_DRAW)
+	_check("存活者就绪即进入押注阶段", GameState.phase == GameState.Phase.BET)
 	_check("淘汰者未被发牌", GameState.players[2].cards.is_empty())
 	_check("存活者各发4张", GameState.players[0].cards.size() == KongRules.HAND_SIZE and GameState.players[1].cards.size() == KongRules.HAND_SIZE)
+	GameState._server_bet(0, KongRules.MIN_BET)
+	GameState._server_bet(1, KongRules.MIN_BET)
+	_check("存活者押注后进入抽牌", GameState.phase == GameState.Phase.TURN_DRAW)
 	var d: Dictionary = TurnSystem.decide(GameState._alive_order(), 0, -1, [])
 	_check("回合跳过淘汰者 0->1", int(d.next_player) == 1)
 
