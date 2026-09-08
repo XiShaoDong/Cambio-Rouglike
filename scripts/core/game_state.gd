@@ -1001,7 +1001,7 @@ func _finish_game_over_hand(failed_seat: int) -> void:
 	if players.has(failed_seat):
 		players[failed_seat].health = max(0, int(players[failed_seat].health) - 1)
 	var others: Array[int] = []
-	for seat in turn_order:
+	for seat in _alive_order():
 		if int(seat) != failed_seat:
 			others.append(int(seat))
 	var ranking := ScoreSystem.calculate_ranking(players, cards, others)

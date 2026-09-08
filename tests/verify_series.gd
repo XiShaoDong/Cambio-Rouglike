@@ -13,6 +13,8 @@ func _ready() -> void:
 	await _test_guard()
 	await _test_elimination()
 	await _test_spectator_snapshot()
+	await _test_over_hand_ranking()
+	await _test_settlement_model_excludes_eliminated()
 	await _test_auto_advance()
 	await _test_next_match_guard()
 	await _test_page_series()
@@ -134,6 +136,33 @@ func _test_spectator_snapshot() -> void:
 				leak = true
 	_check("观战快照无任何暗牌面", not leak)
 	_check("观战者本人 eliminated 标记", bool(snap.players[2].get("eliminated", false)))
+
+## 回归：超限结算（R-07）不得把出局玩家算进排名（0 张 0 分恒第一）。
+func _test_over_hand_ranking() -> void:
+	GameState._reset_match()
+	GameState._add_player(1, "A")
+	GameState._add_player(2, "B")
+	GameState._add_player(3, "C")
+	GameState.players[2].health = 0
+	GameState._server_start_match(0)
+	for _i in 3:
+		GameState.players[0].cards.append(GameState._draw_from_deck())
+	GameState._finish_game_over_hand(0)
+	var ranking: Array = GameState.last_result.ranking
+	_check("超限结算排除出局者", ranking.size() == 1 and int(ranking[0].id) != 2)
+	_check("超限结算仅剩存活者参与", int(ranking[0].id) == 1)
+
+## 回归：结算模型只纳入存活者（main._open_settlement 的过滤同款逻辑）。
+func _test_settlement_model_excludes_eliminated() -> void:
+	var players: Array = [
+		{"id": 0, "name": "A", "count": 2, "eliminated": false, "slots": [
+			{"card_id": "a0", "card": {"rank": "7", "suit": "♠", "value": 7, "label": "7♠"}},
+			{"card_id": "a1", "card": {"rank": "2", "suit": "♥", "value": 2, "label": "2♥"}}]},
+		{"id": 2, "name": "C", "count": 0, "eliminated": true, "slots": []},
+	]
+	var alive: Array = players.filter(func(p: Dictionary) -> bool: return not bool(p.get("eliminated", false)))
+	var model: Dictionary = SettlementModel.build(alive)
+	_check("结算模型排除出局者", model.layout_order == [0])
 
 func _test_auto_advance() -> void:
 	_open(5)

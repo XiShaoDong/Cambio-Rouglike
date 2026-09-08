@@ -483,7 +483,9 @@ func _open_settlement() -> void:
 	var result: Dictionary = latest_state.get("result", {})
 	if result.get("ranking", []).is_empty():
 		return
-	var model: Dictionary = SettlementModel.build(latest_state.players)
+	# 结算模型只纳入存活者：出局玩家 0 张 0 分，混入会恒排第一。
+	var alive_players: Array = latest_state.players.filter(func(p: Dictionary) -> bool: return not bool(p.get("eliminated", false)))
+	var model: Dictionary = SettlementModel.build(alive_players)
 	var page := SettlementPageScript.instantiate()
 	page.name = "SettlementPage"
 	# 直接挂 main 末尾 + z_index（仿 settings_menu 已验证模式）：main 子节点逆序 pick，

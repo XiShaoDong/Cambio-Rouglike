@@ -299,6 +299,22 @@
 
 **诊断方法**：新增 `verify_kongbaya`（15/15）覆盖正常最终轮结算、重复喊叫被拒、首/非首回合 `kong_called_first_turn` 标记。
 
+## B27：出局玩家被算进分数排名（0 张 0 分恒排第一）
+
+**现象**：有玩家出局（`health==0` 观战）后，结算排名把出局玩家也算进去；因出局者手牌为空，0 张 0 分在"低分胜"规则下**恒排第一名**。
+
+**根因**（三个泄漏路径）：
+1. `ScoreSystem.calculate_ranking` 遍历传入的 `turn_order`，**不跳过出局者**——依赖调用方传入"存活序"，容易漏。
+2. `_finish_game_over_hand`（R-07 超限结算）的 `others` 用 `turn_order` 排除失败者，**未排除出局者**。
+3. 客户端 `main._open_settlement` 用 `SettlementModel.build(latest_state.players)`，快照含全部座位（含出局者空手牌），结算页因此显示出局者行且 0 分置顶。
+
+**修复**：
+1. `ScoreSystem.calculate_ranking` 遍历时跳过 `health<=0` 玩家（`if int(players[peer_id].get("health", 1)) <= 0: continue`）——根治所有服务器侧路径。
+2. `_finish_game_over_hand` 的 `others` 改走 `_alive_order()`（排除出局者）。
+3. `main._open_settlement` 对 `latest_state.players` 先 `.filter(func(p): return not p.eliminated)` 再 `SettlementModel.build`。
+
+**诊断方法**：出局后结算出现 0 分玩家置顶 → 检查排名/结算模型的输入是否含出局者；新增回归 `verify_series._test_over_hand_ranking` / `_test_settlement_model_excludes_eliminated`（36/36）。
+
 ## B23：结算页「再来一局」/「返回大厅」按钮点不到
 
 **现象**：结算动画播完，footer 出现「再来一局」「返回大厅」按钮，但点击无任何反应（按钮显示了却收不到鼠标）。

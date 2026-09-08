@@ -9,6 +9,8 @@ extends RefCounted
 static func calculate_ranking(players: Dictionary, cards: Dictionary, turn_order: Array) -> Array:
 	var ranking: Array = []
 	for peer_id in turn_order:
+		if int(players[peer_id].get("health", 1)) <= 0:
+			continue  # 出局（观战）玩家不参与排名，避免 0 张 0 分恒排第一
 		var values: Array[int] = []
 		for card_id in players[peer_id].cards:
 			if str(card_id).is_empty():
