@@ -59,12 +59,12 @@ func _check(name: String, ok: bool) -> void:
 		failures += 1
 		printerr("[FAIL] " + name)
 
-func _open(limit := 0) -> void:
+func _open(_limit := 0) -> void:
 	GameState._reset_match()
 	GameState._add_player(1, "A")
 	GameState._add_player(2, "B")
 	GameState._add_player(3, "C")
-	GameState._server_start_match(0, limit)
+	GameState._server_start_match(0)
 
 func _test_lifecycle() -> void:
 	GameState.command_rejected.connect(func(_c: int, _m: String) -> void: _rejections += 1)
@@ -79,15 +79,12 @@ func _test_lifecycle() -> void:
 	_check("淘汰者不在存活序", GameState._alive_order() == [0, 1])
 
 func _test_guard() -> void:
+	_rejections = 0
 	_open()
 	GameState.players[0].health = 0
-	GameState.players[1].health = 1
-	GameState.players[2].health = 1
-	GameState._server_initial_ready(1)
-	GameState._server_initial_ready(2)
-	_check("存活者就绪后进入抽牌", GameState.phase == GameState.Phase.TURN_DRAW)
-	GameState._server_take(0, "draw", "g-1")
-	_check("观战者操作被拒(SPECTATOR)", _rejections == 1)
+	_check("guard 拦截观战者", GameState._guard_spectator(0, "g-0"))
+	_check("guard 放行存活者", not GameState._guard_spectator(1, "g-1"))
+	_check("SPECTATOR 拒绝已发", _rejections == 1)
 ```
 
 `tests/verify_series.tscn`：
@@ -104,7 +101,7 @@ script = ExtResource("1")
 - [ ] **Step 2: 运行测试确认失败**
 
 Run: `/Applications/Godot.app/Contents/MacOS/Godot --headless --path . res://tests/verify_series.tscn`
-Expected: FAIL（`match_limit` 不存在、`_alive_order` 未定义、`request_start_match` 无第二个参数、`_server_initial_ready(1)` 仍按 3 人计、`_server_take` 未拒观战者）。
+Expected: FAIL（`match_limit`/`currency`/`wins` 不存在、`_is_alive`/`_alive_order`/`_guard_spectator` 未定义、`RejectCode.SPECTATOR` 缺失）。
 
 - [ ] **Step 3: 实现**
 
@@ -178,7 +175,7 @@ func _guard_spectator(sender: int, action_id: String) -> bool:
 - [ ] **Step 4: 运行测试确认通过**
 
 Run: `/Applications/Godot.app/Contents/MacOS/Godot --headless --path . res://tests/verify_series.tscn`
-Expected: PASS，10/10。
+Expected: PASS，9/9。
 
 - [ ] **Step 5: 提交**
 
@@ -219,7 +216,7 @@ func _test_match_limit() -> void:
 	GameState._server_start_match(0, 1)
 	_check("局数低于下限回退默认5", int(GameState.run_state.get("match_limit", 0)) == 5)
 	GameState._server_start_match(1, 7)
-	_check("非房主拒绝", _rejections == 1)
+	_check("非房主拒绝(状态不变)", GameState.phase == GameState.Phase.LOBBY and int(GameState.run_state.get("match_limit", 0)) == 5)
 ```
 
 - [ ] **Step 2: 运行确认失败**
@@ -257,9 +254,17 @@ func _server_start_match(sender: int, match_limit := 0) -> void:
 	_deal_new_match()
 ```
 
+同时更新 Task 1 的测试助手 `_open`，使其把局数传下去：
+
+```gdscript
+func _open(limit := 0) -> void:
+	...
+	GameState._server_start_match(0, limit)
+```
+
 - [ ] **Step 4: 运行确认通过**
 
-Expected: PASS，累计 14/14。
+Expected: PASS，累计 13/13。
 
 - [ ] **Step 5: 提交**
 
@@ -370,7 +375,7 @@ func _series_finished() -> bool:
 
 - [ ] **Step 4: 运行确认通过**
 
-Expected: PASS，累计 22/22。
+Expected: PASS，累计 18/18。
 
 - [ ] **Step 5: 提交**
 
@@ -490,7 +495,7 @@ func _calculate_ranking() -> Array:
 
 - [ ] **Step 4: 运行确认通过**
 
-Expected: PASS，累计 28/28。随后跑 `verify_settlement`/`verify_reconnect`/`verify_kongbaya`/`verify_duel` 确认无回归（`_deal_new_match` 行为对全存活局不变）。
+Expected: PASS，累计 24/24。随后跑 `verify_settlement`/`verify_reconnect`/`verify_kongbaya`/`verify_duel` 确认无回归（`_deal_new_match` 行为对全存活局不变）。
 
 Run:
 ```bash
@@ -611,7 +616,7 @@ func _on_series_auto_advance() -> void:
 
 - [ ] **Step 4: 运行确认通过**
 
-Expected: PASS，累计 35/35。跑 `verify_settlement`（38/38）确认 `_server_next_match` 旧路径（非把末）不回归。
+Expected: PASS，累计 30/30。跑 `verify_settlement`（38/38）确认 `_server_next_match` 旧路径（非把末）不回归。
 
 - [ ] **Step 5: 提交**
 
