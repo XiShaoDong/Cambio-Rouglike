@@ -46,9 +46,42 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 
 func _ready() -> void:
-	get_node("Center/Panel/VBox/Buttons/Minus").pressed.connect(func() -> void: _change_step(-1))
-	get_node("Center/Panel/VBox/Buttons/Plus").pressed.connect(func() -> void: _change_step(1))
-	get_node("Center/Panel/VBox/Confirm").pressed.connect(_confirm)
+	# 不透明面板样式：避免棋盘背景透过导致文字难读
+	var panel: PanelContainer = get_node("Center/Panel")
+	var style := StyleBoxFlat.new()
+	style.bg_color = UITheme.color("bg_elevated")
+	style.bg_color.a = 1.0
+	style.set_corner_radius_all(12)
+	style.set_content_margin_all(20)
+	style.border_color = UITheme.color("border")
+	style.set_border_width_all(1)
+	panel.add_theme_stylebox_override("panel", style)
+	# 按键 hover 时在下方 Hint 显示说明
+	var hint: Label = get_node("Center/Panel/VBox/Hint")
+	var minus: Button = get_node("Center/Panel/VBox/Buttons/Minus")
+	var plus: Button = get_node("Center/Panel/VBox/Buttons/Plus")
+	var confirm: Button = get_node("Center/Panel/VBox/Confirm")
+	minus.mouse_entered.connect(func() -> void: hint.text = _hint_text("minus"))
+	minus.mouse_exited.connect(func() -> void: hint.text = "")
+	plus.mouse_entered.connect(func() -> void: hint.text = _hint_text("plus"))
+	plus.mouse_exited.connect(func() -> void: hint.text = "")
+	confirm.mouse_entered.connect(func() -> void: hint.text = _hint_text("confirm"))
+	confirm.mouse_exited.connect(func() -> void: hint.text = "")
+	# 按钮点击
+	minus.pressed.connect(func() -> void: _change_step(-1))
+	plus.pressed.connect(func() -> void: _change_step(1))
+	confirm.pressed.connect(_confirm)
+
+## 按键 hover 说明文本。
+func _hint_text(kind: String) -> String:
+	match kind:
+		"minus":
+			return "" if _all_in else "押注 −%d（下限 %d）" % [KongRules.BET_STEP, KongRules.MIN_BET]
+		"plus":
+			return "" if _all_in else "押注 +%d（上限 %d 或 ≤ 货币）" % [KongRules.BET_STEP, KongRules.MAX_BET]
+		"confirm":
+			return "确认全押 + 灵魂币（输则出局）" if _all_in else "确认押注（%d），等待其他玩家…" % _amount
+	return ""
 
 func _refresh() -> void:
 	if _all_in:
