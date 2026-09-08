@@ -52,6 +52,7 @@ const PHASE_SLAP_WINDOW := 5
 const PHASE_SLAP_EXCHANGE := 6
 const PHASE_GAME_OVER := 7
 const PHASE_SLAP_DUEL := 8
+const PHASE_BET := 9
 
 const PEEK_GLOW_COLOR := Color("3ef0f7ff")  # 查看牌蓝色光晕
 const PEEK_GLOW_DURATION := 1.5
@@ -62,6 +63,7 @@ const SLAP_GLOW_SIZE := 14
 const DuelBarScript := preload("res://scripts/ui/duel_bar.gd")
 const SettingsMenuScript := preload("res://scripts/ui/settings_menu.gd")
 const SettlementPageScript := preload("res://scenes/ui/settlement_page.tscn")
+const BetPanelScript := preload("res://scenes/ui/bet_panel.tscn")
 
 var latest_lobby: Dictionary = {}
 var latest_state: Dictionary = {}
@@ -128,6 +130,7 @@ var _was_in_match := false
 var _reconnect_panel: Control = null
 var _reconnect_expected := false
 var settlement_page: Control = null
+var bet_panel: Control = null
 var _pending_winner_sfx := false
 
 ## 标记某个玩家槽位正在动画（渲染时该槽位显示虚线占位，不显示原卡）。
@@ -421,6 +424,10 @@ func _on_state_updated(state: Dictionary) -> void:
 		_open_settlement()
 	else:
 		_close_settlement()
+	if int(state.phase) == PHASE_BET:
+		_open_bet_panel()
+	else:
+		_close_bet_panel()
 
 ## 清空上一局可能残留的动画/挂起状态（对局结束时在途的看牌/贴牌揭示）。
 func _clear_settlement_anim_state() -> void:
@@ -516,6 +523,25 @@ func _close_settlement() -> void:
 	if settlement_page != null and is_instance_valid(settlement_page):
 		settlement_page.queue_free()
 	settlement_page = null
+
+## BET 阶段打开押注面板（幂等）。
+func _open_bet_panel() -> void:
+	if bet_panel != null and is_instance_valid(bet_panel):
+		return
+	var panel := BetPanelScript.instantiate()
+	panel.name = "BetPanel"
+	panel.z_index = 90
+	add_child(panel)
+	panel.setup(latest_state, _on_bet_confirm)
+	bet_panel = panel
+
+func _close_bet_panel() -> void:
+	if bet_panel != null and is_instance_valid(bet_panel):
+		bet_panel.queue_free()
+	bet_panel = null
+
+func _on_bet_confirm(amount: int) -> void:
+	GameState.request_bet(amount)
 
 ## 冠军时刻：若服务器已广播过 winner 音效事件，此刻播放（延迟到冠军出场）。
 func _play_pending_winner() -> void:
