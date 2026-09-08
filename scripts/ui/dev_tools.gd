@@ -1,11 +1,11 @@
 class_name DevTools
 extends RefCounted
 ## 开发工具（main.gd 拆分 · 第五优先级）
-## 职责：F12 布局调试、T 开发者模式（房主可直接判玩家出局）、Y 主题切换、O 调试贴牌。正式构建可直接移除。
+## 职责：T 开发者模式（房主面板：直接判玩家出局 / 抢牌调试）、F12 布局调试。
+## 主题切换走 ESC 设置菜单；正式构建可直接移除。
 
 var main: Node
 var _layout_debug := false
-var _theme_index := 0
 var _panel: Control = null
 
 func _init(owner_node: Node) -> void:
@@ -22,16 +22,6 @@ func handle_input(event: InputEvent) -> bool:
 			main.dev_mode = not main.dev_mode
 			main._show_toast("开发者模式 %s" % ("ON" if main.dev_mode else "OFF"))
 			refresh_panel()
-			return true
-		elif event.keycode == KEY_Y:
-			_theme_index = (_theme_index + 1) % UITheme.TOKENS.size()
-			var names: Array = UITheme.TOKENS.keys()
-			UITheme.switch_theme(str(names[_theme_index]))
-			_rebuild_theme()
-			return true
-		elif event.keycode == KEY_O:
-			GameState.debug_duel = not GameState.debug_duel
-			main._show_toast("调试贴牌 %s：不判正确性，双贴即比拼" % ("ON" if GameState.debug_duel else "OFF"))
 			return true
 	return false
 
@@ -61,6 +51,10 @@ func refresh_panel() -> void:
 	title.text = "开发者工具（房主）"
 	title.add_theme_color_override("font_color", UITheme.color("accent"))
 	box.add_child(title)
+	var slap_btn := Button.new()
+	slap_btn.text = "抢牌调试（不限时不限牌）：%s" % ("ON" if GameState.debug_duel else "OFF")
+	slap_btn.pressed.connect(_toggle_slap_debug)
+	box.add_child(slap_btn)
 	for player in main.latest_state.players:
 		var seat := int(player.id)
 		var alive := not bool(player.get("eliminated", false))
@@ -74,17 +68,16 @@ func refresh_panel() -> void:
 	panel.position = Vector2(main.size.x - 232, 12)
 	_panel = panel
 
+## 抢牌调试开关：debug_duel（不判正确性→贴错无罚牌；收集窗 400ms→30s 不限时）。
+func _toggle_slap_debug() -> void:
+	GameState.debug_duel = not GameState.debug_duel
+	main._show_toast("抢牌调试 %s：不判正确性，双贴即比拼" % ("ON" if GameState.debug_duel else "OFF"))
+	refresh_panel()
+
 func _apply_layout_debug() -> void:
 	var colors := [Color(1, 0, 0, 0.45), Color(0, 1, 0, 0.45), Color(0, 0, 1, 0.45), Color(1, 1, 0, 0.45), Color(1, 0, 1, 0.45)]
 	var index := 0
 	_tint_children(main, colors, index)
-
-func _rebuild_theme() -> void:
-	main.background.color = UITheme.color("bg_table")
-	if not main.latest_state.is_empty():
-		main._render_game()
-	else:
-		main._set_status("主题已切换：%s" % UITheme.current)
 
 func _tint_children(node: Node, colors: Array, depth: int) -> void:
 	if node is Control:
