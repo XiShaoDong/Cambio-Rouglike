@@ -60,7 +60,7 @@ func _test_lifecycle() -> void:
 	_rejections = 0
 	_open()
 	_check("默认 match_limit=5", int(GameState.run_state.get("match_limit", 0)) == 5)
-	_check("初始 currency=10", int(GameState.players[0].get("currency", 0)) == 10)
+	_check("初始 currency=100", int(GameState.players[0].get("currency", 0)) == KongRules.START_CURRENCY)
 	_check("初始 wins=0", int(GameState.players[0].get("wins", -1)) == 0)
 	_check("三人生存计数=3", GameState._alive_count() == 3)
 	GameState.players[2].health = 0

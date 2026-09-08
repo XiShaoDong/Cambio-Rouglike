@@ -71,6 +71,7 @@ var last_result: Dictionary = {}
 var event_log: Array[String] = []
 var run_state: Dictionary = KongRules.new_default_run()
 var match_number := 1
+var bets: Dictionary = {}  # key: seat；value: {amount:int, all_in:bool}
 var match_id := ""
 var state_revision := 0
 var action_history: Dictionary = {}
@@ -949,6 +950,36 @@ func _advance_turn(final_mode := false) -> void:
 func _series_finished() -> bool:
 	return match_number >= int(run_state.get("match_limit", KongRules.DEFAULT_MATCH_LIMIT)) or _alive_count() <= 1
 
+## 押注经济结算：押注时已扣货币，此处按名次补发。
+## winners=最低分组；last_group=最高分组（含 Kong 首回合失败者/超限失败者）。
+## 第一名(组) 2×返还+垫底者押注，其余非最后 1.5×返还，最后一名 0，差额系统补足。
+## 返回 gains: {seat: net_gain}；bets 为空时 no-op。
+func _settle_economy(winners: Array, last_group: Array) -> Dictionary:
+	var gains: Dictionary = {}
+	if bets.is_empty():
+		return gains
+	var last_pot := 0
+	for seat in last_group:
+		last_pot += int(bets.get(int(seat), {}).get("amount", 0))
+	var winner_pot := last_pot
+	for seat in winners:
+		winner_pot += int(KongRules.WINNER_RETURN * float(bets.get(int(seat), {}).get("amount", 0)))
+	var per_winner := int(floor(winner_pot / float(maxi(1, winners.size()))))
+	for seat in winners:
+		var bet := int(bets.get(int(seat), {}).get("amount", 0))
+		players[seat].currency = int(players[seat].currency) + per_winner
+		gains[int(seat)] = per_winner - bet
+	for seat in _alive_order():
+		if int(seat) in winners or int(seat) in last_group:
+			continue
+		var bet := int(bets.get(int(seat), {}).get("amount", 0))
+		var ret := int(floor(KongRules.SAFE_RETURN * float(bet)))
+		players[seat].currency = int(players[seat].currency) + ret
+		gains[int(seat)] = ret - bet
+	for seat in last_group:
+		gains[int(seat)] = -int(bets.get(int(seat), {}).get("amount", 0))
+	return gains
+
 func _finish_game(reason := "") -> void:
 	slap_open = false
 	slap_collect.clear()
@@ -967,13 +998,19 @@ func _finish_game(reason := "") -> void:
 		for entry in ranking:
 			if _same_score(entry, ranking[0]): winners.append(int(entry.id))
 			if _same_score(entry, ranking[ranking.size() - 1]): losers.append(int(entry.id))
-	if winners.size() == players.size():
+	if winners.size() == ranking.size():
 		losers.clear()
 	if kong_called_first_turn and kong_caller not in winners:
 		losers = [kong_caller]
-	for peer_id in losers:
-		players[peer_id].health = max(0, int(players[peer_id].health) - 1)
-	last_result = {"ranking": ranking, "winners": winners, "penalized": losers, "first_turn_kong": kong_called_first_turn}
+	var economy: Dictionary = _settle_economy(winners, losers)
+	var penalized: Array = []
+	for seat in losers:
+		if bool(bets.get(int(seat), {}).get("all_in", false)):
+			players[seat].health = 0
+			players[seat].currency = 0
+			penalized.append(int(seat))
+	last_result = {"ranking": ranking, "winners": winners, "penalized": penalized,
+		"first_turn_kong": kong_called_first_turn, "economy": economy}
 	_add_log("对局结束，所有手牌已翻开。")
 	for entry in winners:
 		players[entry].wins = int(players[entry].get("wins", 0)) + 1
@@ -1028,7 +1065,7 @@ func _check_over_hand(seat: int) -> bool:
 		return true
 	return false
 
-## 手牌超限立即结算（R-07）：超限玩家判定失败并扣 1 点生命，
+## 手牌超限立即结算（R-07）：超限玩家按「最后一名」失去押注（all-in 则出局），
 ## 其余玩家按各自手牌点数结算排名（最低分者胜），失败玩家不参与排名。
 func _finish_game_over_hand(failed_seat: int) -> void:
 	slap_open = false
@@ -1037,8 +1074,6 @@ func _finish_game_over_hand(failed_seat: int) -> void:
 	slap_collect_timer.stop()
 	slap_duel_timer.stop()
 	phase = Phase.GAME_OVER
-	if players.has(failed_seat):
-		players[failed_seat].health = max(0, int(players[failed_seat].health) - 1)
 	var others: Array[int] = []
 	for seat in _alive_order():
 		if int(seat) != failed_seat:
@@ -1049,14 +1084,20 @@ func _finish_game_over_hand(failed_seat: int) -> void:
 		for entry in ranking:
 			if _same_score(entry, ranking[0]):
 				winners.append(int(entry.id))
+	var economy: Dictionary = _settle_economy(winners, [failed_seat])
+	var penalized: Array = []
+	if bool(bets.get(failed_seat, {}).get("all_in", false)):
+		players[failed_seat].health = 0
+		penalized.append(failed_seat)
 	var failed_name: String = players.get(failed_seat, {}).get("name", "玩家")
 	_add_log("%s 手牌超过 %d 张，判定失败。" % [failed_name, KongRules.MAX_HAND_CARDS])
 	last_result = {
 		"reason": "%s 手牌超过 %d 张，判定失败。" % [failed_name, KongRules.MAX_HAND_CARDS],
 		"ranking": ranking,
 		"winners": winners,
-		"penalized": [failed_seat],
+		"penalized": penalized,
 		"failed_hand": failed_seat,
+		"economy": economy,
 	}
 	_broadcast_sfx("winner")
 	_broadcast_state()
