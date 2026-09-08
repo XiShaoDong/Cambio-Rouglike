@@ -19,27 +19,32 @@ var _rows: Dictionary = {}
 var _rank_area: Control
 var _footer: Control
 var _title: Label
+var _series: Dictionary = {}
 
 func setup(model: Dictionary, is_host: bool, match_number: int,
 		on_winner: Callable, on_next_match: Callable, on_abort: Callable,
-		on_flip := Callable(), auto_play := true) -> void:
+		on_flip := Callable(), auto_play := true, match_limit := 0, series := {}) -> void:
 	_model = model
 	_is_host = is_host
 	_on_winner = on_winner
 	_on_next_match = on_next_match
 	_on_abort = on_abort
 	_on_flip = on_flip
+	_series = series
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_bind_ui(match_number)
+	_bind_ui(match_number, match_limit)
 	if auto_play:
 		_run_sequence()
 
-func _bind_ui(match_number: int) -> void:
+func _bind_ui(match_number: int, match_limit := 0) -> void:
 	var center: CenterContainer = get_node("Center")
 	var panel: PanelContainer = center.get_node("Panel")
 	panel.add_theme_stylebox_override("panel", _panel_style())
 	_title = get_node("Center/Panel/VBox/Title")
-	_title.text = "结算 · 第 %d 局" % match_number
+	if match_limit > 0:
+		_title.text = "结算 · 第 %d / %d 局" % [match_number, match_limit]
+	else:
+		_title.text = "结算 · 第 %d 局" % match_number
 	_title.add_theme_color_override("font_color", UITheme.color("accent"))
 	_rank_area = get_node("Center/Panel/VBox/RankingArea")
 	_footer = get_node("Center/Panel/VBox/Footer")
@@ -109,6 +114,8 @@ func _run_sequence() -> void:
 		await _resort(round.ranking)
 		await get_tree().create_timer(0.2).timeout
 	await _champion()
+	if not _series.is_empty():
+		_show_series_summary(_series)
 	_show_footer()
 
 func _reveal_flip(seat: int, slot: int, flip: Dictionary, delay: float) -> void:
@@ -170,27 +177,42 @@ func _champion() -> void:
 		_on_winner.call()
 	await tween.finished
 
+func _show_series_summary(series: Dictionary) -> void:
+	var box: VBoxContainer = get_node("Center/Panel/VBox/SeriesBox")
+	var rows: VBoxContainer = get_node("Center/Panel/VBox/SeriesBox/SeriesRows")
+	for child in rows.get_children():
+		child.queue_free()
+	var ranking: Array = series.get("ranking", [])
+	for index in ranking.size():
+		var entry: Dictionary = ranking[index]
+		var row := Label.new()
+		row.text = "%d. %s　胜场 %d · 货币 %d" % [index + 1, str(entry.name), int(entry.wins), int(entry.currency)]
+		row.add_theme_font_size_override("font_size", 15)
+		row.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		if index == 0:
+			row.add_theme_color_override("font_color", UITheme.color("accent"))
+		rows.add_child(row)
+	box.visible = true
+
 func _show_footer() -> void:
 	_footer.visible = true
+	var status: Label = get_node("Center/Panel/VBox/StatusLabel")
+	var series_done := not _series.is_empty()
 	var box := HBoxContainer.new()
 	box.add_theme_constant_override("separation", 12)
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
 	_footer.add_child(box)
 	if _is_host:
-		var again := Button.new()
-		again.text = "再来一局"
-		again.pressed.connect(func() -> void:
-			if _on_next_match.is_valid():
-				_on_next_match.call())
-		box.add_child(again)
 		var exit := Button.new()
 		exit.text = "返回大厅"
 		exit.pressed.connect(func() -> void:
 			if _on_abort.is_valid():
 				_on_abort.call())
 		box.add_child(exit)
+		status.text = "系列赛结束" if series_done else "下一局即将自动开始…"
 	else:
 		var wait := Label.new()
-		wait.text = "等待房主开始下一局"
+		wait.text = "系列赛结束" if series_done else "等待进入下一局…"
 		wait.add_theme_color_override("font_color", UITheme.color("text_secondary"))
 		box.add_child(wait)
+	status.visible = true

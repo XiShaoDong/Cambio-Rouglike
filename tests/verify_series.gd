@@ -15,6 +15,7 @@ func _ready() -> void:
 	await _test_spectator_snapshot()
 	await _test_auto_advance()
 	await _test_next_match_guard()
+	await _test_page_series()
 	var status: String = " (FAILURES!)" if failures > 0 else ""
 	print("=== SERIES RESULT: %d/%d passed%s ===" % [checks - failures, checks, status])
 	get_tree().quit(1 if failures > 0 else 0)
@@ -159,3 +160,27 @@ func _test_next_match_guard() -> void:
 	_check("把末 Timer 不启动", GameState.series_timer.is_stopped())
 	GameState._server_next_match(0, "nm-x")
 	_check("把末 next_match 被拒", _rejections == 1 and GameState.phase == GameState.Phase.GAME_OVER)
+
+func _test_page_series() -> void:
+	await get_tree().process_frame
+	var model: Dictionary = SettlementModel.build([
+		{"id": 0, "name": "A", "count": 2, "slots": [
+			{"card_id": "a0", "card": {"rank": "7", "suit": "♠", "value": 7, "label": "7♠"}},
+			{"card_id": "a1", "card": {"rank": "2", "suit": "♥", "value": 2, "label": "2♥"}}]},
+		{"id": 1, "name": "B", "count": 2, "slots": [
+			{"card_id": "b0", "card": {"rank": "3", "suit": "♠", "value": 3, "label": "3♠"}},
+			{"card_id": "b1", "card": {"rank": "4", "suit": "♥", "value": 4, "label": "4♥"}}]},
+	])
+	var series: Dictionary = {"finished": true, "ranking": [
+		{"id": 1, "name": "B", "wins": 3, "currency": 9},
+		{"id": 0, "name": "A", "wins": 2, "currency": 5}]}
+	var page: Control = preload("res://scenes/ui/settlement_page.tscn").instantiate()
+	get_tree().root.add_child(page)
+	page.setup(model, true, 3, Callable(), Callable(), Callable(), Callable(), false, 5, series)
+	await get_tree().process_frame
+	_check("结算页标题带局数X", page._title.text == "结算 · 第 3 / 5 局")
+	page._show_series_summary(series)
+	_check("把末总榜已显示", page.get_node("Center/Panel/VBox/SeriesBox").visible)
+	var rows: VBoxContainer = page.get_node("Center/Panel/VBox/SeriesBox/SeriesRows")
+	_check("总榜行数=排名数", rows.get_child_count() == 2)
+	page.queue_free()

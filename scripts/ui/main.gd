@@ -491,9 +491,12 @@ func _open_settlement() -> void:
 	# get_mouse_filter_with_override 判定为整棵子树不可点。
 	page.z_index = 100
 	add_child(page)
+	var run: Dictionary = latest_state.get("run", {})
+	var match_limit: int = int(run.get("match_limit", KongRules.DEFAULT_MATCH_LIMIT))
+	var series: Dictionary = (latest_state.get("result", {}) as Dictionary).get("series", {})
 	page.setup(model, Network.is_host, int(latest_state.get("match_number", 1)),
 		_play_pending_winner, _request_next_match, GameState.request_abort_match,
-		_on_settlement_flip)
+		_on_settlement_flip, true, match_limit, series)
 	settlement_page = page
 
 ## 结算联动：每轮翻牌时刻把对应棋盘卡牌从背面翻到正面（与结算页行内记分同步）。
