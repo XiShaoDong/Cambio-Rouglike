@@ -10,7 +10,7 @@
 | --- | --- | --- |
 | `AI_AGENT_交接说明.md`（本文件） | 工程现状、架构不变量、工作方式、验证命令、文档地图 | Agent 必读 |
 | `BUG档案.md` | 已解决 bug + 根因/修复/诊断方法（防复发） | Agent + 开发者 |
-| `KONG_开发文档.md` | 规则/产品/架构**权威**主规格（R-01~R-06 等） | 权威 |
+| `KONG_开发文档.md` | 规则/产品/架构**权威**主规格（R-01~R-09 等） | 权威 |
 | `网络协议_V1.md` | RPC/快照字段、错误码、隐私/幂等契约 | 权威 |
 | `验收与测试计划.md` | T/P0-N 用例、验证闸门 | 权威 |
 | `功能实现文档.md` | 文件树 + 16 Feature 映射 + 待开发清单 | Agent + 开发者 |
@@ -38,6 +38,7 @@
 - **结算页输入约定（B23）**：结算页根节点 `mouse_filter=STOP` 且**直挂 main 末尾 + z100**（不可挂 overlay/IGNORE，否则 4.6 picking 判不可点）；对局进入 GAME_OVER 时先 `_clear_settlement_anim_state()` 清残留动画再渲染；动画完成回调一律走 `_render_game_if_active()`（GAME_OVER 时跳过，防在途揭示延迟重渲染把翻开的牌翻回，见 B26）。
 - **Kongbaya 最终轮**：一场对局只允许喊一次（`kong_caller != -1` 后任何玩家再喊均拒绝）；喊出者不再行动，其余玩家按顺时针各执行一轮最终行动后统一结算。`kong_caller` 哨兵值为 **-1**（不能用 0，房主座位是 0）。
 - **系列赛框架（已完成）**：房主开局设定 `match_limit` X（2-10 默认 5）把单局扩展为多局系列赛。`_server_start_match(match_limit)` 存 `run.match_limit`；每局 GAME_OVER 非把末由服务器 Timer 自动开下一局、把末（`_series_finished()`）不启动；`health==0` 者出局观战（`eliminated==true`，保留座位、仅公开信息、不可操作，`_guard_spectator()` 接入全部动作 RPC）；把末总排名 `series_ranking.gd` `SeriesRanking.final_ranking()`（存活者胜场降序→同胜场货币降序，淘汰不入榜），`result.series` 只在把末存在。测试 `verify_series.gd`。
+- **押注经济（已完成）**：起始 100 货币 + 1 灵魂币（`health` 默认 1）。每局开局确认后进入 `Phase.BET`（值 9）押注阶段：存活玩家押注（入场 20，+5 递增，上限 100 且 ≤ 货币，货币 < 入场自动 all-in）；结算 `_settle_economy`：第一名(并列平分) 2× 返还 + 垫底者押注、其他非最后 1.5× 返还、最后一名全失、差额系统补足；all-in 且垫底（含超限 R-07、首回合 Kong 失败按最后一名处理）→ `health→0` 出局；`bets` 为空时 no-op。押注面板 `scenes/ui/bet_panel.tscn`（W/S 调整 + Enter 确认 + 自动 all-in）；快照 `bet_ready`/`players[].currency`/`result.economy`/`result.penalized`。测试 `verify_economy.gd`（33/33）。
 - **卡牌视图重建约定**：`game_view._clear_area` 一律先 `remove_child` 立即移出网格、再 `queue_free` 延迟释放（**不要直接 `free()`**——卡牌点击触发重建时被点击的卡正被信号锁定，free 会报 "Object is locked"）。
 - **罚牌附加卡布局**：前 4 张主网格固定 2 列永不位移；第 5+ 张在 `ExtraLayer` 按**槽号固定绝对定位**（统一向上增长、行列固定，加新罚牌已存在卡不移动）。
 - Git：仓库 `git@github.com:XiShaoDong/Cambio-Rouglike.git`，分支 `main`。
@@ -124,6 +125,7 @@ UI 层已拆分（main.gd 是组合根）：
 | 6 | SLAP_EXCHANGE | 贴中他人者交出一个槽位 |
 | 7 | GAME_OVER | 公开所有牌并显示结果 |
 | 8 | SLAP_DUEL | 多人同时贴中 → 比拼 bar，比谁最接近随机加粗区中心红心 |
+| 9 | BET | 存活玩家押注（入场 20，+5 递增，上限 100 且 ≤ 货币；货币 < 入场自动 all-in，`bet` RPC） |
 
 ## 6. 网络与隐私契约（详见 `网络协议_V1.md`）
 
@@ -157,7 +159,7 @@ UI 层已拆分（main.gd 是组合根）：
 ```bash
 # 编译检查
 /Applications/Godot.app/Contents/MacOS/Godot --headless --path . --quit-after 5
-# 协议测试（37/37）
+# 协议测试（38/38）
 ... --headless --path . res://tests/verify_protocol.tscn
 # 交换动画测试（10/10）
 ... --headless --path . res://tests/verify_swap.tscn
@@ -169,8 +171,10 @@ UI 层已拆分（main.gd 是组合根）：
 ... --headless --path . res://tests/verify_kongbaya.tscn
 # 结算模型 + 再来一局 + 结算页/棋盘联动 + 回归（38/38）
 ... --headless --path . res://tests/verify_settlement.tscn
-# 系列赛框架（33/33：多局/把末判定/出局观战/把末总排名）
+# 系列赛框架（41/41：多局/把末判定/出局观战/把末总排名）
 ... --headless --path . res://tests/verify_series.tscn
+# 货币经济（33/33：结算2x+垫底/安全1.5x/垫底全失/系统补足/all-in出局/并列/首回合Kong/超限/押注阶段）
+... --headless --path . res://tests/verify_economy.tscn
 # hint 生成测试（8/8）
 ... --headless --path . res://tests/verify_hint.tscn
 # 双实例网络回归（host + client 各跑，均 exit 0）
@@ -201,7 +205,7 @@ UI 层已拆分（main.gd 是组合根）：
 ... --headless --path . res://tests/verify_proxy.tscn -- -role client -scenario baseline -mode reconnect
 ```
 
-> **开发约定**：按用户的指示**不启动 GUI**，用上述 unit test 验证后总结。每次改动后跑 `verify_protocol` + `verify_swap` + `verify_duel` + `verify_reconnect` + `verify_kongbaya` + 双实例 `verify_net`。
+> **开发约定**：按用户的指示**不启动 GUI**，用上述 unit test 验证后总结。每次改动后跑 `verify_protocol` + `verify_swap` + `verify_duel` + `verify_reconnect` + `verify_kongbaya` + `verify_economy` + 双实例 `verify_net`。
 
 ## 9. 给后续 Agent 的工作方式
 
