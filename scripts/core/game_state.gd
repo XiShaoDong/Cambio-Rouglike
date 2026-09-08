@@ -827,6 +827,45 @@ func _kick_offline_seat(target_seat: int) -> void:
 	else:
 		_broadcast_state()
 
+## 开发者工具：房主直接判某玩家出局（T 键开发者模式面板）。服务器以"房主身份"为闸。
+## 出局走统一淘汰逻辑：_alive_order 跳过、观战守卫拦截其操作、排名排除。
+func request_dev_eliminate(target_seat: int) -> void:
+	if multiplayer.is_server():
+		_server_dev_eliminate(_peer_to_seat(1), target_seat)
+	else:
+		server_dev_eliminate.rpc_id(1, target_seat)
+
+@rpc("any_peer", "reliable")
+func server_dev_eliminate(target_seat: int) -> void:
+	if multiplayer.is_server():
+		_server_dev_eliminate(_peer_to_seat(multiplayer.get_remote_sender_id()), target_seat)
+
+func _server_dev_eliminate(sender: int, target_seat: int) -> void:
+	if phase == Phase.LOBBY:
+		_reject(sender, RejectCode.INVALID_PHASE)
+		return
+	if sender != 0:
+		_reject(sender, RejectCode.NOT_HOST)
+		return
+	if not players.has(target_seat) or not _is_alive(target_seat):
+		return
+	players[target_seat].health = 0
+	_add_log("（开发者）%s 已被房主直接判负出局。" % players[target_seat].name)
+	if int(target_seat) == current_player_id:
+		# 出局的是当前行动者：清残留待处理，回退到上一座位再推进（仿 _kick_offline_seat，
+		# 保证 _advance_turn 从存活序中取到有效下家，而非因当前者不在存活序误判 FINISH）。
+		pending_draw.clear()
+		q_context.clear()
+		if turn_order.is_empty():
+			_finish_game("所有玩家已出局。")
+			return
+		var idx := turn_order.find(current_player_id)
+		var prev_idx := (idx - 1) % turn_order.size() if idx >= 0 else 0
+		current_player_id = turn_order[prev_idx]
+		_advance_turn()
+	else:
+		_broadcast_state()
+
 ## 房主中止当前对局并回到初始大厅（仅房主=seat0）。
 ## 中止后关闭服务器连接：玩家已退出、无法重连（阶段二前），房间不再保留，
 ## 否则房间会挂起（无法重连也无法销毁）。回到初始界面可重新建房/加入。

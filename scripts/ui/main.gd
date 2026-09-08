@@ -4,6 +4,7 @@ extends Control
 ## the game rules and networking remain independently testable.
 
 var dev: DevTools
+var dev_mode := false
 
 func _notification(what: int) -> void:
 	# 点击窗口关闭：拦截默认退出。若仍在房间/对局中 → 回初始大厅；已在初始大厅 → 真正退出
@@ -415,6 +416,7 @@ func _on_state_updated(state: Dictionary) -> void:
 		# 保证卡牌以真实卡（而非在途揭示的动画占位）出现。
 		_clear_settlement_anim_state()
 	_render_game()
+	dev.refresh_panel()
 	if int(state.phase) == PHASE_GAME_OVER:
 		_open_settlement()
 	else:
@@ -524,6 +526,10 @@ func _play_pending_winner() -> void:
 ## 结算页「再来一局」→ 服务器开新局。
 func _request_next_match() -> void:
 	GameState.request_next_match(_next_action_id())
+
+## 开发者工具：房主直接判某玩家出局（服务器以房主身份校验）。
+func _dev_eliminate(seat: int) -> void:
+	GameState.request_dev_eliminate(seat)
 
 ## ESC 切换设置菜单：懒创建一次，反复切 visible。
 func _toggle_settings() -> void:

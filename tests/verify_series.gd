@@ -15,6 +15,7 @@ func _ready() -> void:
 	await _test_spectator_snapshot()
 	await _test_over_hand_ranking()
 	await _test_settlement_model_excludes_eliminated()
+	await _test_dev_eliminate()
 	await _test_auto_advance()
 	await _test_next_match_guard()
 	await _test_page_series()
@@ -163,6 +164,21 @@ func _test_settlement_model_excludes_eliminated() -> void:
 	var alive: Array = players.filter(func(p: Dictionary) -> bool: return not bool(p.get("eliminated", false)))
 	var model: Dictionary = SettlementModel.build(alive)
 	_check("结算模型排除出局者", model.layout_order == [0])
+
+## 开发者工具：房主直接判玩家出局；非房主被拒；出局当前行动者自动推进回合。
+func _test_dev_eliminate() -> void:
+	_rejections = 0
+	_open()
+	GameState._server_initial_ready(0)
+	GameState._server_initial_ready(1)
+	GameState._server_initial_ready(2)
+	GameState._server_dev_eliminate(1, 2)
+	_check("非房主开发者出局被拒(状态不变)", GameState._is_alive(2))
+	GameState._server_dev_eliminate(0, 0)
+	_check("出局当前行动者后回合推进跳过", GameState.phase == GameState.Phase.TURN_DRAW and GameState.current_player_id == 1)
+	GameState._server_dev_eliminate(0, 2)
+	_check("房主开发者出局生效", not GameState._is_alive(2))
+	_check("出局者手牌保留", GameState.players[2].cards.size() == KongRules.HAND_SIZE)
 
 func _test_auto_advance() -> void:
 	_open(5)
