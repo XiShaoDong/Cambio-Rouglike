@@ -7,7 +7,7 @@ extends Control
 
 const CARD_SCENE := preload("res://scenes/ui/card.tscn")
 const CARD_PRICES := [80, 95, 65]
-const RELIC_PRICES := [150, 200]
+const RELIC_PRICES := [80, 95]
 const RELIC_ICONS := ["◈", "◇"]
 
 var _currency := 0
@@ -36,8 +36,10 @@ func _make_card_slot(price: int) -> Control:
 	box.add_theme_constant_override("separation", 6)
 	var card: Button = CARD_SCENE.instantiate()
 	card.custom_minimum_size = Vector2(92, 132)
-	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	box.add_child(card)
+	# CardView._ready 会把 mouse_filter 设为 STOP；入树后再改 IGNORE 并禁用按钮，保证卡牌不可点击
+	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.disabled = true
 	var price_lbl := Label.new()
 	price_lbl.text = "$%d" % price
 	price_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -56,29 +58,30 @@ func _fill_relics() -> void:
 func _make_relic_slot(icon: String, name: String, price: int) -> Control:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 6)
-	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(150, 118)
+	# 遗物可点击（toggle 选中态，购买流程占位）；卡牌不可点击
+	var btn := Button.new()
+	btn.custom_minimum_size = Vector2(150, 118)
+	btn.toggle_mode = true
+	btn.text = "%s\n%s" % [icon, name]
+	btn.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	btn.add_theme_font_size_override("font_size", 16)
+	btn.add_theme_color_override("font_color", UITheme.color("text_primary"))
 	var style := StyleBoxFlat.new()
 	style.bg_color = UITheme.color("bg_elevated")
 	style.bg_color.a = 0.85
 	style.set_corner_radius_all(10)
+	style.set_content_margin_all(10)
 	style.border_color = UITheme.color("border")
 	style.set_border_width_all(1)
-	panel.add_theme_stylebox_override("panel", style)
-	var v := VBoxContainer.new()
-	v.add_theme_constant_override("separation", 4)
-	var icon_lbl := Label.new()
-	icon_lbl.text = icon
-	icon_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	icon_lbl.add_theme_font_size_override("font_size", 34)
-	icon_lbl.add_theme_color_override("font_color", UITheme.color("accent"))
-	v.add_child(icon_lbl)
-	var name_lbl := Label.new()
-	name_lbl.text = name
-	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	v.add_child(name_lbl)
-	panel.add_child(v)
-	box.add_child(panel)
+	btn.add_theme_stylebox_override("normal", style)
+	var hover: StyleBoxFlat = style.duplicate()
+	hover.border_color = UITheme.color("accent")
+	btn.add_theme_stylebox_override("hover", hover)
+	var down: StyleBoxFlat = style.duplicate()
+	down.bg_color.a = 1.0
+	down.border_color = UITheme.color("success")
+	btn.add_theme_stylebox_override("pressed", down)
+	box.add_child(btn)
 	var price_lbl := Label.new()
 	price_lbl.text = "$%d" % price
 	price_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
