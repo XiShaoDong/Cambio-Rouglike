@@ -561,16 +561,13 @@ func _open_shop_panel() -> void:
 	panel.name = "ShopPanel"
 	panel.z_index = 90
 	add_child(panel)
-	panel.setup(latest_state, _on_shop_bid, _on_shop_skip)
+	panel.setup(latest_state, _on_shop_skip)
 	shop_panel = panel
 
 func _close_shop_panel() -> void:
 	if shop_panel != null and is_instance_valid(shop_panel):
 		shop_panel.queue_free()
 	shop_panel = null
-
-func _on_shop_bid(offer: int, amount: int) -> void:
-	GameState.request_shop_bid(offer, amount, _next_action_id())
 
 func _on_shop_skip() -> void:
 	GameState.request_shop_skip(_next_action_id())
