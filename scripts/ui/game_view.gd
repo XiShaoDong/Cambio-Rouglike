@@ -18,6 +18,7 @@ const CARD_ASPECT := 0.6875
 const CARD_SELF_SIZE := Vector2(62, 90)
 const CARD_PILE_SIZE := Vector2(74, 107)
 const CARD_BIG_SIZE := Vector2(110, 160)
+const RelicBarScript := preload("res://scenes/ui/relic_bar.tscn")
 
 var main: Node
 var _ready_clicked := false
@@ -409,6 +410,20 @@ func _render_player_section(area: Control, player: Dictionary, viewer: int, is_t
 		name_label.text = "▲ " + name_label.text
 	if is_me:
 		name_label.text = "▼ " + name_label.text
+	_render_relic_bar(area, player, hand)
+
+## 玩家区域左侧遗物物品栏：复用单实例，刷新内容并定位到手牌左侧、垂直居中。
+func _render_relic_bar(area: Control, player: Dictionary, hand: GridContainer) -> void:
+	var bar := area.get_node_or_null("RelicBar")
+	if bar == null:
+		bar = RelicBarScript.instantiate()
+		bar.name = "RelicBar"
+		bar.mouse_filter = Control.MOUSE_FILTER_PASS
+		area.add_child(bar)
+	bar.setup(main.latest_state, int(player.id))
+	var hand_rect: Rect2 = hand.get_global_rect()
+	var target := hand_rect.position + Vector2(-bar.size.x - 8, (hand_rect.size.y - bar.size.y) / 2.0)
+	bar.global_position = target
 
 ## 渲染单个卡牌槽位到指定容器（主网格或 ExtraLayer），并登记到 _card_slots 供动画定位。
 ## use_fixed 时用 fixed_pos（全局坐标）绝对定位（罚牌附加行：按槽号固定，加新牌不移位）。
@@ -442,15 +457,26 @@ func _render_card_slot(container: Control, player: Dictionary, slot_index: int, 
 	card_button.pressed.connect(main._on_card_pressed.bind(pid, slot_index))
 	main._highlight(card_button, main._card_actionable(pid, slot_index))
 	container.add_child(card_button)
-	# 防守护盾标记：受保护槽位在卡面叠加 ◈ 记号
+	# 防守护盾标记：受保护槽位常驻紫色描边光晕 + ◈ 紫色角标（不干扰点击）
 	if bool(slot.get("protected", false)) and card_button is CardView:
+		var shield_border := Panel.new()
+		shield_border.name = "ShieldBorder"
+		shield_border.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		shield_border.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var st := StyleBoxFlat.new()
+		st.bg_color = Color(0, 0, 0, 0)
+		st.set_corner_radius_all(6)
+		st.border_color = UITheme.color("relic_shield")
+		st.set_border_width_all(3)
+		shield_border.add_theme_stylebox_override("panel", st)
+		card_button.add_child(shield_border)
 		var shield := Label.new()
 		shield.text = "◈"
 		shield.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		shield.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		shield.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		shield.add_theme_font_size_override("font_size", 22)
-		shield.add_theme_color_override("font_color", UITheme.color("accent"))
+		shield.add_theme_color_override("font_color", UITheme.color("relic_shield"))
 		shield.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		card_button.add_child(shield)
 	if use_fixed:
