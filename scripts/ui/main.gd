@@ -558,21 +558,25 @@ func _close_bet_panel() -> void:
 func _on_bet_confirm(amount: int) -> void:
 	GameState.request_bet(amount)
 
-## SHOP 阶段打开商店面板（幂等）。
+## SHOP 阶段打开/刷新商店面板（已存在则刷新内容，反映购买/售出/完成状态）。
 func _open_shop_panel() -> void:
 	if shop_panel != null and is_instance_valid(shop_panel):
+		shop_panel.setup(latest_state, _on_shop_buy, _on_shop_skip)
 		return
 	var panel := ShopPanelScript.instantiate()
 	panel.name = "ShopPanel"
 	panel.z_index = 90
 	add_child(panel)
-	panel.setup(latest_state, _on_shop_skip)
+	panel.setup(latest_state, _on_shop_buy, _on_shop_skip)
 	shop_panel = panel
 
 func _close_shop_panel() -> void:
 	if shop_panel != null and is_instance_valid(shop_panel):
 		shop_panel.queue_free()
 	shop_panel = null
+
+func _on_shop_buy(offer: int) -> void:
+	GameState.request_shop_buy(offer, _next_action_id())
 
 func _on_shop_skip() -> void:
 	GameState.request_shop_skip(_next_action_id())
@@ -614,7 +618,7 @@ func _show_shop_result_toast(state: Dictionary) -> void:
 			if int(p.id) == int(r.winner):
 				name = str(p.name)
 				break
-		parts.append("%s 以 %d 拍得 %s" % [name, int(r.amount), str(r.name)])
+		parts.append("%s 以 %d 购买了 %s" % [name, int(r.amount), str(r.name)])
 	_show_toast("商店：%s" % "　".join(parts))
 
 ## 冠军时刻：若服务器已广播过 winner 音效事件，此刻播放（延迟到冠军出场）。

@@ -75,4 +75,4 @@ size_flags_horizontal = 3
 
 [node name="Leave" type="Button" parent="Center/Panel/VBox/Bottom"]
 layout_mode = 2
-text = "LEAVE SHOP"
+text = "跳过购买"

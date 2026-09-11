@@ -75,7 +75,7 @@ var event_log: Array[String] = []
 var run_state: Dictionary = KongRules.new_default_run()
 var match_number := 1
 var bets: Dictionary = {}  # key: seat；value: {amount:int, all_in:bool}
-var shop: Dictionary = {}        # {offers:[{index,relic_id,name,min_bid}], bids:{seat:{offer,amount,order}}, skip:{seat:true}, _next_order:int}
+var shop: Dictionary = {}        # {offers:[{index,relic_id,name,price}], sold:{offer:seat}, done:{seat:true}}（固定价购买）
 var shop_result: Dictionary = {} # 最近一次商店裁决 {offer_index:{relic_id,name,winner,amount}}；公开
 var match_id := ""
 var state_revision := 0
@@ -1188,10 +1188,10 @@ func _start_series_timer() -> void:
 func _start_shop() -> void:
 	if _series_finished():
 		return
-	shop = {"offers": _pick_shop_offers(), "bids": {}, "skip": {}, "_next_order": 0}
+	shop = {"offers": _pick_shop_offers(), "sold": {}, "done": {}}
 	shop_result = {}
 	phase = Phase.SHOP
-	_add_log("进入商店：每人限选 1 件竞拍（密封出价）。")
+	_add_log("进入商店：每人限购 1 件（固定价 %d）。" % Relics.RELIC_PRICE)
 	_broadcast_state()
 
 func _pick_shop_offers() -> Array:
@@ -1201,21 +1201,22 @@ func _pick_shop_offers() -> Array:
 	var count := mini(3, pool.size())
 	for i in count:
 		var relic: Dictionary = pool[i]
-		offers.append({"index": i, "relic_id": str(relic.id), "name": str(relic.name), "min_bid": int(relic.get("min_bid", Relics.RELIC_MIN_BID))})
+		offers.append({"index": i, "relic_id": str(relic.id), "name": str(relic.name), "price": int(relic.get("price", Relics.RELIC_PRICE))})
 	return offers
 
-func request_shop_bid(offer: int, amount: int, action_id := "") -> void:
+func request_shop_buy(offer: int, action_id := "") -> void:
 	if multiplayer.is_server():
-		_server_shop_bid(_peer_to_seat(1), offer, amount, action_id)
+		_server_shop_buy(_peer_to_seat(1), offer, action_id)
 	else:
-		server_shop_bid.rpc_id(1, offer, amount, action_id)
+		server_shop_buy.rpc_id(1, offer, action_id)
 
 @rpc("any_peer", "reliable")
-func server_shop_bid(offer: int, amount: int, action_id: String) -> void:
+func server_shop_buy(offer: int, action_id: String) -> void:
 	if multiplayer.is_server():
-		_server_shop_bid(_peer_to_seat(multiplayer.get_remote_sender_id()), offer, amount, action_id)
+		_server_shop_buy(_peer_to_seat(multiplayer.get_remote_sender_id()), offer, action_id)
 
-func _server_shop_bid(sender: int, offer: int, amount: int, action_id := "") -> void:
+## 固定价购买：货币≥售价即扣款、遗物入库并记持有者、该件标记售出；每人限购 1 件。
+func _server_shop_buy(sender: int, offer: int, action_id := "") -> void:
 	if phase != Phase.SHOP:
 		_reject(sender, RejectCode.INVALID_PHASE, action_id)
 		return
@@ -1227,21 +1228,23 @@ func _server_shop_bid(sender: int, offer: int, amount: int, action_id := "") -> 
 		_reject(sender, RejectCode.DUPLICATE_OR_EXPIRED_ACTION, action_id)
 		return
 	var offers: Array = shop.get("offers", [])
-	if offer < 0 or offer >= offers.size():
+	if offer < 0 or offer >= offers.size() or shop.get("sold", {}).has(offer):
 		_reject(sender, RejectCode.INVALID_OFFER, action_id)
 		return
-	var min_bid: int = int(offers[offer].min_bid)
-	if amount < min_bid:
+	var price: int = int(offers[offer].price)
+	if price > int(players[sender].currency):
 		_reject(sender, RejectCode.INVALID_AMOUNT, action_id)
 		return
-	if amount > int(players[sender].currency):
-		_reject(sender, RejectCode.INVALID_AMOUNT, action_id)
-		return
-	shop.bids[sender] = {"offer": offer, "amount": amount, "order": int(shop.get("_next_order", 0))}
-	shop["_next_order"] = int(shop.get("_next_order", 0)) + 1
-	_add_log("%s 对 %s 出价。" % [players[sender].name, offers[offer].name])
-	if _shop_all_submitted():
-		_resolve_shop()
+	players[sender].currency = int(players[sender].currency) - price
+	var relic_id: String = str(offers[offer].relic_id)
+	run_state["relics"][relic_id] = Relics.def_by_id(relic_id)
+	run_state["relic_owners"][relic_id] = sender
+	shop.sold[offer] = sender
+	shop.done[sender] = true
+	shop_result[str(offer)] = {"relic_id": relic_id, "name": str(offers[offer].name), "winner": sender, "amount": price}
+	_add_log("%s 以 %d 购买了 %s。" % [players[sender].name, price, offers[offer].name])
+	if _shop_all_done():
+		_deal_next_match()
 	else:
 		_broadcast_state()
 
@@ -1256,7 +1259,7 @@ func server_shop_skip(action_id: String) -> void:
 	if multiplayer.is_server():
 		_server_shop_skip(_peer_to_seat(multiplayer.get_remote_sender_id()), action_id)
 
-## 跳过商店（Task 1 仅记录跳过；全员跳过 → 直接开下一局。竞拍与裁决属 Task 2）。
+## 跳过购买（离开商店）：标记完成；全员完成 → 开下一局。
 func _server_shop_skip(sender: int, action_id := "") -> void:
 	if phase != Phase.SHOP:
 		_reject(sender, RejectCode.INVALID_PHASE, action_id)
@@ -1268,50 +1271,21 @@ func _server_shop_skip(sender: int, action_id := "") -> void:
 	if not players.has(sender) or _shop_submitted(sender):
 		_reject(sender, RejectCode.DUPLICATE_OR_EXPIRED_ACTION, action_id)
 		return
-	shop.skip[sender] = true
-	_add_log("%s 跳过商店。" % players[sender].name)
-	if _shop_all_submitted():
-		_resolve_shop()
+	shop.done[sender] = true
+	_add_log("%s 跳过购买。" % players[sender].name)
+	if _shop_all_done():
+		_deal_next_match()
 	else:
 		_broadcast_state()
 
 func _shop_submitted(seat: int) -> bool:
-	return shop.get("bids", {}).has(seat) or shop.get("skip", {}).has(seat)
+	return shop.get("done", {}).has(seat)
 
-func _shop_all_submitted() -> bool:
+func _shop_all_done() -> bool:
 	for seat in _alive_order():
 		if not _shop_submitted(int(seat)):
 			return false
 	return true
-
-## 商店裁决：每件 offer 价高者得（同价按提交序先到先得）；胜者扣货币、遗物入库（同 id 覆写）。
-func _resolve_shop() -> void:
-	var result: Dictionary = {}
-	for offer in shop.get("offers", []):
-		var oi: int = int(offer.index)
-		var best_seat := -1
-		var best_amount := -1
-		var best_order := 1 << 30
-		for seat in shop.get("bids", {}):
-			var b: Dictionary = shop.bids[seat]
-			if int(b.offer) != oi:
-				continue
-			var amt: int = int(b.amount)
-			var ord: int = int(b.order)
-			if amt > best_amount or (amt == best_amount and ord < best_order):
-				best_amount = amt
-				best_order = ord
-				best_seat = int(seat)
-		if best_seat >= 0:
-			var relic_id: String = str(offer.relic_id)
-			players[best_seat].currency = int(players[best_seat].currency) - best_amount
-			run_state["relics"][relic_id] = Relics.def_by_id(relic_id)
-			run_state["relic_owners"][relic_id] = best_seat
-			_add_log("%s 以 %d 货币拍得 %s。" % [players[best_seat].name, best_amount, offer.name])
-			result[str(oi)] = {"relic_id": relic_id, "name": str(offer.name), "winner": best_seat, "amount": best_amount}
-	shop_result = result
-	shop.clear()
-	_deal_next_match()
 
 ## 局间自动衔接：到点且仍处结算、未把末时进入商店（非把末结算展示后）。
 func _on_series_auto_advance() -> void:

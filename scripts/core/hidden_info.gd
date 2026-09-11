@@ -113,21 +113,18 @@ static func public_card(state: Node, card_id: String) -> Dictionary:
 	var card: Dictionary = state.cards[card_id]
 	return {"id": card.id, "rank": card.rank, "suit": card.suit, "value": card.value, "label": KongRules.display_name(card)}
 
-## 商店快照：只投影 offers 的 bidders 计数与已提交名单，绝不含出价金额（密封）。
+## 商店快照：offers 含 id/name/price 与 sold_by（固定价购买公开），done 为已完成玩家名单。
 static func _shop_snapshot(state: Node) -> Dictionary:
+	var sold: Dictionary = state.shop.get("sold", {})
 	var offers: Array = []
 	for offer in state.shop.get("offers", []):
-		var count := 0
-		for seat in state.shop.get("bids", {}):
-			if int(state.shop.bids[seat].offer) == int(offer.index):
-				count += 1
-		offers.append({"id": str(offer.relic_id), "name": str(offer.name), "min_bid": int(offer.min_bid), "bidders": count})
-	var submitted: Array = []
-	for seat in state.shop.get("bids", {}):
-		submitted.append(int(seat))
-	for seat in state.shop.get("skip", {}):
-		submitted.append(int(seat))
-	return {"offers": offers, "submitted": submitted}
+		var oi: int = int(offer.index)
+		offers.append({"id": str(offer.relic_id), "name": str(offer.name), "price": int(offer.price),
+			"sold_by": int(sold.get(oi, -1))})
+	var done: Array = []
+	for seat in state.shop.get("done", {}):
+		done.append(int(seat))
+	return {"offers": offers, "done": done}
 
 static func _phase_name(phase: int) -> String:
 	match phase:
