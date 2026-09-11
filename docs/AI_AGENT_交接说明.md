@@ -27,10 +27,10 @@
 ## 2. 当前基线
 
 - 项目：Godot 4.6，KONG（Cambio + 轻度 Roguelike）LAN MVP。
-- 当前目标：系列赛框架、押注经济、商店盲拍、**遗物效果 v1** 已完成（见下）；基础模式（无遗物）始终可独立运行。
+- 当前目标：系列赛框架、押注经济、商店固定价购买、**遗物效果 v1** 已完成（见下）；基础模式（无遗物）始终可独立运行。
 - 联网：ENet/UDP，房主权威，默认端口 `7007`。
 - 状态：大厅、对局界面、服务器权威状态机、规则、动效系统均已实现；已有自动化验证（见第 8 节）。
-- 当前工作分支：`feature/store`（未合入 main）。本会话在 `feature/store` 上完成**系列赛框架 / 押注经济 / 商店盲拍 / 遗物效果 v1**（见基线各条），设计在 `docs/superpowers/specs/2026-09-07-series-shop-relics-design.md`，各里程碑计划在 `docs/superpowers/plans/`。此前 `feature/internet-reconnect` 的 seat 身份重构 + 断线重连 + 结算页 + 音效/设置菜单均已合入（见 3.5 节与 B18-B26）。
+- 当前工作分支：`feature/store`（未合入 main）。本会话在 `feature/store` 上完成**系列赛框架 / 押注经济 / 商店固定价购买 / 遗物效果 v1**（见基线各条），设计在 `docs/superpowers/specs/2026-09-07-series-shop-relics-design.md`，各里程碑计划在 `docs/superpowers/plans/`。此前 `feature/internet-reconnect` 的 seat 身份重构 + 断线重连 + 结算页 + 音效/设置菜单均已合入（见 3.5 节与 B18-B26）。
 - **贴牌系统（已重做动画）**：固定 2.5s 窗口 → `slap_open` 标志（弃牌/用技能后开启，下一玩家抽牌关闭）；同一窗口**不限次数**尝试（贴错每次罚牌，贴对先到者胜）；多人同时贴中 → 400ms 收集 → `SLAP_DUEL` 比拼 bar（随机加粗区中心红心，服务器到达时间判最近者）；调试开关 **O 键**切换 `debug_duel`（不判正确性 + 双贴即比拼）。
 - **贴牌动画事件（`card_exchange_animated` 新 kind）**：`slap_penalty`（罚牌 fly 抽牌堆→手牌）、`slap_resolved`（赢家被贴的牌 fly→弃牌堆，弃牌堆延迟显示）、`slap_gift`（交换时行动者的牌 fly→对方槽，不带牌面防泄漏）。贴牌 reveal target 带 `correct` 标记 → 客户端打**绿（对）/红（错）炫光**；正确贴牌**绿光 hold**（v2，不翻回）等结算后 fly，比拼输家翻回。
 - **手牌超限规则（R-07）**：任一玩家手牌总数 `> MAX_HAND_CARDS(6)` 时对局立即结束（GAME_OVER），该玩家判定失败并扣 1 生命，其余玩家按各自手牌点数结算排名（失败者不参与排名）。触发点：贴错罚抽后 `game_state._check_over_hand(seat)`。
@@ -179,7 +179,7 @@ UI 层已拆分（main.gd 是组合根）：
 ... --headless --path . res://tests/verify_series.tscn
 # 货币经济（33/33：结算2x+垫底/安全1.5x/垫底全失/系统补足/all-in出局/并列/首回合Kong/超限/押注阶段）
 ... --headless --path . res://tests/verify_economy.tscn
-# 商店盲拍（遗物定义/流程进店/密封快照/出价校验/价高者得/同价先到先得/全员跳过/遗物覆写入库）
+# 商店固定价购买（遗物定义/流程进店/购买扣款入库/售出先到先得/钱不够拒绝/限购1件/全员完成后下一局）
 ... --headless --path . res://tests/verify_shop.tscn
 # 遗物效果 v1（19/19：护盾局开始生效并消耗/贴牌与J·Q交换免疫(PROTECTED)/快照护盾标记/无遗物no-op/Joker变换/未变换+2/已变换清除加成）
 ... --headless --path . res://tests/verify_relics.tscn
