@@ -50,6 +50,9 @@ func _blind_swap(sender: int, data: Dictionary, action_id := "") -> void:
 	if swap_target == sender or not game._valid_slot(sender, own_swap_slot) or not game._valid_slot(swap_target, their_swap_slot):
 		game._reject(sender, game.RejectCode.INVALID_TARGET, action_id)
 		return
+	if game._is_protected(swap_target, their_swap_slot):
+		game._reject(sender, game.RejectCode.PROTECTED, action_id)
+		return
 	game.swap.swap(sender, own_swap_slot, swap_target, their_swap_slot, "%s 与 %s 盲换了一张牌。" % [game.players[sender].name, game.players[swap_target].name])
 	# a 槽原牌 = 现在 target 槽的牌；b 槽原牌 = 现在 sender 槽的牌
 	var a_data: Dictionary = game.peek.public_card(game.players[swap_target].cards[their_swap_slot])
@@ -62,6 +65,9 @@ func _start_queen(sender: int, data: Dictionary, action_id := "") -> void:
 	var q_slot := int(data.get("target_slot", -1))
 	if q_target == sender or not game._valid_slot(q_target, q_slot):
 		game._reject(sender, game.RejectCode.INVALID_TARGET, action_id)
+		return
+	if game._is_protected(q_target, q_slot):
+		game._reject(sender, game.RejectCode.PROTECTED, action_id)
 		return
 	game.q_context = {"actor": sender, "target": q_target, "target_slot": q_slot}
 	game.phase = game.Phase.Q_DECISION

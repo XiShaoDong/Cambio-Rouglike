@@ -58,6 +58,7 @@ static func new_default_run() -> Dictionary:
 		"health": 1,
 		"relic_slots": 2,
 		"relics": {},
+		"relic_owners": {},
 		"mutator_ids": [],
 		"enable_relics": false,
 		"match_limit": DEFAULT_MATCH_LIMIT,

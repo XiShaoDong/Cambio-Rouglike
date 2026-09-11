@@ -3,6 +3,8 @@ extends RefCounted
 ## 遗物数据与池（Milestone 4 才接入效果钩子；本里程碑仅定义 + 入库）。
 
 const RELIC_MIN_BID := 2
+const JOKER_TRANSFORM_ID := "relic_joker_transform"
+const GUARD_SHIELD_ID := "relic_guard_shield"
 
 static func pool() -> Array:
 	return [joker_transform(), guard_shield()]

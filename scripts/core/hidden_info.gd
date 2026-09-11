@@ -100,6 +100,8 @@ static func _player_snapshot(state: Node, seat: int, reveal_all: bool, viewer_id
 				slot["card_id"] = card_id
 				if reveal_all or (seat == viewer_id and peek_slots.has(index)):
 					slot["card"] = public_card(state, card_id)
+					slot["card"]["value"] = state._relic_card_value(seat, card_id)
+		slot["protected"] = int(player.get("protected_slot", -1)) == index
 		slots.append(slot)
 	return {"id": seat, "name": player.name, "count": player.cards.size(), "health": player.health,
 		"eliminated": int(player.get("health", 1)) <= 0,

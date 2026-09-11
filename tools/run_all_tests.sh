@@ -81,6 +81,7 @@ run_single "settlement" res://tests/verify_settlement.tscn
 run_single "series"     res://tests/verify_series.tscn
 run_single "economy"    res://tests/verify_economy.tscn
 run_single "shop"       res://tests/verify_shop.tscn
+run_single "relics"     res://tests/verify_relics.tscn
 run_single "hint"       res://tests/verify_hint.tscn
 
 if [ "$QUICK" -eq 1 ]; then

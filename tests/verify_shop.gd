@@ -41,6 +41,13 @@ func _open_with_finish(limit := 5) -> void:
 	GameState._server_bet(2, KongRules.MIN_BET)
 	GameState._finish_game()
 
+## 在货架中找指定遗物 offer 下标（池仅两件、每次全上架）。
+func _find_offer(relic_id: String, offers: Array) -> int:
+	for i in offers.size():
+		if str(offers[i].relic_id) == relic_id:
+			return i
+	return -1
+
 func _test_relic_defs() -> void:
 	var pool: Array = Relics.pool()
 	_check("遗物池含 v1 两件", pool.size() == 2)
@@ -109,14 +116,16 @@ func _test_resolve_winner() -> void:
 	_open_with_finish(5)
 	GameState._on_series_auto_advance()
 	var offers: Array = GameState.shop.offers
-	var relic_id: String = str(offers[0].relic_id)
-	var min_bid: int = int(offers[0].min_bid)
+	# 固定竞拍 Joker 遗物：护盾会在下一局开局被消耗，Joker 遗物持久入库（确定性断言）
+	var oi := _find_offer(Relics.JOKER_TRANSFORM_ID, offers)
+	var relic_id: String = str(offers[oi].relic_id)
+	var min_bid: int = int(offers[oi].min_bid)
 	GameState.players[0].currency = 100
 	GameState.players[1].currency = 100
-	GameState._server_shop_bid(0, 0, min_bid)
-	GameState._server_shop_bid(1, 0, min_bid + 10)  # seat1 更高
+	GameState._server_shop_bid(0, oi, min_bid)
+	GameState._server_shop_bid(1, oi, min_bid + 10)  # seat1 更高
 	GameState._server_shop_skip(2)
-	_check("最高价者拍到", int(GameState.shop_result["0"].winner) == 1)
+	_check("最高价者拍到", int(GameState.shop_result[str(oi)].winner) == 1)
 	_check("胜者扣货币", int(GameState.players[1].currency) == 100 - (min_bid + 10))
 	_check("败者不扣货币", int(GameState.players[0].currency) == 100)
 	_check("遗物入库", GameState.run_state.relics.has(relic_id))
@@ -145,13 +154,14 @@ func _test_inventory_override() -> void:
 	_open_with_finish(5)
 	GameState._on_series_auto_advance()
 	var offers: Array = GameState.shop.offers
-	var min_bid: int = int(offers[0].min_bid)
-	GameState._server_shop_bid(0, 0, min_bid)
+	var oi := _find_offer(Relics.JOKER_TRANSFORM_ID, offers)
+	var min_bid: int = int(offers[oi].min_bid)
+	GameState._server_shop_bid(0, oi, min_bid)
 	GameState._server_shop_skip(1)
 	GameState._server_shop_skip(2)
-	var relic_id: String = str(offers[0].relic_id)
+	var relic_id: String = str(offers[oi].relic_id)
 	_check("遗物入库", GameState.run_state.relics.has(relic_id))
-	# 打完下一局再进商店 → 拍到同件覆写（数量不变）。池仅两件、每次全上架，
+	# 打完下一局再进商店 → 拍到同件覆写（数量不变）。Joker 遗物不消耗（护盾会消耗），
 	# 已持有遗物必然在架；若异常不在架则跳过以稳定 relics.size()==1。
 	GameState._server_initial_ready(0)
 	GameState._server_initial_ready(1)
@@ -162,11 +172,7 @@ func _test_inventory_override() -> void:
 	GameState._finish_game()
 	GameState._on_series_auto_advance()
 	var offers2: Array = GameState.shop.offers
-	var held_idx := -1
-	for i in offers2.size():
-		if str(offers2[i].relic_id) == relic_id:
-			held_idx = i
-			break
+	var held_idx := _find_offer(relic_id, offers2)
 	if held_idx >= 0:
 		GameState._server_shop_bid(0, held_idx, int(offers2[held_idx].min_bid))
 	else:

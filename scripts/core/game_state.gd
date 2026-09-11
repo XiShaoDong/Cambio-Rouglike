@@ -47,6 +47,7 @@ enum RejectCode {
 	SPECTATOR,
 	INVALID_AMOUNT,
 	INVALID_OFFER,
+	PROTECTED,
 }
 
 var phase: Phase = Phase.LOBBY
@@ -205,6 +206,7 @@ func _reject_code_message(code: int) -> String:
 		RejectCode.SPECTATOR: return "你已出局，只能观战。"
 		RejectCode.INVALID_AMOUNT: return "押注金额不合法（入场 %d，+%d 递增，上限 %d）。" % [KongRules.MIN_BET, KongRules.BET_STEP, KongRules.MAX_BET]
 		RejectCode.INVALID_OFFER: return "该遗物不在本店货架中。"
+		RejectCode.PROTECTED: return "该格受防守护盾保护，不能指定。"
 	return "操作被拒绝。"
 
 ## 对局是否处于条件暂停（当前行动者离线 / 开局记忆阶段有人离线）。
@@ -265,6 +267,7 @@ func _add_player(peer_id: int, display_name: String) -> void:
 		"health": int(run_state.get("health", 3)),
 		"currency": KongRules.START_CURRENCY,
 		"wins": 0,
+		"protected_slot": -1,
 	}
 	turn_order.append(seat)
 	# 注册时把 token 定向发给该玩家，用于断线后重连认领座位
@@ -308,6 +311,42 @@ func _alive_order() -> Array[int]:
 
 func _alive_count() -> int:
 	return _alive_order().size()
+
+## 局开始遗物效果：防守护盾随机保护持有者一格并消耗（一局后失效）。
+func _apply_match_start_relics() -> void:
+	for seat in _alive_order():
+		players[seat].protected_slot = -1
+		if _is_relic_owner(seat, Relics.GUARD_SHIELD_ID):
+			var count: int = players[seat].cards.size()
+			players[seat].protected_slot = randi() % maxi(1, count)
+			run_state["relics"].erase(Relics.GUARD_SHIELD_ID)
+			run_state.get("relic_owners", {}).erase(Relics.GUARD_SHIELD_ID)
+			_add_log("%s 的防守护盾随机保护了第 %d 格。" % [players[seat].name, players[seat].protected_slot])
+
+## seat 的 slot 是否受防守护盾保护。
+func _is_protected(seat: int, slot: int) -> bool:
+	return players.has(seat) and int(players[seat].get("protected_slot", -1)) == slot
+
+## 是否持有某遗物（relics 为共享字典，持有者记录在 run_state.relic_owners）。
+func _is_relic_owner(seat: int, relic_id: String) -> bool:
+	if not run_state.get("relics", {}).has(relic_id):
+		return false
+	return int(run_state.get("relic_owners", {}).get(relic_id, -1)) == seat
+
+## 结算/揭示统一分值：持有 Joker 遗物者的 JOKER 卡 +2（已变换后不再是 JOKER，不适用）。
+func _relic_card_value(seat: int, card_id: String) -> int:
+	var v: int = int(cards[card_id].value)
+	if str(cards[card_id].rank) == "JOKER" and _is_relic_owner(seat, Relics.JOKER_TRANSFORM_ID) and _is_alive(seat):
+		v += 2
+	return v
+
+## Joker 遗物对每个持有者的结算加分映射（供 ScoreSystem.calculate_ranking）。
+func _joker_bonus_map() -> Dictionary:
+	var joker_bonus: Dictionary = {}
+	for seat in _alive_order():
+		if _is_relic_owner(int(seat), Relics.JOKER_TRANSFORM_ID):
+			joker_bonus[int(seat)] = true
+	return joker_bonus
 
 ## 已出局（观战）玩家操作拦截：返回 true 表示已拒绝。
 func _guard_spectator(sender: int, action_id: String) -> bool:
@@ -438,6 +477,7 @@ func _deal_new_match() -> void:
 	for seat in _alive_order():
 		for _slot in KongRules.HAND_SIZE:
 			players[seat].cards.append(_draw_from_deck())
+	_apply_match_start_relics()
 	phase = Phase.INITIAL_PEEK
 	initial_confirmed.clear()
 	last_result.clear()
@@ -643,6 +683,50 @@ func _server_take(sender: int, source: String, action_id := "") -> void:
 	_add_log("%s 取了一张牌。" % players[sender].name)
 	_broadcast_state()
 
+func request_joker_transform(rank: String, suit: String, action_id := "") -> void:
+	if multiplayer.is_server():
+		_server_joker_transform(_peer_to_seat(1), rank, suit, action_id)
+	else:
+		server_joker_transform.rpc_id(1, rank, suit, action_id)
+
+@rpc("any_peer", "reliable")
+func server_joker_transform(rank: String, suit: String, action_id: String) -> void:
+	if multiplayer.is_server():
+		_server_joker_transform(_peer_to_seat(multiplayer.get_remote_sender_id()), rank, suit, action_id)
+
+## Joker 变换：持有 Joker 遗物者在抽牌阶段抽到 Joker（抽牌堆或弃牌堆顶），可选变换为任意牌。
+func _server_joker_transform(sender: int, rank: String, suit: String, action_id := "") -> void:
+	if phase != Phase.TURN_DECISION:
+		_reject(sender, RejectCode.INVALID_PHASE, action_id)
+		return
+	if _guard_suspended(sender, action_id):
+		return
+	if _guard_spectator(sender, action_id):
+		return
+	if sender != current_player_id:
+		_reject(sender, RejectCode.NOT_CURRENT_PLAYER, action_id)
+		return
+	if pending_draw.is_empty() or not _check_action_id(sender, action_id):
+		_reject(sender, RejectCode.DUPLICATE_OR_EXPIRED_ACTION, action_id)
+		return
+	if not _is_relic_owner(sender, Relics.JOKER_TRANSFORM_ID):
+		_reject(sender, RejectCode.ABILITY_FORBIDDEN, action_id)
+		return
+	var cid: String = str(pending_draw.card_id)
+	if str(cards[cid].rank) != "JOKER":
+		_reject(sender, RejectCode.ABILITY_FORBIDDEN, action_id)
+		return
+	var ranks := ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"]
+	var suits := ["♠", "♥", "♣", "♦"]
+	if not rank in ranks or not suit in suits:
+		_reject(sender, RejectCode.INVALID_SOURCE, action_id)
+		return
+	cards[cid].rank = rank
+	cards[cid].suit = suit
+	cards[cid].value = KongRules.card_value(rank)
+	_add_log("%s 把 Joker 变换为 %s%s。" % [players[sender].name, rank, suit])
+	_broadcast_state()
+
 func request_replace(slot: int, action_id := "") -> void:
 	if multiplayer.is_server():
 		_server_replace(_peer_to_seat(1), slot, action_id)
@@ -778,6 +862,9 @@ func _server_q_decision(sender: int, exchange: bool, own_slot: int, action_id :=
 		var target_slot := int(q_context.target_slot)
 		if not _valid_slot(sender, own_slot) or not _valid_slot(target, target_slot):
 			_reject(sender, RejectCode.INVALID_SLOT, action_id)
+			return
+		if _is_protected(target, target_slot):
+			_reject(sender, RejectCode.PROTECTED, action_id)
 			return
 		swap.swap(sender, own_slot, target, target_slot, "%s 用 Q 交换了一张牌。" % players[sender].name)
 		var a_data: Dictionary = _card_public(players[target].cards[target_slot])
@@ -1219,6 +1306,7 @@ func _resolve_shop() -> void:
 			var relic_id: String = str(offer.relic_id)
 			players[best_seat].currency = int(players[best_seat].currency) - best_amount
 			run_state["relics"][relic_id] = Relics.def_by_id(relic_id)
+			run_state["relic_owners"][relic_id] = best_seat
 			_add_log("%s 以 %d 货币拍得 %s。" % [players[best_seat].name, best_amount, offer.name])
 			result[str(oi)] = {"relic_id": relic_id, "name": str(offer.name), "winner": best_seat, "amount": best_amount}
 	shop_result = result
@@ -1234,7 +1322,7 @@ func _on_series_auto_advance() -> void:
 	_start_shop()
 
 func _calculate_ranking() -> Array:
-	return ScoreSystem.calculate_ranking(players, cards, _alive_order())
+	return ScoreSystem.calculate_ranking(players, cards, _alive_order(), _joker_bonus_map())
 
 func _is_lower_score(a: Dictionary, b: Dictionary) -> bool:
 	return ScoreSystem._is_lower_score(a, b)
@@ -1279,7 +1367,11 @@ func _finish_game_over_hand(failed_seat: int) -> void:
 	for seat in _alive_order():
 		if int(seat) != failed_seat:
 			others.append(int(seat))
-	var ranking := ScoreSystem.calculate_ranking(players, cards, others)
+	var joker_bonus: Dictionary = {}
+	for seat in others:
+		if _is_relic_owner(seat, Relics.JOKER_TRANSFORM_ID):
+			joker_bonus[seat] = true
+	var ranking := ScoreSystem.calculate_ranking(players, cards, others, joker_bonus)
 	var winners: Array[int] = []
 	if not ranking.is_empty():
 		for entry in ranking:
