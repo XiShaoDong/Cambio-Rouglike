@@ -46,6 +46,7 @@ const TOKENS := {
 		"card_rank_black": Color("1a2230"),
 		"card_value": Color("4a5568"),
 		"card_shadow": Color(0, 0, 0, 0.35),
+		"relic_shield": Color("b07be0"),
 	},
 	"light": {
 		# 背景层级（来自 docs/light_theme.css）
@@ -86,6 +87,7 @@ const TOKENS := {
 		"card_rank_black": Color("3A362E"),
 		"card_value": Color("8B8577"),
 		"card_shadow": Color(0.227, 0.212, 0.18, 0.15),
+		"relic_shield": Color("8a5bbf"),
 	},
 }
 
