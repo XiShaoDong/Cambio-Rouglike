@@ -8,7 +8,6 @@ extends Control
 const CARD_SCENE := preload("res://scenes/ui/card.tscn")
 const CARD_PRICES := [80, 95, 65]
 const RELIC_PRICES := [80, 95]
-const RELIC_ICONS := ["◈", "◇"]
 
 var _currency := 0
 var _on_leave: Callable = Callable()
@@ -53,16 +52,26 @@ func _fill_relics() -> void:
 	var pool: Array = Relics.pool()
 	for i in mini(RELIC_PRICES.size(), pool.size()):
 		var relic: Dictionary = pool[i]
-		row.add_child(_make_relic_slot(RELIC_ICONS[i], str(relic.get("name", "")), RELIC_PRICES[i]))
+		row.add_child(_make_relic_slot(str(relic.get("id", "")), str(relic.get("name", "")), RELIC_PRICES[i]))
 
-func _make_relic_slot(icon: String, name: String, price: int) -> Control:
+func _make_relic_slot(relic_id: String, name: String, price: int) -> Control:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 6)
+	# 程序化图标（盾紫/星金），与对局物品栏视觉一致
+	var icon := RelicIcon.new()
+	icon.custom_minimum_size = Vector2(36, 36)
+	icon.size = Vector2(36, 36)
+	icon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	var is_shield := relic_id == Relics.GUARD_SHIELD_ID
+	icon.setup(RelicIcon.Kind.SHIELD if is_shield else RelicIcon.Kind.JOKER,
+		UITheme.color("relic_shield") if is_shield else UITheme.color("accent"))
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(icon)
 	# 遗物可点击（toggle 选中态，购买流程占位）；卡牌不可点击
 	var btn := Button.new()
-	btn.custom_minimum_size = Vector2(150, 118)
+	btn.custom_minimum_size = Vector2(150, 60)
 	btn.toggle_mode = true
-	btn.text = "%s\n%s" % [icon, name]
+	btn.text = name
 	btn.alignment = HORIZONTAL_ALIGNMENT_CENTER
 	btn.add_theme_font_size_override("font_size", 16)
 	btn.add_theme_color_override("font_color", UITheme.color("text_primary"))
