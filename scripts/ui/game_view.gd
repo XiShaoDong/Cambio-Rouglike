@@ -265,6 +265,15 @@ func _render_controls(phase: int, is_current: bool) -> void:
 		var exchange: Button = main._button("Q：交换（再点自己一张牌）")
 		exchange.pressed.connect(func(): main.interaction.action_mode = "q_exchange"; main._render_game())
 		main._hint_actions.add_child(exchange)
+	elif phase == PHASE_TURN_DECISION and is_current:
+		# Joker 变换：当前玩家抽到 Joker 且持有 Joker 遗物 → 提供"变换 Joker"入口
+		var pending: Dictionary = main.latest_state.get("pending", {})
+		if str(pending.get("rank", "")) == "JOKER":
+			var run: Dictionary = main.latest_state.get("run", {})
+			if (run.get("relics", {}) as Dictionary).has(Relics.JOKER_TRANSFORM_ID):
+				var transform: Button = main._button("变换 Joker")
+				transform.pressed.connect(main._open_joker_transform_panel)
+				main._hint_actions.add_child(transform)
 	elif phase == PHASE_GAME_OVER:
 		var result: Dictionary = main.latest_state.result
 		if not result.get("ranking", []).is_empty():
@@ -433,6 +442,17 @@ func _render_card_slot(container: Control, player: Dictionary, slot_index: int, 
 	card_button.pressed.connect(main._on_card_pressed.bind(pid, slot_index))
 	main._highlight(card_button, main._card_actionable(pid, slot_index))
 	container.add_child(card_button)
+	# 防守护盾标记：受保护槽位在卡面叠加 ◈ 记号
+	if bool(slot.get("protected", false)) and card_button is CardView:
+		var shield := Label.new()
+		shield.text = "◈"
+		shield.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		shield.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		shield.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		shield.add_theme_font_size_override("font_size", 22)
+		shield.add_theme_color_override("font_color", UITheme.color("accent"))
+		shield.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		card_button.add_child(shield)
 	if use_fixed:
 		card_button.global_position = fixed_pos
 	if not main._card_slots.has(pid):

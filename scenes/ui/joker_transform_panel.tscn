@@ -1,0 +1,70 @@
+[gd_scene format=3 uid="uid://cjokertransf0001"]
+
+[ext_resource type="Script" path="res://scripts/ui/joker_transform_panel.gd" id="1"]
+
+[node name="JokerTransformPanel" type="Control"]
+script = ExtResource("1")
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 0
+
+[node name="Dim" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+color = Color(0, 0, 0, 0.6)
+
+[node name="Center" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+
+[node name="Panel" type="PanelContainer" parent="Center"]
+custom_minimum_size = Vector2(360, 0)
+layout_mode = 2
+
+[node name="VBox" type="VBoxContainer" parent="Center/Panel"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Title" type="Label" parent="Center/Panel/VBox"]
+layout_mode = 2
+text = "Joker 变换"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 20
+
+[node name="RankRow" type="GridContainer" parent="Center/Panel/VBox"]
+layout_mode = 2
+columns = 7
+theme_override_constants/h_separation = 4
+theme_override_constants/v_separation = 4
+
+[node name="SuitRow" type="HBoxContainer" parent="Center/Panel/VBox"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 8
+
+[node name="Preview" type="Label" parent="Center/Panel/VBox"]
+layout_mode = 2
+text = "预览：7♠"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 26
+
+[node name="Actions" type="HBoxContainer" parent="Center/Panel/VBox"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 12
+
+[node name="Cancel" type="Button" parent="Center/Panel/VBox/Actions"]
+layout_mode = 2
+text = "取消"
+
+[node name="Confirm" type="Button" parent="Center/Panel/VBox/Actions"]
+layout_mode = 2
+text = "确认变换"

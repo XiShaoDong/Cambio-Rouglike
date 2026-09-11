@@ -66,6 +66,7 @@ const SettingsMenuScript := preload("res://scripts/ui/settings_menu.gd")
 const SettlementPageScript := preload("res://scenes/ui/settlement_page.tscn")
 const BetPanelScript := preload("res://scenes/ui/bet_panel.tscn")
 const ShopPanelScript := preload("res://scenes/ui/shop_panel.tscn")
+const JokerTransformPanelScript := preload("res://scenes/ui/joker_transform_panel.tscn")
 
 var latest_lobby: Dictionary = {}
 var latest_state: Dictionary = {}
@@ -134,6 +135,7 @@ var _reconnect_expected := false
 var settlement_page: Control = null
 var bet_panel: Control = null
 var shop_panel: Control = null
+var joker_panel: Control = null
 var _shop_result_shown := ""
 var _pending_winner_sfx := false
 
@@ -436,6 +438,9 @@ func _on_state_updated(state: Dictionary) -> void:
 		_open_shop_panel()
 	else:
 		_close_shop_panel()
+	# Joker 变换面板只在处理 JOKER 的 TURN_DECISION 时可用，离开即关闭
+	if int(state.phase) != PHASE_TURN_DECISION or str(state.get("pending", {}).get("rank", "")) != "JOKER":
+		_on_joker_cancel()
 	_show_shop_result_toast(state)
 
 ## 清空上一局可能残留的动画/挂起状态（对局结束时在途的看牌/贴牌揭示）。
@@ -571,6 +576,26 @@ func _close_shop_panel() -> void:
 
 func _on_shop_skip() -> void:
 	GameState.request_shop_skip(_next_action_id())
+
+## Joker 变换面板：打开（幂等，场景实体，选点数/花色/确认/取消）。
+func _open_joker_transform_panel() -> void:
+	if joker_panel != null and is_instance_valid(joker_panel):
+		return
+	var panel := JokerTransformPanelScript.instantiate()
+	panel.name = "JokerTransformPanel"
+	panel.z_index = 95
+	add_child(panel)
+	panel.setup(_on_joker_confirm, _on_joker_cancel)
+	joker_panel = panel
+
+func _on_joker_cancel() -> void:
+	if joker_panel != null and is_instance_valid(joker_panel):
+		joker_panel.queue_free()
+	joker_panel = null
+
+func _on_joker_confirm(rank: String, suit: String) -> void:
+	GameState.request_joker_transform(rank, suit, _next_action_id())
+	_on_joker_cancel()
 
 ## 商店裁决结果一次性 toast（每个 shop_result 只提示一次）。
 func _show_shop_result_toast(state: Dictionary) -> void:
