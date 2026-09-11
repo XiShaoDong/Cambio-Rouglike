@@ -78,7 +78,8 @@ func _make_relic_slot(offer: Dictionary) -> Control:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 6)
 	var relic_id := str(offer.get("id", ""))
-	var name := str(offer.get("name", ""))
+	var relic_name := str(offer.get("name", ""))
+	var offer_index := int(offer.get("index", -1))
 	var price := int(offer.get("price", 0))
 	var sold_by := int(offer.get("sold_by", -1))
 	# 程序化图标（盾紫/星金），与对局物品栏视觉一致
@@ -93,7 +94,7 @@ func _make_relic_slot(offer: Dictionary) -> Control:
 	box.add_child(icon)
 	var btn := Button.new()
 	btn.custom_minimum_size = Vector2(150, 60)
-	btn.text = name
+	btn.text = relic_name
 	btn.alignment = HORIZONTAL_ALIGNMENT_CENTER
 	btn.add_theme_font_size_override("font_size", 16)
 	btn.add_theme_color_override("font_color", UITheme.color("text_primary"))
@@ -115,13 +116,13 @@ func _make_relic_slot(offer: Dictionary) -> Control:
 	var can_buy := not _done and sold_by < 0 and _currency >= price
 	btn.disabled = not can_buy
 	if sold_by >= 0:
-		btn.text = "%s\n已售出" % name
+		btn.text = "%s\n已售出" % relic_name
 	elif _done:
-		btn.text = "%s\n（已完成）" % name
+		btn.text = "%s\n（已完成）" % relic_name
 	elif _currency < price:
-		btn.text = "%s\n货币不足" % name
+		btn.text = "%s\n货币不足" % relic_name
 	if can_buy:
-		btn.pressed.connect(func() -> void: _buy(int(offer.index)))
+		btn.pressed.connect(_buy.bind(offer_index))
 	box.add_child(btn)
 	var price_lbl := Label.new()
 	price_lbl.text = "$%d" % price

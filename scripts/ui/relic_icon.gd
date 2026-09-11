@@ -7,9 +7,9 @@ enum Kind { EMPTY, SHIELD, JOKER }
 var kind := Kind.EMPTY
 var color := Color.WHITE
 
-func setup(kind: Kind, color: Color) -> void:
-	self.kind = kind
-	self.color = color
+func setup(p_kind: Kind, p_color: Color) -> void:
+	kind = p_kind
+	color = p_color
 	queue_redraw()
 
 func _draw() -> void:

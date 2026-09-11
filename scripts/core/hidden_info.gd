@@ -119,7 +119,7 @@ static func _shop_snapshot(state: Node) -> Dictionary:
 	var offers: Array = []
 	for offer in state.shop.get("offers", []):
 		var oi: int = int(offer.index)
-		offers.append({"id": str(offer.relic_id), "name": str(offer.name), "price": int(offer.price),
+		offers.append({"index": oi, "id": str(offer.relic_id), "name": str(offer.name), "price": int(offer.price),
 			"sold_by": int(sold.get(oi, -1))})
 	var done: Array = []
 	for seat in state.shop.get("done", {}):
