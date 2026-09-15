@@ -129,7 +129,12 @@ func run_checks() -> void:
 			_rejected(GameState.RejectCode.INVALID_PHASE) and GameState.phase == GameState.Phase.Q_DECISION)
 		seen_rejects.clear()
 		GameState._server_q_view_own(1, 0, "q-view-3")
-		_check("非操作者查看自己牌被拒 NOT_CURRENT_PLAYER", _rejected(GameState.RejectCode.NOT_CURRENT_PLAYER))
+		# 跨 peer 的拒绝码无法在单进程观测（见文件头说明，由 verify_net 覆盖）；
+		# 此处断言非操作者调用对状态无任何影响。
+		_check("非操作者查看自己牌无状态改变",
+			GameState.phase == GameState.Phase.Q_DECISION \
+			and not bool(GameState.q_context.get("own_viewed", true)) \
+			and not GameState.q_context.has("own_slot"))
 		seen_rejects.clear()
 		GameState._server_q_view_own(0, 99, "q-view-4")
 		_check("Q 查看越界槽位被拒 INVALID_SLOT", _rejected(GameState.RejectCode.INVALID_SLOT))
