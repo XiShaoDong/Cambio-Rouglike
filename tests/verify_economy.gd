@@ -13,6 +13,8 @@ func _ready() -> void:
 	await _test_last_life_and_elimination()
 	await _test_kong_first_turn()
 	await _test_over_hand()
+	await _test_elimination_deferred()
+	await _test_lone_player_not_penalized()
 	var status: String = " (FAILURES!)" if failures > 0 else ""
 	print("=== ECONOMY RESULT: %d/%d passed%s ===" % [checks - failures, checks, status])
 	get_tree().quit(1 if failures > 0 else 0)
@@ -126,3 +128,27 @@ func _test_over_hand() -> void:
 	_check("超限者 0 金钱", int(GameState.players[0].currency) == 100)
 	_check("超限者 -1 命", int(GameState.players[0].health) == 1)
 	_check("超限失败不参与排名", GameState.last_result.ranking.size() == 2)
+
+func _eliminated_in_snapshot(seat: int) -> bool:
+	for p in GameState._snapshot_for(0).get("players", []):
+		if int(p.id) == seat:
+			return bool(p.get("eliminated", false))
+	return false
+
+func _test_elimination_deferred() -> void:
+	_open_three()
+	GameState.players[2].health = 1
+	GameState._finish_game()
+	_check("垫底出局者本局仍正常结算（未标观战）", int(GameState.players[2].health) == 0 and not _eliminated_in_snapshot(2))
+	GameState._deal_next_match()
+	_check("下一局起才标观战", _eliminated_in_snapshot(2))
+
+func _test_lone_player_not_penalized() -> void:
+	GameState._reset_match()
+	GameState._add_player(1, "A")
+	GameState._add_player(2, "B")
+	_set_hand(0, [7, 7, 7, 7, 7, 7, 7])  # seat0 超限失败
+	_set_hand(1, [3, 4])
+	GameState._finish_game_over_hand(0)
+	_check("超限失败者 -1 命", int(GameState.players[0].health) == 1)
+	_check("唯一在场者不算垫底、不扣命", int(GameState.players[1].health) == KongRules.START_HEALTH)

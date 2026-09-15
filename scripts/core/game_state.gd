@@ -263,6 +263,7 @@ func _add_player(peer_id: int, display_name: String) -> void:
 		"has_acted": false,
 		"offline": false,
 		"health": int(run_state.get("health", KongRules.START_HEALTH)),
+		"eliminated_match": -1,
 		"currency": KongRules.START_CURRENCY,
 		"wins": 0,
 		"protected_slot": -1,
@@ -1117,9 +1118,11 @@ func _settle_rewards(ranking: Array, extra_last: Array = []) -> Dictionary:
 			for k in range(i, j + 1):
 				rewards[int(ranking[k].id)] = {"money": share, "life_lost": 0}
 			i = j + 1
-		for e in ranking:
-			if _same_score(e, ranking[n - 1]):
-				rewards[int(e.id)].life_lost = 1
+		# 只有一名玩家参与排名时不算垫底，不扣生命（见 R-12：孤儿玩家不受罚）
+		if n > 1:
+			for e in ranking:
+				if _same_score(e, ranking[n - 1]):
+					rewards[int(e.id)].life_lost = 1
 	for seat in extra_last:
 		var s := int(seat)
 		if rewards.has(s):
@@ -1132,6 +1135,9 @@ func _settle_rewards(ranking: Array, extra_last: Array = []) -> Dictionary:
 		players[seat].currency = maxi(0, int(players[seat].currency) + int(r.money))
 		if int(r.life_lost) > 0:
 			players[seat].health = maxi(0, int(players[seat].health) - int(r.life_lost))
+			if int(players[seat].health) <= 0:
+				# 淘汰仅从下一局起生效：记录出局局号，本局仍按正常结算展示。
+				players[seat].eliminated_match = match_number
 	return rewards
 
 func _rank_reward_at(index: int, n: int) -> int:

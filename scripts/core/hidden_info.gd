@@ -104,7 +104,8 @@ static func _player_snapshot(state: Node, seat: int, reveal_all: bool, viewer_id
 		slot["protected"] = int(player.get("protected_slot", -1)) == index
 		slots.append(slot)
 	return {"id": seat, "name": player.name, "count": player.cards.size(), "health": player.health,
-		"eliminated": int(player.get("health", 0)) <= 0,
+		# 淘汰延后一局生效：出局当局仍视为正常参与者（本局正常结算），下一局起才标观战
+		"eliminated": int(player.get("health", 0)) <= 0 and int(state.match_number) > int(player.get("eliminated_match", -1)),
 		"currency": int(player.currency),
 		"ready": state.initial_confirmed.has(seat), "slots": slots}
 
