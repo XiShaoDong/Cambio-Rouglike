@@ -42,7 +42,6 @@ static func snapshot_for(state: Node, viewer_id: int) -> Dictionary:
 		"kong_caller": state.kong_caller,
 		"match_number": state.match_number,
 		"ready_count": state.initial_confirmed.size() if phase == GameState.Phase.INITIAL_PEEK else 0,
-		"bet_ready": state.bets.keys() if phase == GameState.Phase.BET else [],
 		"event_log": state.event_log.duplicate(),
 		"result": state.last_result.duplicate(),
 		"run": state.run_state.duplicate(),
@@ -105,7 +104,7 @@ static func _player_snapshot(state: Node, seat: int, reveal_all: bool, viewer_id
 		slot["protected"] = int(player.get("protected_slot", -1)) == index
 		slots.append(slot)
 	return {"id": seat, "name": player.name, "count": player.cards.size(), "health": player.health,
-		"eliminated": int(player.get("health", 1)) <= 0,
+		"eliminated": int(player.get("health", 0)) <= 0,
 		"currency": int(player.currency),
 		"ready": state.initial_confirmed.has(seat), "slots": slots}
 

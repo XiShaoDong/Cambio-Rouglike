@@ -47,9 +47,6 @@ func _open_shield(seat_shield := 0) -> void:
 	GameState._server_initial_ready(0)
 	GameState._server_initial_ready(1)
 	GameState._server_initial_ready(2)
-	GameState._server_bet(0, KongRules.MIN_BET)
-	GameState._server_bet(1, KongRules.MIN_BET)
-	GameState._server_bet(2, KongRules.MIN_BET)
 
 ## 当前玩家 seat 抽一张并强制 pending 为该 rank（走 _server_take 保持合法状态机）。
 func _draw_rank(seat: int, rank: String, action_id: String) -> void:
@@ -140,8 +137,6 @@ func _open_joker(transform: bool) -> void:
 	GameState._server_start_match(0)
 	GameState._server_initial_ready(0)
 	GameState._server_initial_ready(1)
-	GameState._server_bet(0, KongRules.MIN_BET)
-	GameState._server_bet(1, KongRules.MIN_BET)
 	GameState._server_take(0, "draw", "jt0")
 	var cid: String = str(GameState.pending_draw.card_id)
 	GameState.cards[cid].rank = "JOKER"

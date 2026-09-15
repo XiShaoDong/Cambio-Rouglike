@@ -397,8 +397,7 @@ func _render_player_section(area: Control, player: Dictionary, viewer: int, is_t
 		ready_mark = "  [✓已准备]" if bool(player.get("ready", false)) else "  [等待]"
 	var eliminated := bool(player.get("eliminated", false))
 	var elim_suffix := "  [已淘汰·观战]" if eliminated else ""
-	name_label.text = "%s%s%s%s%s" % [player.name, suffix, ready_mark, elim_suffix,
-		"  ·  货币 %d" % int(player.get("currency", 0))]
+	name_label.text = "%s%s%s%s" % [player.name, suffix, ready_mark, elim_suffix]
 	name_label.add_theme_font_size_override("font_size", font_size)
 	name_label.add_theme_color_override("font_color", UITheme.color("player_self_text") if is_me else UITheme.color("player_other_text"))
 	if eliminated:
@@ -414,6 +413,7 @@ func _render_player_section(area: Control, player: Dictionary, viewer: int, is_t
 	if is_me:
 		name_label.text = "▼ " + name_label.text
 	_render_relic_bar(area, player, hand)
+	_render_stat_hud(area, player, hand)
 
 ## 玩家区域左侧遗物物品栏：复用单实例，刷新内容并定位到手牌左侧、垂直居中。
 func _render_relic_bar(area: Control, player: Dictionary, hand: GridContainer) -> void:
@@ -423,10 +423,40 @@ func _render_relic_bar(area: Control, player: Dictionary, hand: GridContainer) -
 		bar.name = "RelicBar"
 		bar.mouse_filter = Control.MOUSE_FILTER_PASS
 		area.add_child(bar)
+		# 首帧游戏面板刚显示时容器尚未布局，get_global_rect 取到旧值会导致遗物栏错位；
+		# 监听 HandGrid 重排，布局落定后重新定位。
+		hand.resized.connect(_position_relic_bar.bind(area))
 	bar.setup(main.latest_state, int(player.id))
+	_position_relic_bar(area)
+
+## 依据 HandGrid 已布局的全局矩形，把遗物栏定位到手牌左侧、垂直居中。
+func _position_relic_bar(area: Control) -> void:
+	var bar := area.get_node_or_null("RelicBar")
+	var hand: GridContainer = area.get_node_or_null("VBox/HandCenter/HandGrid")
+	if bar == null or hand == null:
+		return
 	var hand_rect: Rect2 = hand.get_global_rect()
-	var target := hand_rect.position + Vector2(-bar.size.x - 8, (hand_rect.size.y - bar.size.y) / 2.0)
-	bar.global_position = target
+	bar.global_position = hand_rect.position + Vector2(-bar.size.x - 8, (hand_rect.size.y - bar.size.y) / 2.0)
+
+## 玩家区域右侧金钱/生命 HUD：复用单实例，定位到手牌右侧、垂直居中（RelicBar 镜像）。
+func _render_stat_hud(area: Control, player: Dictionary, hand: GridContainer) -> void:
+	var hud := area.get_node_or_null("StatHud")
+	if hud == null:
+		hud = StatHud.new()
+		hud.name = "StatHud"
+		hud.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		area.add_child(hud)
+		hand.resized.connect(_position_stat_hud.bind(area))
+	hud.setup(main.latest_state, int(player.id))
+	_position_stat_hud(area)
+
+func _position_stat_hud(area: Control) -> void:
+	var hud := area.get_node_or_null("StatHud")
+	var hand: GridContainer = area.get_node_or_null("VBox/HandCenter/HandGrid")
+	if hud == null or hand == null:
+		return
+	var rect: Rect2 = hand.get_global_rect()
+	hud.global_position = rect.position + Vector2(rect.size.x + 8, (rect.size.y - hud.size.y) / 2.0)
 
 ## 渲染单个卡牌槽位到指定容器（主网格或 ExtraLayer），并登记到 _card_slots 供动画定位。
 ## use_fixed 时用 fixed_pos（全局坐标）绝对定位（罚牌附加行：按槽号固定，加新牌不移位）。

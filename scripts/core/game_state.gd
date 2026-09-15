@@ -74,7 +74,6 @@ var last_result: Dictionary = {}
 var event_log: Array[String] = []
 var run_state: Dictionary = KongRules.new_default_run()
 var match_number := 1
-var bets: Dictionary = {}  # key: seat；value: {amount:int, all_in:bool}
 var shop: Dictionary = {}        # {offers:[{index,relic_id,name,price}], sold:{offer:seat}, done:{seat:true}}（固定价购买）
 var shop_result: Dictionary = {} # 最近一次商店裁决 {offer_index:{relic_id,name,winner,amount}}；公开
 var match_id := ""
@@ -167,7 +166,6 @@ func _reset_match() -> void:
 	series_timer.stop()
 	last_result.clear()
 	event_log.clear()
-	bets.clear()
 	shop = {}
 	shop_result = {}
 	run_state = KongRules.new_default_run()
@@ -264,7 +262,7 @@ func _add_player(peer_id: int, display_name: String) -> void:
 		"cards": [],
 		"has_acted": false,
 		"offline": false,
-		"health": int(run_state.get("health", 3)),
+		"health": int(run_state.get("health", KongRules.START_HEALTH)),
 		"currency": KongRules.START_CURRENCY,
 		"wins": 0,
 		"protected_slot": -1,
@@ -470,7 +468,6 @@ func _deal_new_match() -> void:
 	slap_duel_timer.stop()
 	series_timer.stop()
 	event_log.clear()
-	bets.clear()
 	for seat in turn_order:
 		players[seat].cards.clear()
 		players[seat].has_acted = false
@@ -574,69 +571,11 @@ func _server_initial_ready(sender: int) -> void:
 	if initial_confirmed.size() < _alive_count():
 		_broadcast_state()
 		return
-	_start_bet_phase()
-
-## 进入押注阶段（开局记忆确认后、正式回合前）。
-func _start_bet_phase() -> void:
-	bets.clear()
-	phase = Phase.BET
-	_add_log("开始押注：入场 %d，+%d 递增。" % [KongRules.MIN_BET, KongRules.BET_STEP])
+	# 记忆确认后直接开始正式回合（押注阶段已取消，R-12）
+	current_player_id = _alive_order()[0]
+	phase = Phase.TURN_DRAW
+	_add_log("轮到 %s 行动。" % players[current_player_id].name)
 	_broadcast_state()
-
-func request_bet(amount: int) -> void:
-	if multiplayer.is_server():
-		_server_bet(_peer_to_seat(1), amount)
-	else:
-		server_bet.rpc_id(1, amount)
-
-@rpc("any_peer", "reliable")
-func server_bet(amount: int) -> void:
-	if multiplayer.is_server():
-		_server_bet(_peer_to_seat(multiplayer.get_remote_sender_id()), amount)
-
-func _server_bet(sender: int, amount: int) -> void:
-	if phase != Phase.BET:
-		_reject(sender, RejectCode.INVALID_PHASE)
-		return
-	if _guard_suspended(sender, ""):
-		return
-	if _guard_spectator(sender, ""):
-		return
-	if not players.has(sender) or bets.has(sender):
-		_reject(sender, RejectCode.DUPLICATE_OR_EXPIRED_ACTION)
-		return
-	var currency: int = int(players[sender].currency)
-	var all_in := false
-	var bet_amount := amount
-	if amount == 0:
-		if currency >= KongRules.MIN_BET:
-			_reject(sender, RejectCode.INVALID_AMOUNT)
-			return
-		all_in = true
-		bet_amount = currency
-	else:
-		if amount < KongRules.MIN_BET or amount > KongRules.MAX_BET:
-			_reject(sender, RejectCode.INVALID_AMOUNT)
-			return
-		if (amount - KongRules.MIN_BET) % KongRules.BET_STEP != 0:
-			_reject(sender, RejectCode.INVALID_AMOUNT)
-			return
-		if amount > currency:
-			_reject(sender, RejectCode.INVALID_AMOUNT)
-			return
-	_commit_bet(sender, bet_amount, all_in)
-
-func _commit_bet(seat: int, amount: int, all_in := false) -> void:
-	players[seat].currency = int(players[seat].currency) - amount
-	bets[seat] = {"amount": amount, "all_in": all_in}
-	_add_log("%s 押注 %d%s。" % [players[seat].name, amount, "（all-in）" if all_in else ""])
-	if bets.size() >= _alive_count():
-		current_player_id = _alive_order()[0]
-		phase = Phase.TURN_DRAW
-		_add_log("轮到 %s 行动。" % players[current_player_id].name)
-		_broadcast_state()
-	else:
-		_broadcast_state()
 
 func request_take(source: String, action_id := "") -> void:
 	if multiplayer.is_server():
@@ -1153,35 +1092,56 @@ func _advance_turn(final_mode := false) -> void:
 func _series_finished() -> bool:
 	return match_number >= int(run_state.get("match_limit", KongRules.DEFAULT_MATCH_LIMIT)) or _alive_count() <= 1
 
-## 押注经济结算：押注时已扣货币，此处按名次补发。
-## winners=最低分组；last_group=最高分组（含 Kong 首回合失败者/超限失败者）。
-## 第一名(组) 2×返还+垫底者押注，其余非最后 1.5×返还，最后一名 0，差额系统补足。
-## 返回 gains: {seat: net_gain}；bets 为空时 no-op。
-func _settle_economy(winners: Array, last_group: Array) -> Dictionary:
-	var gains: Dictionary = {}
-	if bets.is_empty():
-		return gains
-	var last_pot := 0
-	for seat in last_group:
-		last_pot += int(bets.get(int(seat), {}).get("amount", 0))
-	var winner_pot := last_pot
-	for seat in winners:
-		winner_pot += int(KongRules.WINNER_RETURN * float(bets.get(int(seat), {}).get("amount", 0)))
-	var per_winner := int(floor(winner_pot / float(maxi(1, winners.size()))))
-	for seat in winners:
-		var bet := int(bets.get(int(seat), {}).get("amount", 0))
-		players[seat].currency = int(players[seat].currency) + per_winner
-		gains[int(seat)] = per_winner - bet
-	for seat in _alive_order():
-		if int(seat) in winners or int(seat) in last_group:
-			continue
-		var bet := int(bets.get(int(seat), {}).get("amount", 0))
-		var ret := int(floor(KongRules.SAFE_RETURN * float(bet)))
-		players[seat].currency = int(players[seat].currency) + ret
-		gains[int(seat)] = ret - bet
-	for seat in last_group:
-		gains[int(seat)] = -int(bets.get(int(seat), {}).get("amount", 0))
-	return gains
+## 名次奖励结算（R-12）：按名次发钱，给垫底（及 extra_last）扣 1 生命。
+## ranking：ScoreSystem 排序结果（索引 0 = 最低分）；extra_last：额外按垫底处理者（超限/首回合 Kong）。
+## 返回 {seat: {"money": int, "life_lost": int}}，并已写回 currency/health。
+func _settle_rewards(ranking: Array, extra_last: Array = []) -> Dictionary:
+	var rewards: Dictionary = {}
+	var n := ranking.size()
+	var all_tied := n > 1 and _same_score(ranking[0], ranking[n - 1])
+	if all_tied:
+		for e in ranking:
+			rewards[int(e.id)] = {"money": KongRules.RANK_REWARD_MIDDLE, "life_lost": 0}
+	else:
+		var i := 0
+		while i < n:
+			var j := i
+			while j + 1 < n and _same_score(ranking[j + 1], ranking[i]):
+				j += 1
+			var total := 0
+			# 垫底组（含并列垫底）整体奖励为 0：只有当组不触及末位时才累加名次奖励。
+			if j < n - 1:
+				for k in range(i, j + 1):
+					total += _rank_reward_at(k, n)
+			var share := int(floor(float(total) / float(j - i + 1)))
+			for k in range(i, j + 1):
+				rewards[int(ranking[k].id)] = {"money": share, "life_lost": 0}
+			i = j + 1
+		for e in ranking:
+			if _same_score(e, ranking[n - 1]):
+				rewards[int(e.id)].life_lost = 1
+	for seat in extra_last:
+		var s := int(seat)
+		if rewards.has(s):
+			rewards[s].money = 0
+			rewards[s].life_lost = 1
+		else:
+			rewards[s] = {"money": 0, "life_lost": 1}
+	for seat in rewards:
+		var r: Dictionary = rewards[seat]
+		players[seat].currency = maxi(0, int(players[seat].currency) + int(r.money))
+		if int(r.life_lost) > 0:
+			players[seat].health = maxi(0, int(players[seat].health) - int(r.life_lost))
+	return rewards
+
+func _rank_reward_at(index: int, n: int) -> int:
+	if n <= 1:
+		return 0
+	if index == 0:
+		return KongRules.RANK_REWARD_FIRST
+	if index == n - 1:
+		return 0
+	return KongRules.RANK_REWARD_MIDDLE
 
 func _finish_game(reason := "") -> void:
 	slap_open = false
@@ -1195,25 +1155,22 @@ func _finish_game(reason := "") -> void:
 		_broadcast_state()
 		return
 	var ranking := _calculate_ranking()
+	var all_tied := ranking.size() > 1 and _same_score(ranking[0], ranking[ranking.size() - 1])
 	var winners: Array[int] = []
-	var losers: Array[int] = []
-	if not ranking.is_empty():
+	if not ranking.is_empty() and not all_tied:
 		for entry in ranking:
-			if _same_score(entry, ranking[0]): winners.append(int(entry.id))
-			if _same_score(entry, ranking[ranking.size() - 1]): losers.append(int(entry.id))
-	if winners.size() == ranking.size():
-		losers.clear()
-	if kong_called_first_turn and kong_caller not in winners:
-		losers = [kong_caller]
-	var economy: Dictionary = _settle_economy(winners, losers)
+			if _same_score(entry, ranking[0]):
+				winners.append(int(entry.id))
+	var extra_last: Array = []
+	if kong_called_first_turn and kong_caller >= 0:
+		extra_last.append(kong_caller)
+	var rewards: Dictionary = _settle_rewards(ranking, extra_last)
 	var penalized: Array = []
-	for seat in losers:
-		if bool(bets.get(int(seat), {}).get("all_in", false)):
-			players[seat].health = 0
-			players[seat].currency = 0
+	for seat in rewards:
+		if int(rewards[seat].life_lost) > 0:
 			penalized.append(int(seat))
 	last_result = {"ranking": ranking, "winners": winners, "penalized": penalized,
-		"first_turn_kong": kong_called_first_turn, "economy": economy}
+		"first_turn_kong": kong_called_first_turn, "rewards": rewards}
 	_add_log("对局结束，所有手牌已翻开。")
 	for entry in winners:
 		players[entry].wins = int(players[entry].get("wins", 0)) + 1
@@ -1389,16 +1346,13 @@ func _finish_game_over_hand(failed_seat: int) -> void:
 		if _is_relic_owner(seat, Relics.JOKER_TRANSFORM_ID):
 			joker_bonus[seat] = true
 	var ranking := ScoreSystem.calculate_ranking(players, cards, others, joker_bonus)
+	var rewards: Dictionary = _settle_rewards(ranking, [failed_seat])
 	var winners: Array[int] = []
 	if not ranking.is_empty():
 		for entry in ranking:
 			if _same_score(entry, ranking[0]):
 				winners.append(int(entry.id))
-	var economy: Dictionary = _settle_economy(winners, [failed_seat])
-	var penalized: Array = []
-	if bool(bets.get(failed_seat, {}).get("all_in", false)):
-		players[failed_seat].health = 0
-		penalized.append(failed_seat)
+	var penalized: Array = [failed_seat]
 	var failed_name: String = players.get(failed_seat, {}).get("name", "玩家")
 	_add_log("%s 手牌超过 %d 张，判定失败。" % [failed_name, KongRules.MAX_HAND_CARDS])
 	last_result = {
@@ -1407,7 +1361,7 @@ func _finish_game_over_hand(failed_seat: int) -> void:
 		"winners": winners,
 		"penalized": penalized,
 		"failed_hand": failed_seat,
-		"economy": economy,
+		"rewards": rewards,
 	}
 	_broadcast_sfx("winner")
 	_broadcast_state()

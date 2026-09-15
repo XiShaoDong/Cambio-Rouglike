@@ -39,9 +39,6 @@ func _open_with_finish(limit := 5) -> void:
 	GameState._server_initial_ready(0)
 	GameState._server_initial_ready(1)
 	GameState._server_initial_ready(2)
-	GameState._server_bet(0, KongRules.MIN_BET)
-	GameState._server_bet(1, KongRules.MIN_BET)
-	GameState._server_bet(2, KongRules.MIN_BET)
 	GameState._finish_game()
 
 func _test_relic_defs() -> void:

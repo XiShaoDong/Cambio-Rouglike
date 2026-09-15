@@ -23,6 +23,10 @@ const SLAP_DUEL_TARGET_MAX := 0.85
 const SPECIAL_RANKS := ["7", "8", "9", "10", "J", "Q"]
 
 const START_CURRENCY := 100
+const START_HEALTH := 2
+## 名次奖励（R-12）：第一 / 中间 / 垫底。
+const RANK_REWARD_FIRST := 40
+const RANK_REWARD_MIDDLE := 10
 const MIN_BET := 20
 const MAX_BET := 100
 const BET_STEP := 5
@@ -55,7 +59,7 @@ static func new_default_run() -> Dictionary:
 	# The MVP leaves modifiers disabled. Future relics/mutators belong in this
 	# serializable run state, rather than in match-flow conditionals.
 	return {
-		"health": 1,
+		"health": START_HEALTH,
 		"relic_slots": 2,
 		"relics": {},
 		"relic_owners": {},

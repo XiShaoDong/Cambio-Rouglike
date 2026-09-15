@@ -146,10 +146,6 @@ func _open() -> void:
 	GameState._server_initial_ready(0)
 	GameState._server_initial_ready(1)
 	GameState._server_initial_ready(2)
-	# BET 语义：全员确认后先押注再进抽牌（快照/回合语义与原先一致）
-	GameState._server_bet(0, KongRules.MIN_BET)
-	GameState._server_bet(1, KongRules.MIN_BET)
-	GameState._server_bet(2, KongRules.MIN_BET)
 
 func _test_page_construct() -> void:
 	await get_tree().process_frame

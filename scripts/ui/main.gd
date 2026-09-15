@@ -52,7 +52,6 @@ const PHASE_SLAP_WINDOW := 5
 const PHASE_SLAP_EXCHANGE := 6
 const PHASE_GAME_OVER := 7
 const PHASE_SLAP_DUEL := 8
-const PHASE_BET := 9
 const PHASE_SHOP := 10
 
 const PEEK_GLOW_COLOR := Color("3ef0f7ff")  # 查看牌蓝色光晕
@@ -64,7 +63,6 @@ const SLAP_GLOW_SIZE := 14
 const DuelBarScript := preload("res://scripts/ui/duel_bar.gd")
 const SettingsMenuScript := preload("res://scripts/ui/settings_menu.gd")
 const SettlementPageScript := preload("res://scenes/ui/settlement_page.tscn")
-const BetPanelScript := preload("res://scenes/ui/bet_panel.tscn")
 const ShopPanelScript := preload("res://scenes/ui/shop_panel.tscn")
 const JokerTransformPanelScript := preload("res://scenes/ui/joker_transform_panel.tscn")
 
@@ -133,7 +131,6 @@ var _was_in_match := false
 var _reconnect_panel: Control = null
 var _reconnect_expected := false
 var settlement_page: Control = null
-var bet_panel: Control = null
 var shop_panel: Control = null
 var joker_panel: Control = null
 var _shop_result_shown := ""
@@ -430,10 +427,6 @@ func _on_state_updated(state: Dictionary) -> void:
 		_open_settlement()
 	else:
 		_close_settlement()
-	if int(state.phase) == PHASE_BET:
-		_open_bet_panel()
-	else:
-		_close_bet_panel()
 	if int(state.phase) == PHASE_SHOP:
 		_open_shop_panel()
 	else:
@@ -519,10 +512,10 @@ func _open_settlement() -> void:
 	var run: Dictionary = latest_state.get("run", {})
 	var match_limit: int = int(run.get("match_limit", KongRules.DEFAULT_MATCH_LIMIT))
 	var series: Dictionary = (latest_state.get("result", {}) as Dictionary).get("series", {})
-	var economy: Dictionary = (latest_state.get("result", {}) as Dictionary).get("economy", {})
+	var rewards: Dictionary = (latest_state.get("result", {}) as Dictionary).get("rewards", {})
 	page.setup(model, Network.is_host, int(latest_state.get("match_number", 1)),
 		_play_pending_winner, _request_next_match, GameState.request_abort_match,
-		_on_settlement_flip, true, match_limit, series, economy)
+		_on_settlement_flip, true, match_limit, series, rewards)
 	settlement_page = page
 
 ## 结算联动：每轮翻牌时刻把对应棋盘卡牌从背面翻到正面（与结算页行内记分同步）。
@@ -538,25 +531,6 @@ func _close_settlement() -> void:
 	if settlement_page != null and is_instance_valid(settlement_page):
 		settlement_page.queue_free()
 	settlement_page = null
-
-## BET 阶段打开押注面板（幂等）。
-func _open_bet_panel() -> void:
-	if bet_panel != null and is_instance_valid(bet_panel):
-		return
-	var panel := BetPanelScript.instantiate()
-	panel.name = "BetPanel"
-	panel.z_index = 90
-	add_child(panel)
-	panel.setup(latest_state, _on_bet_confirm)
-	bet_panel = panel
-
-func _close_bet_panel() -> void:
-	if bet_panel != null and is_instance_valid(bet_panel):
-		bet_panel.queue_free()
-	bet_panel = null
-
-func _on_bet_confirm(amount: int) -> void:
-	GameState.request_bet(amount)
 
 ## SHOP 阶段打开/刷新商店面板（已存在则刷新内容，反映购买/售出/完成状态）。
 func _open_shop_panel() -> void:

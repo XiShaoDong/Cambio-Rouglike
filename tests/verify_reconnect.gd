@@ -54,9 +54,6 @@ func _open_match() -> void:
 	GameState._server_start_match(0)
 	GameState._server_initial_ready(0)
 	GameState._server_initial_ready(1)
-	# BET 语义：全员确认后押注完进入 TURN_DRAW（后续测试假定已进入正式回合）
-	GameState._server_bet(0, KongRules.MIN_BET)
-	GameState._server_bet(1, KongRules.MIN_BET)
 
 ## 重置并开局 3 人（seat0/1/2）。
 func _open_match3() -> void:

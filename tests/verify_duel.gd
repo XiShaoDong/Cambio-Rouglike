@@ -165,7 +165,7 @@ func _test_over_hand_fail() -> void:
 	_check("贴错罚牌后手牌 7 张", _count_nonempty(GameState.players[0].cards) == 7)
 	_check("手牌超限立即结算 GAME_OVER", GameState.phase == GameState.Phase.GAME_OVER)
 	_check("超限玩家被标记失败", int(GameState.last_result.get("failed_hand", -1)) == 0)
-	_check("超限玩家按最后一名失去押注(无押注时不扣生命)", int(GameState.players[0].health) == health_before)
+	_check("超限玩家按垫底扣 1 生命", int(GameState.players[0].health) == health_before - 1)
 	_check("其余玩家纳入点数结算", (GameState.last_result.get("ranking", []) as Array).size() == 1)
 	var rank_id: int = int((GameState.last_result.get("ranking", []) as Array)[0].id)
 	_check("失败玩家不在排名", rank_id != 0)

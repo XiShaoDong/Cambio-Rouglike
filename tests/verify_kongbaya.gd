@@ -34,10 +34,6 @@ func _open() -> void:
 	GameState._server_initial_ready(0)
 	GameState._server_initial_ready(1)
 	GameState._server_initial_ready(2)
-	# BET 语义：全员确认后押注完进入 TURN_DRAW（喊叫仅限正式回合）
-	GameState._server_bet(0, KongRules.MIN_BET)
-	GameState._server_bet(1, KongRules.MIN_BET)
-	GameState._server_bet(2, KongRules.MIN_BET)
 
 func _test_normal_flow() -> void:
 	_open()
@@ -87,9 +83,6 @@ func _test_first_turn_flag() -> void:
 	GameState._server_initial_ready(0)
 	GameState._server_initial_ready(1)
 	GameState._server_initial_ready(2)
-	GameState._server_bet(0, KongRules.MIN_BET)
-	GameState._server_bet(1, KongRules.MIN_BET)
-	GameState._server_bet(2, KongRules.MIN_BET)
 	GameState._server_take(0, "draw", "kb-f2")
 	GameState._server_discard_draw(0, "kb-f3")  # 轮到 seat1，seat0 has_acted=true
 	GameState.current_player_id = 0
