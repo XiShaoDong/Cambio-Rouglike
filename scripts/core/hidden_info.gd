@@ -36,6 +36,7 @@ static func snapshot_for(state: Node, viewer_id: int) -> Dictionary:
 		"slap_open": bool(state.slap_open),
 		"slap_duel": _slap_duel_snapshot(state) if phase == GameState.Phase.SLAP_DUEL else {},
 		"slap_exchange_actor": int(state.slap_exchange.get("actor", 0)),
+		"q_decision": _q_decision_snapshot(state) if phase == GameState.Phase.Q_DECISION else {},
 		"suspended": _suspended(state),
 		"offline_players": _offline_players(state),
 		"kong_caller": state.kong_caller,
@@ -112,6 +113,12 @@ static func _player_snapshot(state: Node, seat: int, reveal_all: bool, viewer_id
 static func public_card(state: Node, card_id: String) -> Dictionary:
 	var card: Dictionary = state.cards[card_id]
 	return {"id": card.id, "rank": card.rank, "suit": card.suit, "value": card.value, "label": KongRules.display_name(card)}
+
+## Q 决策公开进度：操作者/目标槽位（与 peek_highlight 一致）+ 是否已查看自己的一张牌（不含牌面）。
+static func _q_decision_snapshot(state: Node) -> Dictionary:
+	var q: Dictionary = state.q_context
+	return {"actor": int(q.get("actor", -1)), "target": int(q.get("target", -1)),
+		"target_slot": int(q.get("target_slot", -1)), "own_viewed": bool(q.get("own_viewed", false))}
 
 ## 商店快照：offers 含 id/name/price 与 sold_by（固定价购买公开），done 为已完成玩家名单。
 static func _shop_snapshot(state: Node) -> Dictionary:

@@ -69,7 +69,7 @@ func _start_queen(sender: int, data: Dictionary, action_id := "") -> void:
 	if game._is_protected(q_target, q_slot):
 		game._reject(sender, game.RejectCode.PROTECTED, action_id)
 		return
-	game.q_context = {"actor": sender, "target": q_target, "target_slot": q_slot}
+	game.q_context = {"actor": sender, "target": q_target, "target_slot": q_slot, "own_viewed": false}
 	game.phase = game.Phase.Q_DECISION
 	game._send_reveal(sender, "Q：查看后决定是否交换", [game.peek.public_card(game.players[q_target].cards[q_slot])], {"player_id": q_target, "slot": q_slot})
 	game._broadcast_peek_highlight(sender, {"player_id": q_target, "slot": q_slot})

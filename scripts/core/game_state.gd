@@ -854,26 +854,69 @@ func _server_q_decision(sender: int, exchange: bool, own_slot: int, action_id :=
 	if sender != int(q_context.get("actor", 0)):
 		_reject(sender, RejectCode.NOT_CURRENT_PLAYER, action_id)
 		return
+	if not bool(q_context.get("own_viewed", false)):
+		# Q 流程两步：必须先 q_view_own 查看自己的一张牌，才能做交换/不交换决策
+		_reject(sender, RejectCode.INVALID_PHASE, action_id)
+		return
 	if not _check_action_id(sender, action_id):
 		_reject(sender, RejectCode.DUPLICATE_OR_EXPIRED_ACTION, action_id)
 		return
 	if exchange:
 		var target := int(q_context.target)
 		var target_slot := int(q_context.target_slot)
-		if not _valid_slot(sender, own_slot) or not _valid_slot(target, target_slot):
+		var own_viewed_slot := int(q_context.get("own_slot", -1))
+		if not _valid_slot(sender, own_viewed_slot) or not _valid_slot(target, target_slot):
 			_reject(sender, RejectCode.INVALID_SLOT, action_id)
 			return
 		if _is_protected(target, target_slot):
 			_reject(sender, RejectCode.PROTECTED, action_id)
 			return
-		swap.swap(sender, own_slot, target, target_slot, "%s 用 Q 交换了一张牌。" % players[sender].name)
+		swap.swap(sender, own_viewed_slot, target, target_slot, "%s 用 Q 交换了一张牌。" % players[sender].name)
 		var a_data: Dictionary = _card_public(players[target].cards[target_slot])
-		var b_data: Dictionary = _card_public(players[sender].cards[own_slot])
-		_broadcast_exchange({"kind": "swap", "a": sender, "a_slot": own_slot, "b": target, "b_slot": target_slot, "a_data": a_data, "b_data": b_data})
+		var b_data: Dictionary = _card_public(players[sender].cards[own_viewed_slot])
+		_broadcast_exchange({"kind": "swap", "a": sender, "a_slot": own_viewed_slot, "b": target, "b_slot": target_slot, "a_data": a_data, "b_data": b_data})
 	else:
 		_add_log("%s 用 Q 放弃了交换。" % players[sender].name)
 	q_context.clear()
 	_discard_pending_and_open_slap("advance")
+
+func request_q_view_own(own_slot: int, action_id := "") -> void:
+	if multiplayer.is_server():
+		_server_q_view_own(_peer_to_seat(1), own_slot, action_id)
+	else:
+		server_q_view_own.rpc_id(1, own_slot, action_id)
+
+@rpc("any_peer", "reliable")
+func server_q_view_own(own_slot: int, action_id: String) -> void:
+	if multiplayer.is_server():
+		_server_q_view_own(_peer_to_seat(multiplayer.get_remote_sender_id()), own_slot, action_id)
+
+func _server_q_view_own(sender: int, own_slot: int, action_id := "") -> void:
+	if phase != Phase.Q_DECISION:
+		_reject(sender, RejectCode.INVALID_PHASE, action_id)
+		return
+	if _guard_suspended(sender, action_id):
+		return
+	if _guard_spectator(sender, action_id):
+		return
+	if sender != int(q_context.get("actor", 0)):
+		_reject(sender, RejectCode.NOT_CURRENT_PLAYER, action_id)
+		return
+	if bool(q_context.get("own_viewed", false)):
+		_reject(sender, RejectCode.INVALID_PHASE, action_id)
+		return
+	if not _check_action_id(sender, action_id):
+		_reject(sender, RejectCode.DUPLICATE_OR_EXPIRED_ACTION, action_id)
+		return
+	if not _valid_slot(sender, own_slot):
+		_reject(sender, RejectCode.INVALID_SLOT, action_id)
+		return
+	q_context["own_slot"] = own_slot
+	q_context["own_viewed"] = true
+	_send_reveal(sender, "Q：查看自己的牌", [_card_public(players[sender].cards[own_slot])], {"player_id": sender, "slot": own_slot})
+	_broadcast_peek_highlight(sender, {"player_id": sender, "slot": own_slot})
+	_add_log("%s 查看了自己的一张牌。" % players[sender].name)
+	_broadcast_state()
 
 func request_slap(target_player: int, slot: int, action_id := "") -> void:
 	if multiplayer.is_server():

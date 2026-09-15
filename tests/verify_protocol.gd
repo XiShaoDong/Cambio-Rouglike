@@ -110,6 +110,63 @@ func run_checks() -> void:
 		GameState.current_player_id = 0
 		GameState.phase = GameState.Phase.TURN_DECISION
 
+	# Q 流程测试：看对方一张牌 → 查看自己一张牌 → 决定是否交换（两步，漏看自己牌前决策被拒）
+	var queen_id := ""
+	for cid in GameState.cards:
+		if str(GameState.cards[cid].rank) == "Q":
+			queen_id = cid
+			break
+	if not queen_id.is_empty():
+		GameState.pending_draw = {"card_id": queen_id, "source": "draw"}
+		GameState.current_player_id = 0
+		GameState.phase = GameState.Phase.TURN_DECISION
+		GameState._server_use_ability(0, {"target": 1, "target_slot": 0}, "q-view-1")
+		_check("Q 发动后进入 Q_DECISION", GameState.phase == GameState.Phase.Q_DECISION)
+		var qd0: Dictionary = GameState._snapshot_for(0).get("q_decision", {})
+		_check("快照 q_decision=操作者/未查看自己牌",
+			int(qd0.get("actor", -1)) == 0 and int(qd0.get("target", -1)) == 1 and not bool(qd0.get("own_viewed", true)))
+		seen_rejects.clear()
+		GameState._server_q_decision(0, false, -1, "q-view-2")
+		_check("未查看自己牌前决策被拒 INVALID_PHASE",
+			_rejected(GameState.RejectCode.INVALID_PHASE) and GameState.phase == GameState.Phase.Q_DECISION)
+		seen_rejects.clear()
+		GameState._server_q_view_own(1, 0, "q-view-3")
+		_check("非操作者查看自己牌被拒 NOT_CURRENT_PLAYER", _rejected(GameState.RejectCode.NOT_CURRENT_PLAYER))
+		seen_rejects.clear()
+		GameState._server_q_view_own(0, 99, "q-view-4")
+		_check("Q 查看越界槽位被拒 INVALID_SLOT", _rejected(GameState.RejectCode.INVALID_SLOT))
+		last_reveal = {}
+		GameState._server_q_view_own(0, 0, "q-view-5")
+		_check("Q 查看自己牌触发 private_reveal_received", not last_reveal.is_empty())
+		if not last_reveal.is_empty():
+			_check("Q 查看自己牌 reveal 指向自己 slot 0",
+				int(last_reveal.target.get("player_id", -1)) == 0 and int(last_reveal.target.get("slot", -1)) == 0)
+			_check("Q 查看自己牌 reveal 卡面正确", str(last_reveal.cards[0].get("id", "")) == str(GameState.players[0].cards[0]))
+		var qd1: Dictionary = GameState._snapshot_for(0).get("q_decision", {})
+		_check("查看后仍 Q_DECISION 且 own_viewed=true",
+			GameState.phase == GameState.Phase.Q_DECISION and bool(qd1.get("own_viewed", false)))
+		seen_rejects.clear()
+		GameState._server_q_view_own(0, 1, "q-view-6")
+		_check("重复查看自己牌被拒 INVALID_PHASE", _rejected(GameState.RejectCode.INVALID_PHASE))
+		seen_rejects.clear()
+		var own_before: String = GameState.players[0].cards[0]
+		var target_before: String = GameState.players[1].cards[0]
+		GameState._server_q_decision(0, true, -1, "q-view-7")
+		_check("Q 交换后开贴牌窗且回 TURN_DRAW", GameState.slap_open and GameState.phase == GameState.Phase.TURN_DRAW)
+		_check("Q 交换互换的是两张已查看的牌",
+			str(GameState.players[0].cards[0]) == target_before and str(GameState.players[1].cards[0]) == own_before)
+		seen_rejects.clear()
+		GameState._server_q_decision(0, false, -1, "q-view-8")
+		_check("Q 决策后上下文清空再决策被拒 INVALID_PHASE", _rejected(GameState.RejectCode.INVALID_PHASE))
+		# 回到 0 的 TURN_DECISION 供后续测试（重置 pending 为另一张非能力牌，并复位贴牌窗）
+		for cid in GameState.cards:
+			if str(GameState.cards[cid].rank) == "A":
+				GameState.pending_draw = {"card_id": cid, "source": "draw"}
+				break
+		GameState.current_player_id = 0
+		GameState.phase = GameState.Phase.TURN_DECISION
+		GameState.slap_open = false
+
 	seen_rejects.clear()
 	GameState._server_replace(0, 0, "r2")
 	_check("合法替换后 slap_open 且 TURN_DRAW", GameState.slap_open and GameState.phase == GameState.Phase.TURN_DRAW)

@@ -260,12 +260,15 @@ func _render_controls(phase: int, is_current: bool) -> void:
 		_render_suspended_controls()
 		return
 	if phase == PHASE_Q_DECISION and is_current:
-		var keep: Button = main._button("Q：不交换")
-		keep.pressed.connect(func(): GameState.request_q_decision(false, -1, main._next_action_id()))
-		main._hint_actions.add_child(keep)
-		var exchange: Button = main._button("Q：交换（再点自己一张牌）")
-		exchange.pressed.connect(func(): main.interaction.action_mode = "q_exchange"; main._render_game())
-		main._hint_actions.add_child(exchange)
+		var qd: Dictionary = main.latest_state.get("q_decision", {})
+		if bool(qd.get("own_viewed", false)):
+			main.interaction.action_mode = ""
+			var keep: Button = main._button("Q：不交换")
+			keep.pressed.connect(func(): GameState.request_q_decision(false, -1, main._next_action_id()))
+			main._hint_actions.add_child(keep)
+			var exchange: Button = main._button("Q：交换（两张已查看的牌）")
+			exchange.pressed.connect(func(): GameState.request_q_decision(true, -1, main._next_action_id()))
+			main._hint_actions.add_child(exchange)
 	elif phase == PHASE_TURN_DECISION and is_current:
 		# Joker 变换：当前玩家抽到 Joker 且持有 Joker 遗物 → 提供"变换 Joker"入口
 		var pending: Dictionary = main.latest_state.get("pending", {})

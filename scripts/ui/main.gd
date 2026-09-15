@@ -708,8 +708,13 @@ func _hint_for(phase: int, is_current: bool) -> String:
 		PHASE_TURN_DECISION:
 			return _decision_hint(is_current, name)
 		PHASE_Q_DECISION:
+			var qd: Dictionary = latest_state.get("q_decision", {})
 			if is_current:
-				return "Swap or not? Pick your own card to exchange, or choose not to"
+				if not bool(qd.get("own_viewed", false)):
+					return "Peeked their card. Now pick one of your own cards to peek"
+				return "Swap the two viewed cards, or keep yours?"
+			if not bool(qd.get("own_viewed", false)):
+				return "Waiting for %s to peek one of their own cards" % name
 			return "Waiting for %s to decide" % name
 		PHASE_SLAP_WINDOW:
 			return "Slap: click a card of the same rank. Wrong slap draws a penalty"
@@ -748,9 +753,9 @@ func _decision_hint(is_current: bool, name: String) -> String:
 		"peek_other":
 			return "Choose another player's card to peek"
 		"queen_target":
-			return "Peek another player's card, then decide to swap"
-		"q_exchange":
-			return "Choose your own card to exchange"
+			return "Peek another player's card, then peek one of your own cards"
+		"q_view_own":
+			return "Peek one of your own cards, then decide to swap"
 		"jack_target":
 			return "Click the opponent's card to swap"
 		"jack_own":

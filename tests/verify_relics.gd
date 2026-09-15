@@ -103,8 +103,8 @@ func _test_guard_q_start() -> void:
 func _test_guard_q_exchange() -> void:
 	_open_shield(1)
 	var protected_slot: int = GameState.players[1].protected_slot
-	# 手动构造 Q 上下文指向护盾格，直接测交换分支的护盾拒绝
-	GameState.q_context = {"actor": 0, "target": 1, "target_slot": protected_slot}
+	# 手动构造 Q 上下文指向护盾格（已按新流程查看自己牌），直接测交换分支的护盾拒绝
+	GameState.q_context = {"actor": 0, "target": 1, "target_slot": protected_slot, "own_viewed": true, "own_slot": 0}
 	GameState.phase = GameState.Phase.Q_DECISION
 	GameState._server_q_decision(0, true, 0, "qe1")
 	_check("Q 交换指定护盾格被拒", _rejections == 1)

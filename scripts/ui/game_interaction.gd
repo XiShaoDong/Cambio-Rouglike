@@ -57,10 +57,10 @@ func on_card_pressed(player_id: int, slot: int) -> void:
 			if player_id != viewer:
 				_play_select()
 				GameState.request_use_ability({"target": player_id, "target_slot": slot}, main._next_action_id())
-		"q_exchange":
+		"q_view_own":
 			if player_id == viewer:
 				_play_select()
-				GameState.request_q_decision(true, slot, main._next_action_id())
+				GameState.request_q_view_own(slot, main._next_action_id())
 		"jack_target":
 			if player_id != viewer:
 				_play_select()
@@ -100,7 +100,7 @@ func card_actionable(player_id: int, _slot: int) -> bool:
 	if not is_current:
 		return false
 	match action_mode:
-		"replace", "peek_own", "q_exchange":
+		"replace", "peek_own", "q_view_own":
 			return player_id == viewer
 		"peek_other", "queen_target":
 			return player_id != viewer
@@ -128,7 +128,7 @@ func mode_instruction(fallback: String) -> String:
 		"peek_own": return "7 / 8：请选择自己要查看的手牌。"
 		"peek_other": return "9 / 10：请选择其他玩家的一张牌。"
 		"queen_target": return "Q：请选择其他玩家的一张牌查看。"
-		"q_exchange": return "Q：请选择自己交出去的牌。"
+		"q_view_own": return "Q：请选择自己的一张牌查看，再决定是否交换。"
 		"jack_target": return "J：点击要换的对方牌。"
 		"jack_own": return "J：再点击自己要换的牌。"
 	return fallback
@@ -143,3 +143,7 @@ func reset_for_phase(state: Dictionary) -> void:
 	selected_their_slot = -1
 	if int(state.phase) == 3 and int(state.viewer_id) == int(state.current_player):  # TURN_DECISION
 		action_mode = "replace"
+	var qd: Dictionary = state.get("q_decision", {})
+	if int(state.phase) == 4 and int(state.viewer_id) == int(qd.get("actor", -1)) \
+			and not bool(qd.get("own_viewed", true)):  # Q_DECISION：操作者先查看自己一张牌
+		action_mode = "q_view_own"
