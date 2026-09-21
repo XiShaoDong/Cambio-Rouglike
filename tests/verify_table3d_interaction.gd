@@ -20,6 +20,8 @@ func _check(name: String, ok: bool) -> void:
 func _run() -> void:
 	_test_layout_pick()
 	await _test_card_block()
+	_test_camera_accessor()
+	await _test_picker()
 
 func _test_layout_pick() -> void:
 	_check("PICK_LAYER == 2", Table3dLayout.PICK_LAYER == 2)
@@ -59,3 +61,30 @@ func _test_card_block() -> void:
 	_check("flash 立即染色", hidden.block_color() == Color(0.2, 0.6, 1.0))
 	await get_tree().create_timer(0.15).timeout
 	_check("flash 结束后恢复", hidden.block_color() == Table3dLayout.UNKNOWN_COLOR)
+
+func _test_camera_accessor() -> void:
+	var rig := Table3dCamera.new()
+	add_child(rig)
+	_check("camera_node 非空且为 Camera3D", rig.camera_node() != null and rig.camera_node() is Camera3D)
+
+func _test_picker() -> void:
+	var root := Node3D.new()
+	add_child(root)
+	root.position = Vector3(50.0, 0.0, 0.0)
+	var block := CardBlock.new()
+	root.add_child(block)
+	block.setup({"card_id": "c9"})
+	block.set_pick({"kind": "slot", "seat": 2, "slot": 1})
+	var cam := Camera3D.new()
+	root.add_child(cam)
+	cam.position = Vector3(0.0, 0.0, 2.0)
+	cam.look_at(root.global_position)
+	await get_tree().physics_frame
+	var center := get_viewport().get_visible_rect().size * 0.5
+	var hit := Table3dPicker.pick(cam, root.get_world_3d(), center)
+	_check("拾取命中槽位", str(hit.get("kind", "")) == "slot" and int(hit.get("seat", -1)) == 2 and int(hit.get("slot", -1)) == 1)
+	cam.position = Vector3(0.0, 5.0, 5.0)
+	cam.look_at(Vector3(0.0, 3.0, 0.0))
+	await get_tree().physics_frame
+	var miss := Table3dPicker.pick(cam, root.get_world_3d(), center)
+	_check("准星指空处未命中", miss.is_empty())

@@ -34,6 +34,11 @@ func _build() -> void:
 	_camera.name = "Camera3D"
 	_pivot.add_child(_camera)
 
+## 相机节点访问器（供射线拾取用）。
+func camera_node() -> Camera3D:
+	_build()
+	return _camera
+
 ## 把相机摆到角度 seat_angle_deg 对应的座位后方，基准朝向桌心。
 ## 座位在圆上角度 a（0°=近侧 +Z），rig +Z 沿径向外，故 -Z（相机视线）朝桌心。
 func frame_for_seat(seat_angle_deg: float) -> void:
