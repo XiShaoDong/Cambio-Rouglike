@@ -84,6 +84,7 @@ run_single "shop"       res://tests/verify_shop.tscn
 run_single "relics"     res://tests/verify_relics.tscn
 run_single "card_skin"  res://tests/verify_card_skin.tscn
 run_single "table3d_layout" res://tests/verify_table3d_layout.tscn
+run_single "table3d" res://tests/verify_table3d.tscn
 run_single "hint"       res://tests/verify_hint.tscn
 
 if [ "$QUICK" -eq 1 ]; then
