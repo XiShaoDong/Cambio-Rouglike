@@ -52,6 +52,7 @@ func _set_table3d(on: bool) -> void:
 		background.visible = false
 		game_panel.visible = false
 		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+		print("[table3d] 进入 3D 预览 mouse_mode=%d（2=CAPTURED，1=VISIBLE）" % Input.get_mouse_mode())
 		table3d.render(latest_state)
 	else:
 		if table3d != null and is_instance_valid(table3d):
@@ -69,7 +70,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			_set_table3d(false)
 			get_viewport().set_input_as_handled()
 			return
-		if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		if event is InputEventMouseMotion:
+			# 不依赖鼠标捕获是否生效：3D 预览期间 2D 已隐藏，任何鼠标移动都用于环视
 			if table3d != null and is_instance_valid(table3d):
 				table3d.camera.look(event.relative)
 				get_viewport().set_input_as_handled()
