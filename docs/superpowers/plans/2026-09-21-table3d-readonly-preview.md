@@ -11,6 +11,7 @@
 ## Global Constraints
 
 - 分支 `feature/3d-table`（已创建）。提交按 `feat:` / `test:` / `doc:` 分类。
+- 每新增一个 `.gd`，Godot 会生成同名 `.uid`；提交时**一并 `git add` 该 `.uid`**（仓库既有脚本均纳入版本）。若 `class_name` 首次编译报未声明，先跑一次 `--headless --path . --import` 重建全局类缓存（本地缓存为 gitignore 产物，不影响提交）。
 - **不改** `scripts/core/*`、`scripts/net/*`、`tests/*`（现有）、`docs/网络协议_V1.md`、`scripts/core/hidden_info.gd`。
 - **不做** 点击交互、动画、贴图卡面、3D 菜单/遗物栏（Milestone 2+）。
 - 已知 vs 未知牌**只**由快照 slot 是否含 `"card"` 决定，3D 层不做隐私判断。
@@ -79,7 +80,7 @@ func _check(name: String, ok: bool) -> void:
 		print("[PASS] " + name)
 	else:
 		failures += 1
-	printerr("[FAIL] " + name)
+		printerr("[FAIL] " + name)
 
 func _arr_eq(a: Array, b: Array) -> bool:
 	if a.size() != b.size():
@@ -253,7 +254,7 @@ func _check(name: String, ok: bool) -> void:
 		print("[PASS] " + name)
 	else:
 		failures += 1
-	printerr("[FAIL] " + name)
+		printerr("[FAIL] " + name)
 
 func _run() -> void:
 	_test_card_block()

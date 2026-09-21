@@ -15,7 +15,7 @@ func _check(name: String, ok: bool) -> void:
 		print("[PASS] " + name)
 	else:
 		failures += 1
-	printerr("[FAIL] " + name)
+		printerr("[FAIL] " + name)
 
 func _arr_eq(a: Array, b: Array) -> bool:
 	if a.size() != b.size():
