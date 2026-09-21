@@ -11,6 +11,10 @@ const SEAT_RADIUS := 2.4
 const UNKNOWN_COLOR := Color(0.20, 0.20, 0.22)
 const LOW_COLOR := Color(0.45, 0.55, 0.62)  # 2-6 灰蓝
 
+const PICK_LAYER := 2
+const PICK_MASK := 1 << (PICK_LAYER - 1)  # 2
+const ACTIONABLE_COLOR := Color(0.95, 0.82, 0.35)  # 可操作高亮（金）
+
 const COLOR_BY_RANK := {
 	"JOKER": Color(0.85, 0.25, 0.25),  # 红
 	"A": Color(0.90, 0.78, 0.35),      # 金

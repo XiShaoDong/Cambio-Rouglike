@@ -1,8 +1,8 @@
 class_name CardBlock
 extends Node3D
-## 3D 卡牌方块视图（Milestone 1 只读预览）
-## 职责：把快照 slot 投影成一个方块 + 一个 Label3D（显示 rank+suit）。
-## 纯展示层：不做规则/隐私判断（slot 是否含 "card" 由快照决定）。
+## 3D 卡牌方块视图（Milestone 1 只读预览 + Milestone 2 拾取/高亮/瞬时揭示）
+## 职责：方块 + Label3D 展示 slot；提供拾取标记、可操作高亮、瞬时揭示。
+## 纯展示层：不做规则/隐私判断（已知/未知由快照 slot 是否含 "card" 决定）。
 
 const PROTECTED_COLOR := Color(0.62, 0.35, 0.85)
 
@@ -10,6 +10,9 @@ var _built := false
 var _mesh: MeshInstance3D
 var _label: Label3D
 var _material: StandardMaterial3D
+var _area: Area3D
+var _last_slot: Dictionary = {}
+var _actionable := false
 
 func _ready() -> void:
 	_build()
@@ -32,20 +35,79 @@ func _build() -> void:
 	_label.font_size = 96
 	_label.position = Vector3(0.0, 0.0, Table3dLayout.BLOCK_SIZE.z * 0.5 + 0.02)
 	add_child(_label)
+	# 拾取标记：独立物理层，仅用于射线拾取
+	_area = Area3D.new()
+	_area.name = "PickArea"
+	var shape := CollisionShape3D.new()
+	var pick_box := BoxShape3D.new()
+	pick_box.size = Table3dLayout.BLOCK_SIZE
+	shape.shape = pick_box
+	_area.add_child(shape)
+	_area.collision_layer = Table3dLayout.PICK_MASK
+	_area.collision_mask = 0
+	add_child(_area)
 
-## 设置槽位内容：已知牌显示点数标签 + 分类色；未知牌深灰无标签。
-## protected 槽位叠加紫色自发光。
+## 设置槽位内容：已知牌显示点数标签；颜色按 protected > actionable > 分类色。
 func setup(slot: Dictionary) -> void:
 	_build()
-	var is_protected := bool(slot.get("protected", false))
-	var color := PROTECTED_COLOR if is_protected else Table3dLayout.slot_color(slot)
-	_material.albedo_color = color
-	_material.emission_enabled = is_protected
-	if is_protected:
-		_material.emission = color
-		_material.emission_energy_multiplier = 1.5
+	_last_slot = slot
 	var card: Dictionary = slot.get("card", {})
 	_label.text = "" if card.is_empty() else card_text(card)
+	_apply_color()
+
+## 设置拾取元数据（{"kind":"slot","seat":..,"slot":..} 或 hud/deck/...）。
+func set_pick(meta: Dictionary) -> void:
+	_build()
+	_area.set_meta("pick", meta)
+
+func pick_meta() -> Dictionary:
+	if _area == null:
+		return {}
+	return _area.get_meta("pick", {})
+
+## 可操作高亮（金色）。
+func set_actionable(on: bool) -> void:
+	_build()
+	_actionable = on
+	_apply_color()
+
+## 瞬时揭示：临时显示 card 正面；color.a>0 时同时染色。用 restore() 回到最近 setup(slot)。
+func reveal(card: Dictionary, color := Color(0, 0, 0, 0)) -> void:
+	_build()
+	_label.text = card_text(card)
+	if color.a > 0.0:
+		_material.albedo_color = color
+		_material.emission_enabled = false
+
+## 回到最近一次 setup(slot) 的状态（标签 + 颜色）。
+func restore() -> void:
+	_build()
+	setup(_last_slot)
+
+## 短暂染色（不改标签），dur 秒后恢复。
+func flash(color: Color, dur: float) -> void:
+	_build()
+	_material.albedo_color = color
+	_material.emission_enabled = false
+	get_tree().create_timer(dur).timeout.connect(func():
+		if is_instance_valid(self):
+			_apply_color())
+
+func _apply_color() -> void:
+	var is_protected := bool(_last_slot.get("protected", false))
+	if is_protected:
+		_material.albedo_color = PROTECTED_COLOR
+		_material.emission_enabled = true
+		_material.emission = PROTECTED_COLOR
+		_material.emission_energy_multiplier = 1.5
+	elif _actionable:
+		_material.albedo_color = Table3dLayout.ACTIONABLE_COLOR
+		_material.emission_enabled = true
+		_material.emission = Table3dLayout.ACTIONABLE_COLOR
+		_material.emission_energy_multiplier = 0.6
+	else:
+		_material.albedo_color = Table3dLayout.slot_color(_last_slot)
+		_material.emission_enabled = false
 
 ## 卡片显示文本（"A♥"；Joker 显示 "JOKER"；空卡空串）。
 static func card_text(card: Dictionary) -> String:
