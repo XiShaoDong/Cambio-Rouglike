@@ -8,6 +8,7 @@ const PITCH_LIMIT := 60.0
 const YAW_LIMIT := 90.0
 const DEFAULT_PITCH := 20.0  # 正=俯视
 const EYE_HEIGHT := 1.6
+const MOUSE_SENSITIVITY := 0.5  # 度/像素（原 1.0 过快，减半）
 
 var base_yaw := 0.0
 var yaw := 0.0
@@ -51,10 +52,12 @@ func frame_for_seat(seat_angle_deg: float) -> void:
 	pitch = DEFAULT_PITCH
 	_apply()
 
-## 鼠标相对位移（像素）驱动环视：yaw 夹在基准 ±YAW_LIMIT，pitch 夹 ±PITCH_LIMIT。
+## 鼠标相对位移（像素）驱动环视：鼠标右移 → 视角右转（yaw 递减；
+## Godot 中 +yaw 为向左转），灵敏度 MOUSE_SENSITIVITY 度/像素。
+## yaw 夹在基准 ±YAW_LIMIT，pitch 夹 ±PITCH_LIMIT。
 func look(rel: Vector2) -> void:
-	yaw = clampf(yaw + rel.x, base_yaw - YAW_LIMIT, base_yaw + YAW_LIMIT)
-	pitch = clampf(pitch + rel.y, -PITCH_LIMIT, PITCH_LIMIT)
+	yaw = clampf(yaw - rel.x * MOUSE_SENSITIVITY, base_yaw - YAW_LIMIT, base_yaw + YAW_LIMIT)
+	pitch = clampf(pitch + rel.y * MOUSE_SENSITIVITY, -PITCH_LIMIT, PITCH_LIMIT)
 	_apply()
 
 func _apply() -> void:
