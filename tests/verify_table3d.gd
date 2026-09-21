@@ -19,6 +19,7 @@ func _check(name: String, ok: bool) -> void:
 
 func _run() -> void:
 	_test_card_block()
+	_test_camera()
 
 func _test_card_block() -> void:
 	var known := CardBlock.new()
@@ -40,3 +41,20 @@ func _test_card_block() -> void:
 	_check("CardBlock 护盾仍显示点数", prot.label_text() == "K♠")
 	_check("CardBlock Joker 文本", CardBlock.card_text({"rank": "JOKER", "suit": "red"}) == "JOKER")
 	_check("CardBlock 空卡文本", CardBlock.card_text({}) == "")
+
+func _test_camera() -> void:
+	var rig := Table3dCamera.new()
+	add_child(rig)
+	rig.frame_for_seat(0.0)
+	_check("相机基准朝向 0°", is_equal_approx(rig.base_yaw, 0.0))
+	_check("相机默认俯角", is_equal_approx(rig.pitch, Table3dCamera.DEFAULT_PITCH))
+	_check("相机座位位置", rig.position.is_equal_approx(Vector3(0.0, 1.6, Table3dLayout.SEAT_RADIUS)))
+	rig.look(Vector2(1000.0, 1000.0))
+	_check("yaw 上夹 90", is_equal_approx(rig.yaw, Table3dCamera.YAW_LIMIT))
+	_check("pitch 上夹 60", is_equal_approx(rig.pitch, Table3dCamera.PITCH_LIMIT))
+	rig.look(Vector2(-5000.0, -5000.0))
+	_check("yaw 下夹 -90", is_equal_approx(rig.yaw, -Table3dCamera.YAW_LIMIT))
+	_check("pitch 下夹 -60", is_equal_approx(rig.pitch, -Table3dCamera.PITCH_LIMIT))
+	rig.frame_for_seat(180.0)
+	_check("对面基准朝向 180°", is_equal_approx(rig.base_yaw, 180.0))
+	_check("对面座位位置", rig.position.is_equal_approx(Vector3(0.0, 1.6, -Table3dLayout.SEAT_RADIUS)))
