@@ -20,6 +20,7 @@ func _check(name: String, ok: bool) -> void:
 func _run() -> void:
 	_test_card_block()
 	_test_camera()
+	await _test_view_render()
 
 func _test_card_block() -> void:
 	var known := CardBlock.new()
@@ -58,3 +59,57 @@ func _test_camera() -> void:
 	rig.frame_for_seat(180.0)
 	_check("对面基准朝向 180°", is_equal_approx(rig.base_yaw, 180.0))
 	_check("对面座位位置", rig.position.is_equal_approx(Vector3(0.0, 1.6, -Table3dLayout.SEAT_RADIUS)))
+
+func _test_view_render() -> void:
+	var scene: PackedScene = load("res://scenes/ui/table3d.tscn")
+	var view := scene.instantiate()
+	add_child(view)
+	await get_tree().process_frame
+	var state := {
+		"viewer_id": 0,
+		"players": [
+			{"id": 0, "name": "甲", "count": 2, "currency": 100, "health": 2, "eliminated": false,
+			 "slots": [{"card_id": "c1"}, {"card_id": "c2"}, {"card_id": "c3"},
+			           {"card_id": "c4", "card": {"rank": "A", "suit": "♥"}}]},
+			{"id": 1, "name": "乙", "count": 1, "currency": 80, "health": 2, "eliminated": false,
+			 "slots": [{"card_id": "c9"}, {"card_id": "c10"}, {"card_id": "c11"}, {"card_id": "c12"}]},
+		],
+		"draw_count": 30,
+		"discard": {},
+		"pending": {},
+		"phase": 2,
+	}
+	view.render(state)
+	await get_tree().process_frame
+	_check("viewer 座位可见", view._seat_nodes[0].visible)
+	_check("对手座位可见", view._seat_nodes[1].visible)
+	_check("空座位隐藏", not view._seat_nodes[2].visible and not view._seat_nodes[3].visible)
+	_check("viewer 手牌 4 槽", view._seat_nodes[0].get_node("HandAnchor").get_child_count() == 4)
+	_check("viewer 名字标签", view._seat_nodes[0].get_node("NameLabel").text == "甲")
+	_check("viewer 货币标签含 ¥100", view._seat_nodes[0].get_node("StatLabel").text.contains("¥100"))
+	_check("对手名字标签", view._seat_nodes[1].get_node("NameLabel").text == "乙")
+	_check("viewer 相机基准 0°", is_equal_approx(view.camera.base_yaw, 0.0))
+	var found_ace := false
+	for child in view._seat_nodes[0].get_node("HandAnchor").get_children():
+		if child is CardBlock and child.label_text() == "A♥":
+			found_ace = true
+	_check("已知牌 A♥ 渲染", found_ace)
+	var hidden_ok := true
+	for child in view._seat_nodes[1].get_node("HandAnchor").get_children():
+		if child is CardBlock and child.label_text() != "":
+			hidden_ok = false
+	_check("他人未知牌无点数标签", hidden_ok)
+	# 弃牌顶与 pending 已知牌渲染
+	view.render({
+		"viewer_id": 0,
+		"players": state.players,
+		"draw_count": 29,
+		"discard": {"rank": "7", "suit": "♣"},
+		"pending": {"rank": "Q", "suit": "♦", "source": "draw"},
+		"phase": 3,
+	})
+	await get_tree().process_frame
+	var center = view.get_node("Center")
+	_check("弃牌顶标签 7♣", (center.get_node("DiscardTop") as CardBlock).label_text() == "7♣")
+	_check("pending 标签 Q♦", (center.get_node("Pending") as CardBlock).label_text() == "Q♦")
+	_check("pending 可见", (center.get_node("Pending") as Node3D).visible)
