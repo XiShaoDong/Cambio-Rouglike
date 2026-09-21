@@ -52,7 +52,6 @@ func _set_table3d(on: bool) -> void:
 		background.visible = false
 		game_panel.visible = false
 		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
-		print("[table3d] 进入 3D 预览 mouse_mode=%d（2=CAPTURED，1=VISIBLE）" % Input.get_mouse_mode())
 		table3d.render(latest_state)
 	else:
 		if table3d != null and is_instance_valid(table3d):
@@ -60,8 +59,6 @@ func _set_table3d(on: bool) -> void:
 		background.visible = true
 		game_panel.visible = true
 		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
-		print("[table3d] 退出预览，收到鼠标移动 %d 次" % _table3d_motion_count)
-		_table3d_motion_count = 0
 		_render_game()
 
 ## 3D 预览的输入走 _input（早于 GUI 路由，保证鼠标移动/退出键必定到达，
@@ -75,7 +72,6 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		return
 	if event is InputEventMouseMotion:
-		_table3d_motion_count += 1
 		if table3d != null and is_instance_valid(table3d):
 			table3d.camera.look(event.relative)
 		get_viewport().set_input_as_handled()
@@ -152,7 +148,6 @@ var background: ColorRect
 var board: Control
 var table3d: Node3D = null
 var _table3d_active := false
-var _table3d_motion_count := 0
 var is_dev_join := false
 var start_button: Button = null
 var close_room_button: Button = null
