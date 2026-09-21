@@ -6,7 +6,7 @@
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_1"]
 
 [node name="Card" type="Button" unique_id=2072840457]
-custom_minimum_size = Vector2(57, 89)
+custom_minimum_size = Vector2(64, 90)
 offset_right = 57.0
 offset_bottom = 89.0
 focus_mode = 0

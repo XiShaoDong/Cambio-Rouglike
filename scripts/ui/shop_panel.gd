@@ -56,7 +56,7 @@ func _make_card_slot(price: int) -> Control:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 6)
 	var card: Button = CARD_SCENE.instantiate()
-	card.custom_minimum_size = Vector2(92, 132)
+	card.custom_minimum_size = Vector2(94, 132)
 	box.add_child(card)
 	# CardView._ready 会把 mouse_filter 设为 STOP；入树后再改 IGNORE 并禁用按钮，保证卡牌不可点击
 	card.mouse_filter = Control.MOUSE_FILTER_IGNORE

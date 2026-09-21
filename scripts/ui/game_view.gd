@@ -15,9 +15,9 @@ const PHASE_GAME_OVER := 7
 
 ## 卡牌图片 352x512 比例，所有卡牌尺寸遵循该比例（图片 KEEP_ASPECT_CENTERED 正好填满）。
 const CARD_ASPECT := 0.6875
-const CARD_SELF_SIZE := Vector2(62, 90)
-const CARD_PILE_SIZE := Vector2(74, 107)
-const CARD_BIG_SIZE := Vector2(110, 160)
+const CARD_SELF_SIZE := Vector2(64, 90)
+const CARD_PILE_SIZE := Vector2(76, 107)
+const CARD_BIG_SIZE := Vector2(110, 154)
 const RelicBarScript := preload("res://scenes/ui/relic_bar.tscn")
 
 var main: Node

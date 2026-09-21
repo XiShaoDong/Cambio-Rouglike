@@ -55,6 +55,7 @@ func refresh_panel() -> void:
 	slap_btn.text = "抢牌调试（不限时不限牌）：%s" % ("ON" if GameState.debug_duel else "OFF")
 	slap_btn.pressed.connect(_toggle_slap_debug)
 	box.add_child(slap_btn)
+	_build_skin_row(box)
 	for player in main.latest_state.players:
 		var seat := int(player.id)
 		var alive := not bool(player.get("eliminated", false))
@@ -73,6 +74,38 @@ func _toggle_slap_debug() -> void:
 	GameState.debug_duel = not GameState.debug_duel
 	main._show_toast("抢牌调试 %s：不判正确性，双贴即比拼" % ("ON" if GameState.debug_duel else "OFF"))
 	refresh_panel()
+
+## 卡牌皮肤：全局单选（原始/普通/石头/纸牌/玻璃），仅影响客户端渲染，默认 original。
+func _build_skin_row(box: VBoxContainer) -> void:
+	var label := Label.new()
+	label.text = "卡牌皮肤"
+	label.add_theme_color_override("font_color", UITheme.color("text_secondary"))
+	box.add_child(label)
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation", 4)
+	grid.add_theme_constant_override("v_separation", 4)
+	box.add_child(grid)
+	for type in CardAtlas.SKINS:
+		var btn := Button.new()
+		btn.text = _skin_label(type)
+		btn.disabled = CardAtlas.preview() == type
+		btn.pressed.connect(_set_skin.bind(type))
+		grid.add_child(btn)
+
+func _set_skin(type: String) -> void:
+	CardAtlas.set_preview_type(type)
+	main._show_toast("卡牌皮肤：%s" % _skin_label(type))
+	main._render_game_if_active()
+	refresh_panel()
+
+func _skin_label(type: String) -> String:
+	match type:
+		"stone": return "石头"
+		"paper": return "纸牌"
+		"glass": return "玻璃"
+		"normal": return "普通"
+		_: return "原始"
 
 func _apply_layout_debug() -> void:
 	var colors := [Color(1, 0, 0, 0.45), Color(0, 1, 0, 0.45), Color(0, 0, 1, 0.45), Color(1, 1, 0, 0.45), Color(1, 0, 1, 0.45)]
