@@ -20,7 +20,6 @@ func _check(name: String, ok: bool) -> void:
 func _run() -> void:
 	_test_layout_pick()
 	await _test_card_block()
-	_test_camera_accessor()
 
 func _test_layout_pick() -> void:
 	_check("PICK_LAYER == 2", Table3dLayout.PICK_LAYER == 2)
@@ -60,8 +59,3 @@ func _test_card_block() -> void:
 	_check("flash 立即染色", hidden.block_color() == Color(0.2, 0.6, 1.0))
 	await get_tree().create_timer(0.15).timeout
 	_check("flash 结束后恢复", hidden.block_color() == Table3dLayout.UNKNOWN_COLOR)
-
-func _test_camera_accessor() -> void:
-	var rig := Table3dCamera.new()
-	add_child(rig)
-	_check("camera_node 非空且为 Camera3D", rig.camera_node() != null and rig.camera_node() is Camera3D)

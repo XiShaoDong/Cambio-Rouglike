@@ -89,10 +89,6 @@ func _check(name: String, ok: bool) -> void:
 func _run() -> void:
 	_test_layout_pick()
 	await _test_card_block()
-	_test_camera_accessor()
-	await _test_picker()
-	_test_hud()
-	await _test_view()
 
 func _test_layout_pick() -> void:
 	_check("PICK_LAYER == 2", Table3dLayout.PICK_LAYER == 2)
@@ -132,11 +128,6 @@ func _test_card_block() -> void:
 	_check("flash 立即染色", hidden.block_color() == Color(0.2, 0.6, 1.0))
 	await get_tree().create_timer(0.15).timeout
 	_check("flash 结束后恢复", hidden.block_color() == Table3dLayout.UNKNOWN_COLOR)
-
-func _test_camera_accessor() -> void:
-	var rig := Table3dCamera.new()
-	add_child(rig)
-	_check("camera_node 非空且为 Camera3D", rig.camera_node() != null and rig.camera_node() is Camera3D)
 ```
 
 Create `tests/verify_table3d_interaction.tscn`:
@@ -301,7 +292,7 @@ func is_emissive() -> bool:
 - [ ] **Step 4: 跑测试确认通过**
 
 Run: `... --headless --path . res://tests/verify_table3d_interaction.tscn`
-Expected: `=== TABLE3D INTERACTION RESULT: 15/15 passed ===`（Task 1 部分）。
+Expected: `=== TABLE3D INTERACTION RESULT: 14/14 passed ===`（Task 1 部分）。
 Run: `... --headless --path . res://tests/verify_table3d.tscn`
 Expected: 仍 `34/34`（`CardBlock` 既有断言未回归）。
 
@@ -328,9 +319,14 @@ git commit -m "feat: CardBlock 拾取标记 + 可操作高亮 + 瞬时揭示"
 
 - [ ] **Step 1: 写失败测试**
 
-Modify `tests/verify_table3d_interaction.gd` 的 `_run()`，在 `_test_camera_accessor()` 后加 `await _test_picker()`，并新增：
+Modify `tests/verify_table3d_interaction.gd` 的 `_run()`，在 `await _test_card_block()` 后加 `_test_camera_accessor()` 与 `await _test_picker()`，并新增：
 
 ```gdscript
+func _test_camera_accessor() -> void:
+	var rig := Table3dCamera.new()
+	add_child(rig)
+	_check("camera_node 非空且为 Camera3D", rig.camera_node() != null and rig.camera_node() is Camera3D)
+
 func _test_picker() -> void:
 	var root := Node3D.new()
 	add_child(root)
@@ -992,4 +988,4 @@ git commit -m "feat: 3D 准星点击接线（分发/HUD/揭示接管/指针同�
 
 - **Spec 覆盖**：§2 拾取 → Task 1/2/4；§3 分发 → Task 5；§4 HUD → Task 3/5；§5 高亮+揭示 → Task 1/4/5；§6 指针与模态 → Task 5；§7 文件 → 各任务；§8 测试 → Task 1–4；§9 风险（射线最近命中 / 揭示竞态 / `_ready_clicked`）→ Task 4/5。
 - **占位符**：无 TBD/TODO；代码步骤均给完整代码。
-- **类型一致性**：`Table3dLayout.PICK_LAYER/PICK_MASK/ACTIONABLE_COLOR`、`CardBlock.set_pick/pick_meta/set_actionable/reveal/restore/flash`、`Table3dPicker.pick`、`Table3dHud.set_buttons/button_count/button_action/button_color`、`Table3dView._card_blocks/pick_center/reveal_slot/flash_slot/set_hud_buttons/render(state, actionable)`、`main._table3d_click/_on_table3d_hud/_table3d_modal_open/_sync_table3d_pointer` 跨任务命名一致；测试计数逐任务累加（15 → 17 → 23 → 30）。
+- **类型一致性**：`Table3dLayout.PICK_LAYER/PICK_MASK/ACTIONABLE_COLOR`、`CardBlock.set_pick/pick_meta/set_actionable/reveal/restore/flash`、`Table3dPicker.pick`、`Table3dHud.set_buttons/button_count/button_action/button_color`、`Table3dView._card_blocks/pick_center/reveal_slot/flash_slot/set_hud_buttons/render(state, actionable)`、`main._table3d_click/_on_table3d_hud/_table3d_modal_open/_sync_table3d_pointer` 跨任务命名一致；测试计数逐任务累加（14 → 17 → 23 → 30）。
