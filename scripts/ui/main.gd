@@ -9,6 +9,8 @@ var dev_mode := false
 func _notification(what: int) -> void:
 	# 点击窗口关闭：拦截默认退出。若仍在房间/对局中 → 回初始大厅；已在初始大厅 → 真正退出
 	if what == NOTIFICATION_WM_CLOSE_REQUEST:
+		if _table3d_active:
+			_set_table3d(false)
 		if _in_room():
 			_leave_to_main_menu()
 		else:
@@ -22,13 +24,56 @@ func _in_room() -> bool:
 ## 从房间/对局回到初始大厅界面（点窗口关闭时调用）：
 ## 房主解散房间通知全员；客户端退出房间断开连接。不真正退出程序。
 func _leave_to_main_menu() -> void:
+	if _table3d_active:
+		_set_table3d(false)
 	if Network.is_host:
 		GameState.request_close_room()
 	else:
 		lobby._leave_room()
 	_set_status("已回到大厅。")
 
+## F10：在 2D 对局界面与 3D 只读预览之间切换。
+func _toggle_table3d() -> void:
+	_set_table3d(not _table3d_active)
+
+## 3D 只读预览开关（仅对局中可用）。激活时隐藏 2D 棋盘（含 background，
+## 否则 CanvasItem 会盖住 3D）并捕获鼠标；退出时恢复并重绘 2D。
+func _set_table3d(on: bool) -> void:
+	if on and (latest_state.is_empty() or int(latest_state.get("phase", PHASE_LOBBY)) == PHASE_LOBBY):
+		return
+	_table3d_active = on
+	if on:
+		if table3d == null or not is_instance_valid(table3d):
+			table3d = load("res://scenes/ui/table3d.tscn").instantiate()
+			table3d.name = "Table3D"
+			add_child(table3d)
+			move_child(table3d, 0)
+		table3d.set_active(true)
+		background.visible = false
+		game_panel.visible = false
+		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+		table3d.render(latest_state)
+	else:
+		if table3d != null and is_instance_valid(table3d):
+			table3d.set_active(false)
+		background.visible = true
+		game_panel.visible = true
+		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+		_render_game()
+
 func _unhandled_input(event: InputEvent) -> void:
+	# 3D 只读预览：F10/ESC 退出，鼠标环视；期间不接管其它对局输入
+	if _table3d_active:
+		if event is InputEventKey and event.pressed and not event.echo \
+				and (event.keycode == KEY_F10 or event.keycode == KEY_ESCAPE):
+			_set_table3d(false)
+			get_viewport().set_input_as_handled()
+			return
+		if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+			if table3d != null and is_instance_valid(table3d):
+				table3d.camera.look(event.relative)
+				get_viewport().set_input_as_handled()
+			return
 	# 比拼中按空格 = 停止（与 STOP 按钮等效）
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_SPACE:
 		if _duel_panel != null and _duel_panel.has_method("stop"):
@@ -98,6 +143,8 @@ var overlay: Control
 var pending_overlay: Control
 var background: ColorRect
 var board: Control
+var table3d: Node3D = null
+var _table3d_active := false
 var is_dev_join := false
 var start_button: Button = null
 var close_room_button: Button = null
@@ -206,6 +253,8 @@ func _on_command_rejected(_code: int, message: String) -> void:
 	_show_toast("被拒绝：%s" % message)
 
 func _on_match_aborted(_code: int, message: String) -> void:
+	if _table3d_active:
+		_set_table3d(false)
 	latest_state.clear()
 	last_phase = -1
 	_was_in_match = false
@@ -416,13 +465,15 @@ func _on_state_updated(state: Dictionary) -> void:
 	if int(state.phase) != last_phase:
 		last_phase = int(state.phase)
 	lobby_panel.visible = false
-	game_panel.visible = true
+	game_panel.visible = not _table3d_active
 	if int(state.phase) == PHASE_GAME_OVER:
 		# 结算接管棋盘：先清残留动画/挂起状态再渲染，
 		# 保证卡牌以真实卡（而非在途揭示的动画占位）出现。
 		_clear_settlement_anim_state()
 	_render_game()
 	dev.refresh_panel()
+	if _table3d_active and table3d != null and is_instance_valid(table3d):
+		table3d.render(state)
 	if int(state.phase) == PHASE_GAME_OVER:
 		_open_settlement()
 	else:
