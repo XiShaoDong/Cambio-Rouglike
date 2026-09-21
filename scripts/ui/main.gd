@@ -60,22 +60,27 @@ func _set_table3d(on: bool) -> void:
 		background.visible = true
 		game_panel.visible = true
 		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+		print("[table3d] 退出预览，收到鼠标移动 %d 次" % _table3d_motion_count)
+		_table3d_motion_count = 0
 		_render_game()
 
+## 3D 预览的输入走 _input（早于 GUI 路由，保证鼠标移动/退出键必定到达，
+## 不受任何 Control 的 mouse_filter 影响）。
+func _input(event: InputEvent) -> void:
+	if not _table3d_active:
+		return
+	if event is InputEventKey and event.pressed and not event.echo \
+			and (event.keycode == KEY_F10 or event.keycode == KEY_ESCAPE):
+		_set_table3d(false)
+		get_viewport().set_input_as_handled()
+		return
+	if event is InputEventMouseMotion:
+		_table3d_motion_count += 1
+		if table3d != null and is_instance_valid(table3d):
+			table3d.camera.look(event.relative)
+		get_viewport().set_input_as_handled()
+
 func _unhandled_input(event: InputEvent) -> void:
-	# 3D 只读预览：F10/ESC 退出，鼠标环视；期间不接管其它对局输入
-	if _table3d_active:
-		if event is InputEventKey and event.pressed and not event.echo \
-				and (event.keycode == KEY_F10 or event.keycode == KEY_ESCAPE):
-			_set_table3d(false)
-			get_viewport().set_input_as_handled()
-			return
-		if event is InputEventMouseMotion:
-			# 不依赖鼠标捕获是否生效：3D 预览期间 2D 已隐藏，任何鼠标移动都用于环视
-			if table3d != null and is_instance_valid(table3d):
-				table3d.camera.look(event.relative)
-				get_viewport().set_input_as_handled()
-			return
 	# 比拼中按空格 = 停止（与 STOP 按钮等效）
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_SPACE:
 		if _duel_panel != null and _duel_panel.has_method("stop"):
@@ -147,6 +152,7 @@ var background: ColorRect
 var board: Control
 var table3d: Node3D = null
 var _table3d_active := false
+var _table3d_motion_count := 0
 var is_dev_join := false
 var start_button: Button = null
 var close_room_button: Button = null

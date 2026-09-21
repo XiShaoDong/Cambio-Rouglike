@@ -14,6 +14,8 @@ var yaw := 0.0
 var pitch := DEFAULT_PITCH
 
 var _built := false
+var _framed := false
+var _framed_angle := 0.0
 var _pivot: Node3D
 var _camera: Camera3D
 
@@ -38,7 +40,13 @@ func frame_for_seat(seat_angle_deg: float) -> void:
 	var a := deg_to_rad(seat_angle_deg)
 	var dir := Vector3(sin(a), 0.0, cos(a))
 	position = dir * Table3dLayout.SEAT_RADIUS + Vector3(0.0, EYE_HEIGHT, 0.0)
-	base_yaw = rad_to_deg(atan2(dir.x, dir.z))
+	var new_base := rad_to_deg(atan2(dir.x, dir.z))
+	# 同一座位重复 render 时保留用户当前环视，避免视角被复位
+	if _framed and is_equal_approx(new_base, _framed_angle):
+		return
+	_framed = true
+	_framed_angle = new_base
+	base_yaw = new_base
 	yaw = base_yaw
 	pitch = DEFAULT_PITCH
 	_apply()

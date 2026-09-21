@@ -59,6 +59,11 @@ func _test_camera() -> void:
 	rig.frame_for_seat(180.0)
 	_check("对面基准朝向 180°", is_equal_approx(rig.base_yaw, 180.0))
 	_check("对面座位位置", rig.position.is_equal_approx(Vector3(0.0, 1.6, -Table3dLayout.SEAT_RADIUS)))
+	# 同一座位重复取景（每次 render 调 frame_for_seat）不应复位用户环视
+	rig.look(Vector2(20.0, 10.0))
+	var yaw_after_look: float = rig.yaw
+	rig.frame_for_seat(180.0)
+	_check("重复取景保留环视（不复位）", is_equal_approx(rig.yaw, yaw_after_look))
 
 func _test_view_render() -> void:
 	var scene: PackedScene = load("res://scenes/ui/table3d.tscn")
