@@ -30,7 +30,7 @@
 - 当前目标：系列赛框架、名次奖励经济（R-12）、商店固定价购买、**遗物效果 v1** 已完成（见下）；基础模式（无遗物）始终可独立运行。
 - 联网：ENet/UDP，房主权威，默认端口 `7007`。
 - 状态：大厅、对局界面、服务器权威状态机、规则、动效系统均已实现；已有自动化验证（见第 8 节）。
-- 当前工作分支：`feature/store`（未合入 main）。本会话在 `feature/store` 上完成**系列赛框架 / 名次奖励经济（R-12）/ 商店固定价购买 / 遗物效果 v1**（见基线各条），设计在 `docs/superpowers/specs/2026-09-07-series-shop-relics-design.md`，各里程碑计划在 `docs/superpowers/plans/`。此前 `feature/internet-reconnect` 的 seat 身份重构 + 断线重连 + 结算页 + 音效/设置菜单均已合入（见 3.5 节与 B18-B26）。
+- 当前工作分支：`feature/card-template`（从 `feature/store` 拉出，均未合入 main）。`feature/card-template` 完成**卡牌皮肤 / TypeCards 图集 + 开发者面板皮肤切换**（见下条）；`feature/store` 完成**系列赛框架 / 名次奖励经济（R-12）/ 商店固定价购买 / 遗物效果 v1**，设计在 `docs/superpowers/specs/2026-09-07-series-shop-relics-design.md`，各里程碑计划在 `docs/superpowers/plans/`。此前 `feature/internet-reconnect` 的 seat 身份重构 + 断线重连 + 结算页 + 音效/设置菜单均已合入（见 3.5 节与 B18-B26）。
 - **贴牌系统（已重做动画）**：固定 2.5s 窗口 → `slap_open` 标志（弃牌/用技能后开启，下一玩家抽牌关闭）；同一窗口**不限次数**尝试（贴错每次罚牌，贴对先到者胜）；多人同时贴中 → 400ms 收集 → `SLAP_DUEL` 比拼 bar（随机加粗区中心红心，服务器到达时间判最近者）；调试开关 **O 键**切换 `debug_duel`（不判正确性 + 双贴即比拼）。
 - **贴牌动画事件（`card_exchange_animated` 新 kind）**：`slap_penalty`（罚牌 fly 抽牌堆→手牌）、`slap_resolved`（赢家被贴的牌 fly→弃牌堆，弃牌堆延迟显示）、`slap_gift`（交换时行动者的牌 fly→对方槽，不带牌面防泄漏）。贴牌 reveal target 带 `correct` 标记 → 客户端打**绿（对）/红（错）炫光**；正确贴牌**绿光 hold**（v2，不翻回）等结算后 fly，比拼输家翻回。
 - **手牌超限规则（R-07）**：任一玩家手牌总数 `> MAX_HAND_CARDS(6)` 时对局立即结束（GAME_OVER），该玩家判定失败并扣 1 生命，其余玩家按各自手牌点数结算排名（失败者不参与排名）。触发点：贴错罚抽后 `game_state._check_over_hand(seat)`。
@@ -41,6 +41,8 @@
 - **名次奖励经济（R-12，已完成）**：取消开局押注阶段（`Phase.BET`（值 9）**保留为弃用值**，任何流程不再进入），开局记忆全员确认后直接进入 `TURN_DRAW`。起始 **100 货币 + 2 生命**（`health` 默认 2）。每局结算 `_settle_rewards` 按名次由系统发钱：第一 +40、中间 +10、垫底 0（并列组按区间奖励平分，全员同分各 +10、无人扣血）；**垫底（含并列）扣 1 生命**，`health==0` 出局观战；手牌超限（R-07）与首回合 Kongbaya 失败者按垫底处理（0 金钱、−1 生命）；货币不扣、下限 0，出局者保留货币参与把末排名。快照移除 `bet_ready`，`result.economy` 改为 `result.rewards = {SeatId: {money, life_lost}}`，`result.penalized` 为扣血者。局内货币/生命 HUD 在每玩家区域手牌右侧（`coin_icon`/`life_icon`/`stat_hud`），名字标签不再显示货币。测试 `verify_economy.gd`（29/29）。
 - **商店固定价购买（已完成）**：系列赛非把末结算后进入 `Phase.SHOP`（值 10），展示至多 3 件随机遗物（v1 池 2 件，`scripts/core/relics.gd` 数据 + `pool()`/`def_by_id()`，各固定价 `RELIC_PRICE=50`）。每位存活玩家**限购 1 件**：点击遗物且货币 ≥ 售价即 `_server_shop_buy` 扣款、`run_state.relics[relic_id]` 入库并记持有者 `run_state.relic_owners[relic_id]=seat`，同件**先到先得**（`shop.sold[offer]` 售出后他人不可再买）；也可「跳过购买」（`request_shop_skip`）。全员完成（购买或跳过，`shop.done`）→ `_deal_next_match` 开下一局；货币不足只能跳过。把末不进商店。新 RPC：`request_shop_buy(offer)`/`request_shop_skip()`；错误码 `INVALID_OFFER`（越界/已售出）/`INVALID_AMOUNT`（钱不够）。快照 `shop` 公开投影 `offers:[{id,name,price,sold_by}]` + `done`（固定价无密封字段）；`shop_result` 公开（谁以多少购买）。客户端 `scenes/ui/shop_panel.tscn` + `shop_panel.gd`（点击遗物购买 / 已售出·货币不足·已完成状态 / 「跳过购买」按钮，随快照刷新）+ `main.gd`（`_open_shop_panel` 开/刷新、`_on_shop_buy`、`_show_shop_result_toast`）；`settlement_page.gd` 非把末 footer"即将进入商店…"。规则见 `KONG_开发文档.md` §3.7 R-10；测试 `verify_shop.gd`（23/23）。
 - **遗物效果 v1（已完成）**：`Joker 变换`（持有者在抽牌阶段抽到 Joker——抽牌堆或弃牌堆顶——可选变换为任意牌；未变换时其手中 JOKER 分值 +2，`_relic_card_value` 统一结算与揭示）与 `防守护盾`（购买后**下一局开局**随机护盾持有者一格并消耗，该格免疫其他玩家贴牌与 J/Q 交换，看牌/自操作不受影响，一局后失效）。钩子落点：`_apply_match_start_relics`（局开始消耗护盾）/`_server_joker_transform`（Joker 变换 RPC）/`_relic_card_value`（结算统一计分）/`_is_protected`/`_is_relic_owner`（持有者判定，`run_state.relic_owners`）；`RejectCode.PROTECTED`；护盾格快照 `protected`；`ScoreSystem.calculate_ranking` 加 `joker_bonus` 参数。客户端 `JokerTransformPanel`（`scenes/ui/joker_transform_panel.tscn`）+ "变换 Joker" 按钮；**遗物 UI**：护盾受保护格常驻紫色描边光晕 + ◈ 紫角标（`game_view._render_card_slot`），每玩家区域左侧遗物物品栏（`RelicBar`：3 槽 + `n/3` + 程序化盾/星图标 `RelicIcon` + Hover Tooltip 名称/描述/状态，数据全部来自快照公开字段，纯展示无协议改动）。规则见 `KONG_开发文档.md` §3.7 R-11；测试 `verify_relics.gd`（19/19）。
+- **卡牌皮肤 / TypeCards 图集（已完成，客户端展示层）**：卡牌正/背面**默认使用原始素材**（`assets/Cards/*.png` + `back07.png`），保持既有观感。开发者面板（`T` 开发者模式 · 房主对局中）新增"卡牌皮肤"全局单选：**原始 / 普通 / 石头 / 纸牌 / 玻璃**，后四者来自 4× 高清图集 `assets/TypeCards/opersze-cards-full-clear-4x.png`（3080×4928，每格 220×308；14 列 × 16 行，4 行一组 normal/stone/paper/glass，组内行 ♥♠♦♣，列 c0..c12=2..A，c13=组首行卡背 / 组第 3 行红 Joker / 组第 4 行黑 Joker；stone/paper 无黑 Joker → 回退红 Joker）。落点：`scripts/ui/card_atlas.gd`（`CardAtlas`：`face/back/joker` → 带缓存 `AtlasTexture`；`ORIGINAL/TYPES/SKINS` 常量；`static var preview_type` 默认 `original`）；`card_view.gd`（`type==original` 走旧素材，其余走图集，图集缺失回退旧素材；`card_data["type"]` 可显式覆盖预览）；`dev_tools.gd`（3 列网格皮肤按钮）。卡牌显示尺寸统一为图集原生比例 5:7（`CARD_SELF_SIZE` 64×90 / `CARD_PILE_SIZE` 76×107 / `CARD_BIG_SIZE` 110×154 / `player_area.card_size` 64×90 / 商店卡位 94×132）。**不改**服务器/协议/快照——`card_data["type"]` 为预留字段，未来接入玩法零改渲染层。测试 `verify_card_skin.gd`（35/35）；设计见 `docs/superpowers/specs/2026-09-16-card-template-design.md`。
+- **卡牌贴图分辨率坑（防复发）**：图集 1× 源图 `opersze-cards-full.png` 每卡仅 **55×77 像素**，在游戏里是**放大**显示（手牌 ≈1.16×、大牌 2×，HiDPI/窗口缩放再 ×2）→ 糊；旧素材 352×512 是缩小显示故清晰。**运行时必须用 4× 高清版**（每卡 220×308，显示尺寸小于格子 → 缩小采样、清晰）。`TextureRect` 一直是 `KEEP_ASPECT_CENTERED`（等比、无变形），故糊的原因是像素不足而非拉伸变形。
 - **卡牌视图重建约定**：`game_view._clear_area` 一律先 `remove_child` 立即移出网格、再 `queue_free` 延迟释放（**不要直接 `free()`**——卡牌点击触发重建时被点击的卡正被信号锁定，free 会报 "Object is locked"）。
 - **罚牌附加卡布局**：前 4 张主网格固定 2 列永不位移；第 5+ 张在 `ExtraLayer` 按**槽号固定绝对定位**（统一向上增长、行列固定，加新罚牌已存在卡不移动）。
 - Git：仓库 `git@github.com:XiShaoDong/Cambio-Rouglike.git`，分支 `main`。
@@ -112,6 +114,7 @@ UI 层已拆分（main.gd 是组合根）：
 | `settlement_model.gd` | 结算纯计算（同步轮记分：`layout_order`/`rounds`/`ranking`，headless 可测） |
 | `settlement_page.gd` + `scenes/ui/settlement_page.tscn` | 结算弹层（居中排名窗口场景实体；逐张翻牌/实时重排/冠军特效；回调解耦 main） |
 | `card_view.gd` / `card_factory.gd` | 卡牌视图节点 / 构建 |
+| `card_atlas.gd` | TypeCards 4× 图集查表（`CardAtlas`：卡牌皮肤；默认 `original` 走旧素材，其余 type 走图集） |
 | `dashed_border.gd` | 虚线边框占位（当前对局空槽已改透明占位，不用虚线） |
 | `scenes/ui/game_board.tscn` | 对局棋盘静态骨架（锚点+容器，布局可在编辑器拖拽）：TitleBar/HintArea/4×PlayerArea/MiddleRow·PileArea/Corner |
 | `scenes/ui/player_area.tscn` + `scripts/ui/player_area.gd` | 玩家区域模板，`@export var card_size`（默认 62×90），名字在卡牌正下方；GameBoard 直接子节点，运行时复用填充 |
@@ -184,6 +187,8 @@ UI 层已拆分（main.gd 是组合根）：
 ... --headless --path . res://tests/verify_shop.tscn
 # 遗物效果 v1（19/19：护盾局开始生效并消耗/贴牌与J·Q交换免疫(PROTECTED)/快照护盾标记/无遗物no-op/Joker变换/未变换+2/已变换清除加成）
 ... --headless --path . res://tests/verify_relics.tscn
+# 卡牌皮肤（35/35：4× 图集 region 映射/默认 original 走旧素材/类型切换重绘/显式 type 覆盖）
+... --headless --path . res://tests/verify_card_skin.tscn
 # hint 生成测试（8/8）
 ... --headless --path . res://tests/verify_hint.tscn
 # 双实例网络回归（host + client 各跑，均 exit 0）
@@ -214,7 +219,7 @@ UI 层已拆分（main.gd 是组合根）：
 ... --headless --path . res://tests/verify_proxy.tscn -- -role client -scenario baseline -mode reconnect
 ```
 
-> **开发约定**：按用户的指示**不启动 GUI**，用上述 unit test 验证后总结。每次改动后跑 `verify_protocol` + `verify_swap` + `verify_duel` + `verify_reconnect` + `verify_kongbaya` + `verify_economy` + `verify_shop` + `verify_relics` + 双实例 `verify_net`。
+> **开发约定**：按用户的指示**不启动 GUI**，用上述 unit test 验证后总结。每次改动后跑 `verify_protocol` + `verify_swap` + `verify_duel` + `verify_reconnect` + `verify_kongbaya` + `verify_economy` + `verify_shop` + `verify_relics` + `verify_card_skin` + 双实例 `verify_net`。
 
 ## 9. 给后续 Agent 的工作方式
 
