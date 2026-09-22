@@ -103,9 +103,9 @@ func _test_view_render() -> void:
 	_check("对手座位可见", view._seat_nodes[1].visible)
 	_check("空座位隐藏", not view._seat_nodes[2].visible and not view._seat_nodes[3].visible)
 	_check("viewer 手牌 4 槽", view._seat_nodes[0].get_node("HandAnchor").get_child_count() == 4)
-	_check("viewer 名字标签", view._seat_nodes[0].get_node("NameLabel").text == "甲")
-	_check("viewer 货币标签含 ¥100", view._seat_nodes[0].get_node("StatLabel").text.contains("¥100"))
-	_check("对手名字标签", view._seat_nodes[1].get_node("NameLabel").text == "乙")
+	_check("viewer 面板 data", view._seat_panels[0].data.get("name") == "甲" and int(view._seat_panels[0].data.get("currency")) == 100)
+	_check("对手面板 data", view._seat_panels[1].data.get("name") == "乙")
+	_check("每席面板各一", view._seat_panels.size() == 4)
 	_check("viewer 相机基准 0°", is_equal_approx(view.camera.base_yaw, 0.0))
 	var found_ace := false
 	for child in view._seat_nodes[0].get_node("HandAnchor").get_children():

@@ -73,20 +73,6 @@ transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, 2.4)
 [node name="HandAnchor" type="Node3D" parent="Seats/Seat0" unique_id=146145417]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.03, 0)
 
-[node name="NameLabel" type="Label3D" parent="Seats/Seat0" unique_id=79040814]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.1, 0)
-pixel_size = 0.004
-billboard = 1
-no_depth_test = true
-font_size = 64
-
-[node name="StatLabel" type="Label3D" parent="Seats/Seat0" unique_id=1889255182]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.9, 0)
-pixel_size = 0.003
-billboard = 1
-no_depth_test = true
-font_size = 64
-
 [node name="Avatar" type="Node3D" parent="Seats/Seat0"]
 
 [node name="Body" type="MeshInstance3D" parent="Seats/Seat0/Avatar"]
@@ -104,20 +90,6 @@ transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 2.4, 0, 0)
 
 [node name="HandAnchor" type="Node3D" parent="Seats/Seat1" unique_id=774430754]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.03, 0)
-
-[node name="NameLabel" type="Label3D" parent="Seats/Seat1" unique_id=1917956023]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.1, 0)
-pixel_size = 0.004
-billboard = 1
-no_depth_test = true
-font_size = 64
-
-[node name="StatLabel" type="Label3D" parent="Seats/Seat1" unique_id=78520061]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.9, 0)
-pixel_size = 0.003
-billboard = 1
-no_depth_test = true
-font_size = 64
 
 [node name="Avatar" type="Node3D" parent="Seats/Seat1"]
 
@@ -137,20 +109,6 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -2.4)
 [node name="HandAnchor" type="Node3D" parent="Seats/Seat2" unique_id=1025038798]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.03, 0)
 
-[node name="NameLabel" type="Label3D" parent="Seats/Seat2" unique_id=1032947187]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.1, 0)
-pixel_size = 0.004
-billboard = 1
-no_depth_test = true
-font_size = 64
-
-[node name="StatLabel" type="Label3D" parent="Seats/Seat2" unique_id=2058807649]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.9, 0)
-pixel_size = 0.003
-billboard = 1
-no_depth_test = true
-font_size = 64
-
 [node name="Avatar" type="Node3D" parent="Seats/Seat2"]
 
 [node name="Body" type="MeshInstance3D" parent="Seats/Seat2/Avatar"]
@@ -168,20 +126,6 @@ transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, -2.4, 0, 0)
 
 [node name="HandAnchor" type="Node3D" parent="Seats/Seat3" unique_id=689996338]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.03, 0)
-
-[node name="NameLabel" type="Label3D" parent="Seats/Seat3" unique_id=77393484]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.1, 0)
-pixel_size = 0.004
-billboard = 1
-no_depth_test = true
-font_size = 64
-
-[node name="StatLabel" type="Label3D" parent="Seats/Seat3" unique_id=1979266312]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.9, 0)
-pixel_size = 0.003
-billboard = 1
-no_depth_test = true
-font_size = 64
 
 [node name="Avatar" type="Node3D" parent="Seats/Seat3"]
 

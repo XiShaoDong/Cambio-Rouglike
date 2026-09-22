@@ -12,6 +12,9 @@ const HUD_OFFSET := 0.55
 const HUD_HEIGHT := 0.5
 const AVATAR_GLOW_COLOR := Color(1.0, 0.85, 0.35, 0.30)  # 当前回合高亮
 const AVATAR_DIM_COLOR := Color(0.0, 0.0, 0.0, 0.55)     # 出局/离线变暗
+const STAT_VIEWPORT_SIZE := Vector2i(320, 96)
+const STAT_PANEL_OFFSET := Vector3(0.0, 0.75, 0.0)
+const STAT_PANEL_PIXEL_SIZE := 0.005
 
 var camera = null  # Table3dCamera（场景 CameraRig）
 var _bind_done := false
@@ -24,6 +27,8 @@ var _hud = null  # Table3dHud（场景 Hud）
 var _card_blocks := {}  # {seat: {slot: CardBlock}}
 var _avatar_glow_mat: StandardMaterial3D = null
 var _avatar_dim_mat: StandardMaterial3D = null
+var _seat_panels: Array = []      # PlayerStatPanel per slot
+var _stat_viewports: Array = []
 
 func _ready() -> void:
 	_bind()
@@ -48,10 +53,33 @@ func _bind() -> void:
 			or _pending_block == null or _hud == null:
 		push_error("[Table3dView] 场景缺少必需节点：CameraRig/Center/DeckCount/DiscardTop/Pending/Hud")
 		return
-	for seat in _seat_nodes:
+	for i in _seat_nodes.size():
+		var seat = _seat_nodes[i]
 		if seat == null:
 			push_error("[Table3dView] 场景缺少 Seats/SeatN 节点")
 			return
+		var avatar = seat.get_node_or_null("Avatar")
+		var sub := SubViewport.new()
+		sub.name = "StatViewport%d" % i
+		sub.size = STAT_VIEWPORT_SIZE
+		sub.transparent_bg = true
+		sub.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+		add_child(sub)
+		var panel := PlayerStatPanel.new()
+		panel.name = "Panel"
+		sub.add_child(panel)
+		panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		var sprite := Sprite3D.new()
+		sprite.name = "StatPanel"
+		sprite.texture = sub.get_texture()
+		sprite.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		sprite.no_depth_test = true
+		sprite.pixel_size = STAT_PANEL_PIXEL_SIZE
+		sprite.position = STAT_PANEL_OFFSET
+		if avatar != null:
+			avatar.add_child(sprite)
+		_seat_panels.append(panel)
+		_stat_viewports.append(sub)
 	_bound = true
 
 ## 显示/隐藏预览（不处理点击与动画）。
@@ -97,6 +125,8 @@ func render(state: Dictionary, actionable := Callable()) -> void:
 		node.rotation_degrees = Vector3(0.0, a + 180.0, 0.0)
 		_render_seat(node, p)
 		_apply_avatar(node, p, viewer, state)
+		if slot_i < _seat_panels.size():
+			_seat_panels[slot_i].set_data(str(p.get("name", "")), int(p.get("health", 0)), int(p.get("currency", 0)), int(p.get("count", 0)))
 		if actionable.is_valid():
 			for slot_index in (p.get("slots", []) as Array).size():
 				if _card_blocks.has(seat) and _card_blocks[seat].has(slot_index):
@@ -144,13 +174,6 @@ func _render_seat(node: Node3D, p: Dictionary) -> void:
 		if not _card_blocks.has(int(p.id)):
 			_card_blocks[int(p.id)] = {}
 		_card_blocks[int(p.id)][i] = block
-	var name_label: Label3D = node.get_node("NameLabel")
-	var stat_label: Label3D = node.get_node("StatLabel")
-	name_label.text = str(p.get("name", ""))
-	stat_label.text = "%d张  ¥%d  ♥%d" % [int(p.get("count", 0)), int(p.get("currency", 0)), int(p.get("health", 0))]
-	var tint := Color(1, 1, 1, 0.5) if bool(p.get("eliminated", false)) else Color(1, 1, 1, 1)
-	name_label.modulate = tint
-	stat_label.modulate = tint
 
 ## 角色（场景 Avatar/Head+Body）：放到「眼睛」位置（径向外移 CAMERA_BACK、头心抬到
 ## EYE_HEIGHT，相机即在头心）；隐藏自己脑袋（身体在其正下方）；出局/离线变暗、当前回合金色高亮。
