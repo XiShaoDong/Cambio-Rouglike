@@ -29,6 +29,8 @@ var _avatar_glow_mat: StandardMaterial3D = null
 var _avatar_dim_mat: StandardMaterial3D = null
 var _seat_panels: Array = []      # PlayerStatPanel per slot
 var _stat_viewports: Array = []
+var _bell_dome: MeshInstance3D = null
+var _bell_mat: StandardMaterial3D = null
 
 func _ready() -> void:
 	_bind()
@@ -49,6 +51,16 @@ func _bind() -> void:
 	var deck_block := get_node_or_null("Center/Deck")
 	if deck_block != null and deck_block.has_method("set_pick"):
 		deck_block.set_pick({"kind": "deck"})
+	var bell := get_node_or_null("Center/KongBell")
+	if bell != null:
+		_bell_dome = bell.get_node_or_null("Dome")
+		if _bell_dome != null:
+			_bell_mat = _bell_dome.material_override
+		var bell_pick := bell.get_node_or_null("PickArea")
+		if bell_pick != null:
+			bell_pick.collision_layer = Table3dLayout.PICK_MASK
+			bell_pick.collision_mask = 0
+			bell_pick.set_meta("pick", {"kind": "hud", "action": "kongbaya"})
 	if camera == null or _deck_label == null or _discard_block == null \
 			or _pending_block == null or _hud == null:
 		push_error("[Table3dView] 场景缺少必需节点：CameraRig/Center/DeckCount/DiscardTop/Pending/Hud")
@@ -147,6 +159,15 @@ func render(state: Dictionary, actionable := Callable()) -> void:
 	var v_dir := Vector3(sin(deg_to_rad(v_angle)), 0.0, cos(deg_to_rad(v_angle)))
 	_hud.position = v_dir * (Table3dLayout.SEAT_RADIUS - HUD_OFFSET) + Vector3(0.0, HUD_HEIGHT, 0.0)
 	_hud.rotation_degrees = Vector3(0.0, v_angle + 180.0, 0.0)
+	_update_bell(state)
+
+## 铃铛可用性：金色亮 / 暗。
+func _update_bell(state: Dictionary) -> void:
+	if _bell_mat == null:
+		return
+	var avail := ActionModel.kongbaya_available(state)
+	_bell_mat.emission_enabled = avail
+	_bell_mat.albedo_color = Color(0.96, 0.84, 0.48) if avail else Color(0.42, 0.38, 0.28)
 
 ## 座位世界坐标（与相机基准同一角度约定）。
 func _seat_world(angle_deg: float) -> Vector3:

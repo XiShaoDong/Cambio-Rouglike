@@ -24,6 +24,30 @@ albedo_color = Color(0.09, 0.1, 0.12, 1)
 [sub_resource type="BoxMesh" id="TableEdgeMesh"]
 size = Vector3(5.9, 0.12, 5.9)
 
+[sub_resource type="SphereMesh" id="BellDomeMesh"]
+radius = 0.26
+height = 0.52
+is_hemisphere = true
+radial_segments = 24
+rings = 12
+
+[sub_resource type="SphereMesh" id="BellKnobMesh"]
+radius = 0.05
+height = 0.1
+
+[sub_resource type="CylinderMesh" id="BellBaseMesh"]
+top_radius = 0.3
+bottom_radius = 0.32
+height = 0.04
+
+[sub_resource type="StandardMaterial3D" id="BellMat"]
+albedo_color = Color(0.96, 0.84, 0.48, 1)
+emission_enabled = true
+emission = Color(0.55, 0.45, 0.2, 1)
+
+[sub_resource type="BoxShape3D" id="BellShape"]
+size = Vector3(0.66, 0.5, 0.66)
+
 [sub_resource type="SphereMesh" id="HeadMesh"]
 radius = 0.28
 height = 0.7
@@ -157,8 +181,34 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.9, 0.03, 0)
 script = ExtResource("3_block")
 
 [node name="Pending" type="Node3D" parent="Center" unique_id=1182893267]
-transform = Transform3D(1.5, 0, 0, 0, 1.5, 0, 0, 0, 1.5, -0.9, 0.03, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.05, 0)
 script = ExtResource("3_block")
+
+[node name="KongBell" type="Node3D" parent="Center"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.75, 0, 0)
+
+[node name="Base" type="MeshInstance3D" parent="Center/KongBell"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
+mesh = SubResource("BellBaseMesh")
+material_override = SubResource("BellMat")
+
+[node name="Dome" type="MeshInstance3D" parent="Center/KongBell"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.04, 0)
+mesh = SubResource("BellDomeMesh")
+material_override = SubResource("BellMat")
+
+[node name="Knob" type="MeshInstance3D" parent="Center/KongBell"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.30, 0)
+mesh = SubResource("BellKnobMesh")
+material_override = SubResource("BellMat")
+
+[node name="PickArea" type="Area3D" parent="Center/KongBell"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.15, 0)
+collision_layer = 2
+collision_mask = 0
+
+[node name="PickShape" type="CollisionShape3D" parent="Center/KongBell/PickArea"]
+shape = SubResource("BellShape")
 
 [node name="Hud" type="Node3D" parent="." unique_id=1475532248]
 script = ExtResource("4_hud")

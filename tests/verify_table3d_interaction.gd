@@ -176,3 +176,5 @@ func _test_view() -> void:
 	await get_tree().physics_frame
 	var hud_pick: Dictionary = view.pick_center()
 	_check("pick_center 命中 HUD", str(hud_pick.get("kind", "")) == "hud" and str(hud_pick.get("action", "")) == "ready")
+	_check("铃铛拾取标记", view.get_node("Center/KongBell/PickArea").get_meta("pick", {}).get("action", "") == "kongbaya")
+	_check("pending 与牌堆同尺寸（scale 1）", view.get_node("Center/Pending").scale.is_equal_approx(Vector3.ONE))
