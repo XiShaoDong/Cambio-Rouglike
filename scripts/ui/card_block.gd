@@ -25,10 +25,15 @@ func _build() -> void:
 		return
 	_built = true
 	_mesh = MeshInstance3D.new()
-	var box := BoxMesh.new()
-	box.size = Table3dLayout.BLOCK_SIZE
-	_mesh.mesh = box
+	# 卡面用平面（UV 完整 0–1）。BoxMesh 的 UV 是十字展开，顶面只采样一条线 → 贴图被裁。
+	var plane := PlaneMesh.new()
+	plane.orientation = PlaneMesh.FACE_Y
+	plane.size = Vector2(Table3dLayout.BLOCK_SIZE.x, Table3dLayout.BLOCK_SIZE.z)
+	plane.subdivide_width = 0
+	plane.subdivide_depth = 0
+	_mesh.mesh = plane
 	_material = StandardMaterial3D.new()
+	_material.cull_mode = BaseMaterial3D.CULL_DISABLED  # 两面可见，避免看到背面消失
 	_mesh.material_override = _material
 	add_child(_mesh)
 	_label = Label3D.new()

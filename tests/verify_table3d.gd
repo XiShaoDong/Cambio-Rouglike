@@ -60,7 +60,7 @@ func _test_camera() -> void:
 	rig.frame_for_seat(0.0)
 	_check("相机基准朝向 0°", is_equal_approx(rig.base_yaw, 0.0))
 	_check("相机默认俯角", is_equal_approx(rig.pitch, Table3dCamera.DEFAULT_PITCH))
-	_check("相机座位位置", rig.position.is_equal_approx(Vector3(0.0, 1.6, Table3dLayout.SEAT_RADIUS + Table3dCamera.CAMERA_BACK)))
+	_check("相机座位位置", rig.position.is_equal_approx(Vector3(0.0, rig.EYE_HEIGHT, Table3dLayout.SEAT_RADIUS + rig.CAMERA_BACK)))
 	rig.look(Vector2(-100.0, 0.0))
 	_check("鼠标左移 → yaw +50（方向正确、灵敏度 0.5）", is_equal_approx(rig.yaw, 50.0))
 	rig.look(Vector2(1000.0, 1000.0))
@@ -71,7 +71,7 @@ func _test_camera() -> void:
 	_check("pitch 夹下限 -60", is_equal_approx(rig.pitch, -Table3dCamera.PITCH_LIMIT))
 	rig.frame_for_seat(180.0)
 	_check("对面基准朝向 180°", is_equal_approx(rig.base_yaw, 180.0))
-	_check("对面座位位置", rig.position.is_equal_approx(Vector3(0.0, 1.6, -(Table3dLayout.SEAT_RADIUS + Table3dCamera.CAMERA_BACK))))
+	_check("对面座位位置", rig.position.is_equal_approx(Vector3(0.0, rig.EYE_HEIGHT, -(Table3dLayout.SEAT_RADIUS + rig.CAMERA_BACK))))
 	# 同一座位重复取景（每次 render 调 frame_for_seat）不应复位用户环视
 	rig.look(Vector2(20.0, 10.0))
 	var yaw_after_look: float = rig.yaw

@@ -37,11 +37,9 @@ func _bind() -> void:
 	_discard_block = get_node_or_null("Center/DiscardTop")
 	_pending_block = get_node_or_null("Center/Pending")
 	_hud = get_node_or_null("Hud")
-	var deck_pick := get_node_or_null("Center/DeckPick")
-	if deck_pick != null:
-		deck_pick.collision_layer = Table3dLayout.PICK_MASK
-		deck_pick.collision_mask = 0
-		deck_pick.set_meta("pick", {"kind": "deck"})
+	var deck_block := get_node_or_null("Center/Deck")
+	if deck_block != null and deck_block.has_method("set_pick"):
+		deck_block.set_pick({"kind": "deck"})
 	if camera == null or _deck_label == null or _discard_block == null \
 			or _pending_block == null or _hud == null:
 		push_error("[Table3dView] 场景缺少必需节点：CameraRig/Center/DeckCount/DiscardTop/Pending/Hud")

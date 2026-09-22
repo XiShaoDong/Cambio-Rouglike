@@ -7,9 +7,9 @@ extends Node3D
 const PITCH_LIMIT := 60.0
 const YAW_LIMIT := 90.0
 const DEFAULT_PITCH := 20.0  # 正=俯视
-const EYE_HEIGHT := 1.6
-const CAMERA_BACK := 1.0  # 相机在座位半径外再后退的距离（多看到桌面）
-const MOUSE_SENSITIVITY := 0.5  # 度/像素（原 1.0 过快，减半）
+@export var EYE_HEIGHT := 2.0
+@export var CAMERA_BACK := 1.5  # 相机在座位半径外再后退的距离（多看到桌面）
+@export_range(0,1,0.05) var MOUSE_SENSITIVITY := 0.5  # 度/像素（原 1.0 过快，减半）
 
 var base_yaw := 0.0
 var yaw := 0.0

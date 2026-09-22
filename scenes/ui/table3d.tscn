@@ -1,10 +1,9 @@
-[gd_scene load_steps=14 format=3]
+[gd_scene format=3 uid="uid://d3yks8x5jqsjh"]
 
-[ext_resource type="Script" path="res://scripts/ui/table3d_view.gd" id="1_view"]
-[ext_resource type="Script" path="res://scripts/ui/table3d_camera.gd" id="2_cam"]
-[ext_resource type="Script" path="res://scripts/ui/card_block.gd" id="3_block"]
+[ext_resource type="Script" uid="uid://cya5bsesbqv4c" path="res://scripts/ui/table3d_view.gd" id="1_view"]
+[ext_resource type="Script" uid="uid://c0v4tvslqpr3e" path="res://scripts/ui/table3d_camera.gd" id="2_cam"]
+[ext_resource type="Script" uid="uid://cv4ieubwgfs04" path="res://scripts/ui/card_block.gd" id="3_block"]
 [ext_resource type="Script" path="res://scripts/ui/table3d_hud.gd" id="4_hud"]
-[ext_resource type="Texture2D" path="res://assets/Cards/back07.png" id="5_back"]
 
 [sub_resource type="Environment" id="Environment_1"]
 background_mode = 1
@@ -13,164 +12,148 @@ ambient_light_source = 2
 ambient_light_color = Color(1, 1, 1, 1)
 ambient_light_energy = 1.2
 
-[sub_resource type="BoxMesh" id="TableMesh"]
-size = Vector3(5.6, 0.08, 5.6)
-
 [sub_resource type="StandardMaterial3D" id="TableMat"]
 albedo_color = Color(0.16, 0.18, 0.22, 1)
 
-[sub_resource type="BoxMesh" id="TableEdgeMesh"]
-size = Vector3(5.9, 0.12, 5.9)
+[sub_resource type="BoxMesh" id="TableMesh"]
+size = Vector3(5.6, 0.08, 5.6)
 
 [sub_resource type="StandardMaterial3D" id="TableEdgeMat"]
 albedo_color = Color(0.09, 0.1, 0.12, 1)
 
-[sub_resource type="BoxMesh" id="DeckMesh"]
-size = Vector3(0.7, 0.25, 1)
+[sub_resource type="BoxMesh" id="TableEdgeMesh"]
+size = Vector3(5.9, 0.12, 5.9)
 
-[sub_resource type="StandardMaterial3D" id="DeckMat"]
-albedo_color = Color(1, 1, 1, 1)
-albedo_texture = ExtResource("5_back")
-
-[sub_resource type="BoxShape3D" id="DeckShape"]
-size = Vector3(0.7, 0.25, 1)
-
-[node name="Table3D" type="Node3D"]
+[node name="Table3D" type="Node3D" unique_id=1984023701]
 script = ExtResource("1_view")
 
-[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1904513508]
 environment = SubResource("Environment_1")
 
-[node name="CameraRig" type="Node3D" parent="."]
+[node name="CameraRig" type="Node3D" parent="." unique_id=836839727]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.6, 2.4)
 script = ExtResource("2_cam")
+EYE_HEIGHT = 3.5
+MOUSE_SENSITIVITY = 0.35
 
-[node name="PitchPivot" type="Node3D" parent="CameraRig"]
+[node name="PitchPivot" type="Node3D" parent="CameraRig" unique_id=1360261795]
 transform = Transform3D(1, 0, 0, 0, 0.939693, -0.34202, 0, 0.34202, 0.939693, 0, 0, 0)
 
-[node name="Camera3D" type="Camera3D" parent="CameraRig/PitchPivot"]
+[node name="Camera3D" type="Camera3D" parent="CameraRig/PitchPivot" unique_id=1662406061]
+transform = Transform3D(1, 0, 0, 0, 0.9999997, 2.9802322e-08, 0, 0, 0.9999997, 0, 0, 0)
 
-[node name="Table" type="MeshInstance3D" parent="."]
+[node name="Table" type="MeshInstance3D" parent="." unique_id=480668252]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.04, 0)
-mesh = SubResource("TableMesh")
 material_override = SubResource("TableMat")
+mesh = SubResource("TableMesh")
 
-[node name="TableEdge" type="MeshInstance3D" parent="."]
+[node name="TableEdge" type="MeshInstance3D" parent="." unique_id=730121467]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.09, 0)
-mesh = SubResource("TableEdgeMesh")
 material_override = SubResource("TableEdgeMat")
+mesh = SubResource("TableEdgeMesh")
 
-[node name="Seats" type="Node3D" parent="."]
+[node name="Seats" type="Node3D" parent="." unique_id=1748982733]
 
-[node name="Seat0" type="Node3D" parent="Seats"]
+[node name="Seat0" type="Node3D" parent="Seats" unique_id=1392503900]
 transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, 2.4)
 
-[node name="HandAnchor" type="Node3D" parent="Seats/Seat0"]
+[node name="HandAnchor" type="Node3D" parent="Seats/Seat0" unique_id=146145417]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.03, 0)
 
-[node name="NameLabel" type="Label3D" parent="Seats/Seat0"]
+[node name="NameLabel" type="Label3D" parent="Seats/Seat0" unique_id=79040814]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.55, 0)
-billboard = 1
-no_depth_test = true
 pixel_size = 0.004
-font_size = 64
-
-[node name="StatLabel" type="Label3D" parent="Seats/Seat0"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)
 billboard = 1
 no_depth_test = true
-pixel_size = 0.003
 font_size = 64
 
-[node name="Seat1" type="Node3D" parent="Seats"]
+[node name="StatLabel" type="Label3D" parent="Seats/Seat0" unique_id=1889255182]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)
+pixel_size = 0.003
+billboard = 1
+no_depth_test = true
+font_size = 64
+
+[node name="Seat1" type="Node3D" parent="Seats" unique_id=1100059860]
 transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 2.4, 0, 0)
 
-[node name="HandAnchor" type="Node3D" parent="Seats/Seat1"]
+[node name="HandAnchor" type="Node3D" parent="Seats/Seat1" unique_id=774430754]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.03, 0)
 
-[node name="NameLabel" type="Label3D" parent="Seats/Seat1"]
+[node name="NameLabel" type="Label3D" parent="Seats/Seat1" unique_id=1917956023]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.55, 0)
-billboard = 1
-no_depth_test = true
 pixel_size = 0.004
-font_size = 64
-
-[node name="StatLabel" type="Label3D" parent="Seats/Seat1"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)
 billboard = 1
 no_depth_test = true
-pixel_size = 0.003
 font_size = 64
 
-[node name="Seat2" type="Node3D" parent="Seats"]
+[node name="StatLabel" type="Label3D" parent="Seats/Seat1" unique_id=78520061]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)
+pixel_size = 0.003
+billboard = 1
+no_depth_test = true
+font_size = 64
+
+[node name="Seat2" type="Node3D" parent="Seats" unique_id=721379983]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -2.4)
 
-[node name="HandAnchor" type="Node3D" parent="Seats/Seat2"]
+[node name="HandAnchor" type="Node3D" parent="Seats/Seat2" unique_id=1025038798]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.03, 0)
 
-[node name="NameLabel" type="Label3D" parent="Seats/Seat2"]
+[node name="NameLabel" type="Label3D" parent="Seats/Seat2" unique_id=1032947187]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.55, 0)
-billboard = 1
-no_depth_test = true
 pixel_size = 0.004
-font_size = 64
-
-[node name="StatLabel" type="Label3D" parent="Seats/Seat2"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)
 billboard = 1
 no_depth_test = true
-pixel_size = 0.003
 font_size = 64
 
-[node name="Seat3" type="Node3D" parent="Seats"]
+[node name="StatLabel" type="Label3D" parent="Seats/Seat2" unique_id=2058807649]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)
+pixel_size = 0.003
+billboard = 1
+no_depth_test = true
+font_size = 64
+
+[node name="Seat3" type="Node3D" parent="Seats" unique_id=451826421]
 transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, -2.4, 0, 0)
 
-[node name="HandAnchor" type="Node3D" parent="Seats/Seat3"]
+[node name="HandAnchor" type="Node3D" parent="Seats/Seat3" unique_id=689996338]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.03, 0)
 
-[node name="NameLabel" type="Label3D" parent="Seats/Seat3"]
+[node name="NameLabel" type="Label3D" parent="Seats/Seat3" unique_id=77393484]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.55, 0)
+pixel_size = 0.004
 billboard = 1
 no_depth_test = true
-pixel_size = 0.004
 font_size = 64
 
-[node name="StatLabel" type="Label3D" parent="Seats/Seat3"]
+[node name="StatLabel" type="Label3D" parent="Seats/Seat3" unique_id=1979266312]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)
-billboard = 1
-no_depth_test = true
 pixel_size = 0.003
-font_size = 64
-
-[node name="Center" type="Node3D" parent="."]
-
-[node name="Deck" type="MeshInstance3D" parent="Center"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.15, 0)
-mesh = SubResource("DeckMesh")
-material_override = SubResource("DeckMat")
-
-[node name="DeckCount" type="Label3D" parent="Center"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.75, 0)
 billboard = 1
 no_depth_test = true
-pixel_size = 0.004
 font_size = 64
 
-[node name="DeckPick" type="Area3D" parent="Center"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.15, 0)
-collision_layer = 2
-collision_mask = 0
+[node name="Center" type="Node3D" parent="." unique_id=1551981273]
 
-[node name="DeckShape" type="CollisionShape3D" parent="Center/DeckPick"]
-shape = SubResource("DeckShape")
+[node name="Deck" type="Node3D" parent="Center" unique_id=2025843720]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.03, 0)
+script = ExtResource("3_block")
 
-[node name="DiscardTop" type="Node3D" parent="Center"]
+[node name="DeckCount" type="Label3D" parent="Center" unique_id=1324010359]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.25, 0)
+pixel_size = 0.004
+billboard = 1
+no_depth_test = true
+font_size = 64
+
+[node name="DiscardTop" type="Node3D" parent="Center" unique_id=586434583]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.9, 0.03, 0)
 script = ExtResource("3_block")
 
-[node name="Pending" type="Node3D" parent="Center"]
+[node name="Pending" type="Node3D" parent="Center" unique_id=1182893267]
 transform = Transform3D(1.5, 0, 0, 0, 1.5, 0, 0, 0, 1.5, -0.9, 0.03, 0)
 script = ExtResource("3_block")
 
-[node name="Hud" type="Node3D" parent="."]
+[node name="Hud" type="Node3D" parent="." unique_id=1475532248]
 script = ExtResource("4_hud")
