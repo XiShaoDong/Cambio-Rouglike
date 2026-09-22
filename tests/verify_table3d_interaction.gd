@@ -135,6 +135,9 @@ func _test_view() -> void:
 	_check("_card_blocks 登记", view._card_blocks.has(0) and view._card_blocks[0].has(0))
 	_check("自己脑袋隐藏（相机在头心）", not view._seat_nodes[0].get_node("Avatar/Head").visible)
 	_check("对手脑袋可见", view._seat_nodes[1].get_node("Avatar/Head").visible)
+	var avatar = view._seat_nodes[0].get_node("Avatar")
+	_check("角色位于眼位（EYE_HEIGHT/CAMERA_BACK）", avatar.position.is_equal_approx(Vector3(0.0, view.camera.EYE_HEIGHT, -view.camera.CAMERA_BACK)))
+	_check("身体在头正下方（无水平位移）", avatar.get_node("Body").position.x == 0.0 and avatar.get_node("Body").position.z == 0.0)
 	# 把相机对准 seat0/slot0 方块 → pick_center 命中 slot
 	var block = view._card_blocks[0][0]
 	view.camera.get_node("PitchPivot").rotation_degrees = Vector3.ZERO

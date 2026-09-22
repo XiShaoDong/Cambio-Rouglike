@@ -152,12 +152,24 @@ func _render_seat(node: Node3D, p: Dictionary) -> void:
 	name_label.modulate = tint
 	stat_label.modulate = tint
 
-## 角色（场景 Avatar/Head+Body）：隐藏自己脑袋（相机在头心）；出局/离线变暗、当前回合金色高亮。
+## 角色（场景 Avatar/Head+Body）：放到「眼睛」位置（径向外移 CAMERA_BACK、头心抬到
+## EYE_HEIGHT，相机即在头心）；隐藏自己脑袋（身体在其正下方）；出局/离线变暗、当前回合金色高亮。
 func _apply_avatar(seat_node: Node3D, p: Dictionary, viewer: int, state: Dictionary) -> void:
-	var head := seat_node.get_node_or_null("Avatar/Head")
-	var body := seat_node.get_node_or_null("Avatar/Body")
-	if head == null and body == null:
+	var avatar := seat_node.get_node_or_null("Avatar")
+	if avatar == null:
 		return
+	var eye := 1.5
+	var back := 0.0
+	if camera != null:
+		var eye_v = camera.get("EYE_HEIGHT")
+		if eye_v != null:
+			eye = float(eye_v)
+		var back_v = camera.get("CAMERA_BACK")
+		if back_v != null:
+			back = float(back_v)
+	avatar.position = Vector3(0.0, eye, -back)
+	var head := avatar.get_node_or_null("Head")
+	var body := avatar.get_node_or_null("Body")
 	var seat := int(p.id)
 	if head != null:
 		head.visible = seat != viewer
