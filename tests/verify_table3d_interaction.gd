@@ -22,6 +22,7 @@ func _run() -> void:
 	await _test_card_block()
 	_test_camera_accessor()
 	await _test_picker()
+	_test_hud()
 
 func _test_layout_pick() -> void:
 	_check("PICK_LAYER == 2", Table3dLayout.PICK_LAYER == 2)
@@ -88,3 +89,18 @@ func _test_picker() -> void:
 	await get_tree().physics_frame
 	var miss := Table3dPicker.pick(cam, root.get_world_3d(), center)
 	_check("准星指空处未命中", miss.is_empty())
+
+func _test_hud() -> void:
+	var hud := Table3dHud.new()
+	add_child(hud)
+	hud.set_buttons([
+		{"text": "Ready（1/2）", "action": "ready", "enabled": true},
+		{"text": "🔔 KONGBAYA", "action": "kongbaya", "enabled": false},
+	])
+	_check("HUD 按钮数", hud.button_count() == 2)
+	_check("HUD action 0", hud.button_action(0) == "ready")
+	_check("HUD action 1", hud.button_action(1) == "kongbaya")
+	_check("HUD 禁用按钮颜色", hud.button_color(1) == Table3dHud.DISABLED_COLOR)
+	_check("HUD 启用按钮颜色", hud.button_color(0) == Table3dHud.ENABLED_COLOR)
+	var area: Area3D = hud.get_child(0).get_node("PickArea")
+	_check("HUD 按钮可拾取", area.get_meta("pick", {}).get("action", "") == "ready")
