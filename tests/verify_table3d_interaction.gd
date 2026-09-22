@@ -23,6 +23,7 @@ func _run() -> void:
 	_test_camera_accessor()
 	await _test_picker()
 	_test_hud()
+	await _test_view()
 
 func _test_layout_pick() -> void:
 	_check("PICK_LAYER == 2", Table3dLayout.PICK_LAYER == 2)
@@ -104,3 +105,58 @@ func _test_hud() -> void:
 	_check("HUD 启用按钮颜色", hud.button_color(0) == Table3dHud.ENABLED_COLOR)
 	var area: Area3D = hud.get_child(0).get_node("PickArea")
 	_check("HUD 按钮可拾取", area.get_meta("pick", {}).get("action", "") == "ready")
+
+func _test_view() -> void:
+	var view = load("res://scenes/ui/table3d.tscn").instantiate()
+	add_child(view)
+	await get_tree().process_frame
+	view.render({
+		"viewer_id": 0,
+		"players": [
+			{"id": 0, "name": "甲", "count": 2, "currency": 0, "health": 2,
+			 "slots": [{"card_id": "c1"}, {"card_id": "c2"}, {"card_id": "c3"}, {"card_id": "c4"}]},
+			{"id": 1, "name": "乙", "count": 4, "currency": 0, "health": 2,
+			 "slots": [{"card_id": "c9"}, {"card_id": "c10"}, {"card_id": "c11"}, {"card_id": "c12"}]},
+		],
+		"draw_count": 30, "discard": {}, "pending": {}, "phase": 2,
+	})
+	await get_tree().physics_frame
+	_check("_card_blocks 登记", view._card_blocks.has(0) and view._card_blocks[0].has(0))
+	# 把相机对准 seat0/slot0 方块 → pick_center 命中 slot
+	var block = view._card_blocks[0][0]
+	view.camera.get_node("PitchPivot").rotation_degrees = Vector3.ZERO
+	view.camera.rotation_degrees = Vector3.ZERO
+	view.camera.global_position = block.global_position + Vector3(0.0, 0.0, 1.2)
+	await get_tree().physics_frame
+	var pick: Dictionary = view.pick_center()
+	_check("pick_center 命中槽位", str(pick.get("kind", "")) == "slot" and int(pick.get("seat", -1)) == 0 and int(pick.get("slot", -1)) == 0)
+	# 高亮
+	view.render({
+		"viewer_id": 0,
+		"players": [
+			{"id": 0, "name": "甲", "count": 2, "currency": 0, "health": 2,
+			 "slots": [{"card_id": "c1"}, {"card_id": "c2"}, {"card_id": "c3"}, {"card_id": "c4"}]},
+			{"id": 1, "name": "乙", "count": 4, "currency": 0, "health": 2,
+			 "slots": [{"card_id": "c9"}, {"card_id": "c10"}, {"card_id": "c11"}, {"card_id": "c12"}]},
+		],
+		"draw_count": 30, "discard": {}, "pending": {}, "phase": 2,
+	}, func(seat: int, slot: int) -> bool: return seat == 0 and slot == 0)
+	await get_tree().process_frame
+	_check("render(actionable) 高亮", view._card_blocks[0][0].block_color() == Table3dLayout.ACTIONABLE_COLOR)
+	_check("非可操作不高亮", view._card_blocks[0][1].block_color() == Table3dLayout.UNKNOWN_COLOR)
+	# 揭示 / 恢复
+	view.reveal_slot(0, 0, {"rank": "A", "suit": "♥"}, Color(0.2, 0.9, 0.4), 0.05)
+	_check("reveal_slot 显示 A♥", view._card_blocks[0][0].label_text() == "A♥")
+	await get_tree().create_timer(0.15).timeout
+	_check("reveal_slot 后恢复无文本", view._card_blocks[0][0].label_text() == "")
+	# HUD 可拾取
+	view.set_hud_buttons([{"text": "Ready", "action": "ready", "enabled": true}])
+	await get_tree().process_frame
+	var hud_btn = view._hud.get_child(0)
+	# 从桌心一侧朝 viewer 看 HUD：避免 seat0 手牌（HUD 与相机之间的 fixture）遮挡射线
+	view.camera.get_node("PitchPivot").rotation_degrees = Vector3.ZERO
+	view.camera.rotation_degrees = Vector3(0.0, 180.0, 0.0)
+	view.camera.global_position = hud_btn.global_position + Vector3(0.0, 0.0, -1.0)
+	await get_tree().physics_frame
+	var hud_pick: Dictionary = view.pick_center()
+	_check("pick_center 命中 HUD", str(hud_pick.get("kind", "")) == "hud" and str(hud_pick.get("action", "")) == "ready")

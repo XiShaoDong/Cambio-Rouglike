@@ -13,6 +13,8 @@ const CENTER_DECK := Vector3(0.0, 0.15, 0.0)
 const CENTER_DISCARD := Vector3(0.9, 0.08, 0.0)
 const CENTER_PENDING := Vector3(-0.9, 0.9, -0.0)
 const BACKGROUND_COLOR := Color(0.07, 0.08, 0.10)
+const HUD_OFFSET := 0.55
+const HUD_HEIGHT := 0.5
 
 var camera = null  # Table3dCamera
 var _built := false
@@ -20,6 +22,9 @@ var _seat_nodes: Array = []
 var _deck_label: Label3D
 var _discard_block = null  # CardBlock
 var _pending_block = null  # CardBlock
+var _hud = null  # Table3dHud
+var _card_blocks := {}  # {seat: {slot: CardBlock}}
+var _hud_offset := Vector3.ZERO
 
 func _ready() -> void:
 	_build()
@@ -113,13 +118,30 @@ func _build() -> void:
 	_pending_block.position = CENTER_PENDING
 	_pending_block.scale = Vector3(1.5, 1.5, 1.5)
 	center.add_child(_pending_block)
+	# 3D 操作面板（准星可点）
+	_hud = load("res://scripts/ui/table3d_hud.gd").new()
+	_hud.name = "Hud"
+	add_child(_hud)
+	# 抽牌堆拾取标记
+	var deck_area := Area3D.new()
+	deck_area.name = "DeckPick"
+	var deck_shape := CollisionShape3D.new()
+	var deck_pick := BoxShape3D.new()
+	deck_pick.size = Vector3(0.7, 0.25, 1.0)
+	deck_shape.shape = deck_pick
+	deck_area.add_child(deck_shape)
+	deck_area.collision_layer = Table3dLayout.PICK_MASK
+	deck_area.collision_mask = 0
+	deck_area.set_meta("pick", {"kind": "deck"})
+	deck_area.position = CENTER_DECK
+	center.add_child(deck_area)
 
 ## 显示/隐藏预览（不处理点击与动画）。
 func set_active(on: bool) -> void:
 	visible = on
 
 ## 按快照全量重建（无增量、无插值）。state 为 HiddenInfo 投影出的公开快照。
-func render(state: Dictionary) -> void:
+func render(state: Dictionary, actionable := Callable()) -> void:
 	_build()
 	if state.is_empty():
 		return
@@ -140,6 +162,7 @@ func render(state: Dictionary) -> void:
 	if camera != null:
 		camera.frame_for_seat(float(seat_angle.get(viewer, 0.0)))
 	# 座位
+	_card_blocks.clear()
 	for i in SEAT_COUNT:
 		_seat_nodes[i].visible = false
 	var slot_i := 0
@@ -153,15 +176,26 @@ func render(state: Dictionary) -> void:
 		node.position = _seat_world(a)
 		node.rotation_degrees = Vector3(0.0, a + 180.0, 0.0)
 		_render_seat(node, p)
+		if actionable.is_valid():
+			for slot_index in (p.get("slots", []) as Array).size():
+				if _card_blocks.has(seat) and _card_blocks[seat].has(slot_index):
+					_card_blocks[seat][slot_index].set_actionable(bool(actionable.call(seat, slot_index)))
 		slot_i += 1
 	# 中央
 	_deck_label.text = str(int(state.get("draw_count", 0)))
 	var discard: Dictionary = state.get("discard", {})
 	_discard_block.setup({"card": discard} if not discard.is_empty() else {})
+	_discard_block.set_pick({"kind": "discard"})
 	var pending: Dictionary = state.get("pending", {})
 	_pending_block.visible = not pending.is_empty()
+	_pending_block.set_pick({"kind": "pending"})
 	if not pending.is_empty():
 		_pending_block.setup({"card": pending} if pending.has("rank") else {})
+	# HUD 放在 viewer 座位内侧、朝向 viewer
+	var v_angle := float(seat_angle.get(viewer, 0.0))
+	var v_dir := Vector3(sin(deg_to_rad(v_angle)), 0.0, cos(deg_to_rad(v_angle)))
+	_hud.position = v_dir * (Table3dLayout.SEAT_RADIUS - HUD_OFFSET) + Vector3(0.0, HUD_HEIGHT, 0.0)
+	_hud.rotation_degrees = Vector3(0.0, v_angle + 180.0, 0.0)
 
 ## 座位世界坐标（与相机基准同一角度约定）。
 func _seat_world(angle_deg: float) -> Vector3:
@@ -184,6 +218,10 @@ func _render_seat(node: Node3D, p: Dictionary) -> void:
 			0.0)
 		hand.add_child(block)
 		block.setup(slots[i])
+		block.set_pick({"kind": "slot", "seat": int(p.id), "slot": i})
+		if not _card_blocks.has(int(p.id)):
+			_card_blocks[int(p.id)] = {}
+		_card_blocks[int(p.id)][i] = block
 	var name_label: Label3D = node.get_node("NameLabel")
 	var stat_label: Label3D = node.get_node("StatLabel")
 	name_label.text = str(p.get("name", ""))
@@ -191,3 +229,37 @@ func _render_seat(node: Node3D, p: Dictionary) -> void:
 	var tint := Color(1, 1, 1, 0.5) if bool(p.get("eliminated", false)) else Color(1, 1, 1, 1)
 	name_label.modulate = tint
 	stat_label.modulate = tint
+
+## 屏幕中心射线拾取（准星）。
+func pick_center() -> Dictionary:
+	if camera == null:
+		return {}
+	var center := get_viewport().get_visible_rect().size * 0.5
+	return Table3dPicker.pick(camera.camera_node(), get_world_3d(), center)
+
+## 瞬时揭示某槽位（dur 秒后恢复）。槽位不存在则忽略。
+func reveal_slot(seat_id: int, slot: int, card: Dictionary, color := Color(0, 0, 0, 0), dur := 1.5) -> void:
+	var block = _find_block(seat_id, slot)
+	if block == null:
+		return
+	block.reveal(card, color)
+	get_tree().create_timer(dur).timeout.connect(func():
+		if is_instance_valid(block):
+			block.restore())
+
+## 短暂染色提醒（不翻面）。
+func flash_slot(seat_id: int, slot: int, color: Color, dur: float) -> void:
+	var block = _find_block(seat_id, slot)
+	if block != null:
+		block.flash(color, dur)
+
+## 设置 3D 操作面板按钮（[{text, action, enabled}]）。
+func set_hud_buttons(buttons: Array) -> void:
+	_build()
+	_hud.set_buttons(buttons)
+
+func _find_block(seat_id: int, slot: int):
+	if not _card_blocks.has(seat_id) or not _card_blocks[seat_id].has(slot):
+		return null
+	var block = _card_blocks[seat_id][slot]
+	return block if is_instance_valid(block) else null
