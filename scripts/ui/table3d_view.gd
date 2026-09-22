@@ -10,6 +10,8 @@ const CardBlockScript := preload("res://scripts/ui/card_block.gd")
 const SEAT_COUNT := 4
 const HUD_OFFSET := 0.55
 const HUD_HEIGHT := 0.5
+const AVATAR_GLOW_COLOR := Color(1.0, 0.85, 0.35, 0.30)  # 当前回合高亮
+const AVATAR_DIM_COLOR := Color(0.0, 0.0, 0.0, 0.55)     # 出局/离线变暗
 
 var camera = null  # Table3dCamera（场景 CameraRig）
 var _bind_done := false
@@ -20,6 +22,8 @@ var _discard_block = null  # CardBlock（场景 Center/DiscardTop）
 var _pending_block = null  # CardBlock（场景 Center/Pending）
 var _hud = null  # Table3dHud（场景 Hud）
 var _card_blocks := {}  # {seat: {slot: CardBlock}}
+var _avatar_glow_mat: StandardMaterial3D = null
+var _avatar_dim_mat: StandardMaterial3D = null
 
 func _ready() -> void:
 	_bind()
@@ -92,6 +96,7 @@ func render(state: Dictionary, actionable := Callable()) -> void:
 		node.position = _seat_world(a)
 		node.rotation_degrees = Vector3(0.0, a + 180.0, 0.0)
 		_render_seat(node, p)
+		_apply_avatar(node, p, viewer, state)
 		if actionable.is_valid():
 			for slot_index in (p.get("slots", []) as Array).size():
 				if _card_blocks.has(seat) and _card_blocks[seat].has(slot_index):
@@ -146,6 +151,44 @@ func _render_seat(node: Node3D, p: Dictionary) -> void:
 	var tint := Color(1, 1, 1, 0.5) if bool(p.get("eliminated", false)) else Color(1, 1, 1, 1)
 	name_label.modulate = tint
 	stat_label.modulate = tint
+
+## 角色（场景 Avatar/Head+Body）：隐藏自己脑袋（相机在头心）；出局/离线变暗、当前回合金色高亮。
+func _apply_avatar(seat_node: Node3D, p: Dictionary, viewer: int, state: Dictionary) -> void:
+	var head := seat_node.get_node_or_null("Avatar/Head")
+	var body := seat_node.get_node_or_null("Avatar/Body")
+	if head == null and body == null:
+		return
+	var seat := int(p.id)
+	if head != null:
+		head.visible = seat != viewer
+	var overlay: StandardMaterial3D = null
+	var offline: Array = state.get("offline_players", [])
+	if bool(p.get("eliminated", false)) or offline.has(seat):
+		overlay = _avatar_dim()
+	elif seat == int(state.get("current_player", -1)):
+		overlay = _avatar_glow()
+	if head != null:
+		head.material_overlay = overlay
+	if body != null:
+		body.material_overlay = overlay
+
+func _avatar_glow() -> StandardMaterial3D:
+	if _avatar_glow_mat == null:
+		_avatar_glow_mat = _make_overlay(AVATAR_GLOW_COLOR)
+	return _avatar_glow_mat
+
+func _avatar_dim() -> StandardMaterial3D:
+	if _avatar_dim_mat == null:
+		_avatar_dim_mat = _make_overlay(AVATAR_DIM_COLOR)
+	return _avatar_dim_mat
+
+func _make_overlay(color: Color) -> StandardMaterial3D:
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = color
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	return mat
 
 ## 屏幕中心射线拾取（准星）。
 func pick_center() -> Dictionary:
