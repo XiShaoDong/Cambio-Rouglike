@@ -94,6 +94,30 @@ func _sync_table3d_pointer() -> void:
 	if _crosshair != null and is_instance_valid(_crosshair):
 		_crosshair.visible = not modal
 
+## 3D 自己面板（屏幕右下角）：生命/金钱/卡牌数（无名字）。
+func _ensure_self_panel() -> void:
+	if _self_panel != null and is_instance_valid(_self_panel):
+		return
+	_self_panel = PlayerStatPanel.new()
+	_self_panel.name = "SelfStatPanel"
+	_self_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_self_panel.z_index = 80
+	add_child(_self_panel)
+	_self_panel.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	_self_panel.offset_left = -272.0
+	_self_panel.offset_top = -84.0
+	_self_panel.offset_right = -16.0
+	_self_panel.offset_bottom = -16.0
+
+func _update_self_panel() -> void:
+	if _self_panel == null or not is_instance_valid(_self_panel):
+		return
+	var viewer := int(latest_state.get("viewer_id", 0))
+	for p in latest_state.get("players", []):
+		if int(p.id) == viewer:
+			_self_panel.set_data("", int(p.get("health", 0)), int(p.get("currency", 0)), int(p.get("count", 0)))
+			return
+
 ## 3D 只读预览开关（仅对局中可用）。激活时隐藏 2D 棋盘（含 background，
 ## 否则 CanvasItem 会盖住 3D）并捕获鼠标；退出时恢复并重绘 2D。
 func _set_table3d(on: bool) -> void:
@@ -115,6 +139,9 @@ func _set_table3d(on: bool) -> void:
 		table3d.set_hud_buttons(_hud_buttons())
 		table3d.render(latest_state, interaction.card_actionable)
 		_sync_table3d_pointer()
+		_ensure_self_panel()
+		_self_panel.visible = true
+		_update_self_panel()
 		background.visible = false
 		game_panel.visible = false
 	else:
@@ -122,6 +149,8 @@ func _set_table3d(on: bool) -> void:
 			table3d.set_active(false)
 		if _crosshair != null and is_instance_valid(_crosshair):
 			_crosshair.visible = false
+		if _self_panel != null and is_instance_valid(_self_panel):
+			_self_panel.visible = false
 		background.visible = true
 		game_panel.visible = true
 		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
@@ -221,6 +250,7 @@ var board: Control
 var table3d: Node3D = null
 var _table3d_active := false
 var _crosshair: Control = null
+var _self_panel: PlayerStatPanel = null
 var is_dev_join := false
 var start_button: Button = null
 var close_room_button: Button = null
@@ -551,6 +581,8 @@ func _on_state_updated(state: Dictionary) -> void:
 	if _table3d_active and table3d != null and is_instance_valid(table3d):
 		table3d.render(state, interaction.card_actionable)
 		table3d.set_hud_buttons(_hud_buttons())
+	if _table3d_active:
+		_update_self_panel()
 	if int(state.phase) == PHASE_GAME_OVER:
 		_open_settlement()
 	else:
