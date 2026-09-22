@@ -171,8 +171,10 @@ func _apply_avatar(seat_node: Node3D, p: Dictionary, viewer: int, state: Diction
 	var head := avatar.get_node_or_null("Head")
 	var body := avatar.get_node_or_null("Body")
 	var seat := int(p.id)
+	# 自己那席整个角色隐藏（脑袋+身体都不出现在自己视角）
+	avatar.visible = seat != viewer
 	if head != null:
-		head.visible = seat != viewer
+		head.visible = true
 	var overlay: StandardMaterial3D = null
 	var offline: Array = state.get("offline_players", [])
 	if bool(p.get("eliminated", false)) or offline.has(seat):
