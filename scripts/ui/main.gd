@@ -51,10 +51,10 @@ func _table3d_click() -> void:
 		"pending":
 			_on_pending_action()
 		"hud":
-			_on_table3d_hud(str(pick.get("action", "")))
+			_on_action(str(pick.get("action", "")))
 
 ## 3D 操作面板动作（与 2D 控制按钮行为一致）。
-func _on_table3d_hud(action: String) -> void:
+func _on_action(action: String) -> void:
 	match action:
 		"ready":
 			game_view._ready_clicked = true
@@ -68,30 +68,14 @@ func _on_table3d_hud(action: String) -> void:
 		"joker":
 			_open_joker_transform_panel()
 
-## 3D 面板内容（复用与 2D 相同的阶段判定）。
-func _table3d_hud_buttons() -> Array:
+## 3D 操作面板按钮（Ready + 条件动作；Kongbaya 由 3D 铃铛负责，不在面板里）。
+func _hud_buttons() -> Array:
 	var out: Array = []
-	var phase := int(latest_state.get("phase", PHASE_LOBBY))
-	var viewer := int(latest_state.get("viewer_id", 0))
-	var is_current := viewer == int(latest_state.get("current_player", -1))
-	if phase == PHASE_INITIAL_PEEK:
-		var ready_count := int(latest_state.get("ready_count", 0))
-		var total: int = (latest_state.get("players", []) as Array).size()
-		out.append({"text": "Ready（%d/%d）" % [ready_count, total], "action": "ready",
-			"enabled": not game_view._ready_clicked})
-	elif phase == PHASE_TURN_DRAW and is_current:
-		out.append({"text": "🔔 KONGBAYA", "action": "kongbaya", "enabled": true})
-	elif phase == PHASE_Q_DECISION and is_current:
-		var qd: Dictionary = latest_state.get("q_decision", {})
-		if bool(qd.get("own_viewed", false)):
-			out.append({"text": "Q：不交换", "action": "q_keep", "enabled": true})
-			out.append({"text": "Q：交换", "action": "q_exchange", "enabled": true})
-	elif phase == PHASE_TURN_DECISION and is_current:
-		var pending: Dictionary = latest_state.get("pending", {})
-		if str(pending.get("rank", "")) == "JOKER":
-			var run: Dictionary = latest_state.get("run", {})
-			if (run.get("relics", {}) as Dictionary).has(Relics.JOKER_TRANSFORM_ID):
-				out.append({"text": "变换 Joker", "action": "joker", "enabled": true})
+	if int(latest_state.get("phase", PHASE_LOBBY)) == PHASE_INITIAL_PEEK:
+		out.append({"text": ActionModel.ready_text(latest_state, game_view._ready_clicked),
+			"action": "ready",
+			"enabled": ActionModel.ready_enabled(latest_state, game_view._ready_clicked)})
+	out.append_array(ActionModel.conditional_actions(latest_state))
 	return out
 
 ## 是否有 2D 模态打开（打开时释放鼠标，让模态可点）。
@@ -128,7 +112,7 @@ func _set_table3d(on: bool) -> void:
 			_crosshair.name = "Crosshair"
 			_crosshair.z_index = 80
 			add_child(_crosshair)
-		table3d.set_hud_buttons(_table3d_hud_buttons())
+		table3d.set_hud_buttons(_hud_buttons())
 		table3d.render(latest_state, interaction.card_actionable)
 		_sync_table3d_pointer()
 		background.visible = false
@@ -566,7 +550,7 @@ func _on_state_updated(state: Dictionary) -> void:
 	dev.refresh_panel()
 	if _table3d_active and table3d != null and is_instance_valid(table3d):
 		table3d.render(state, interaction.card_actionable)
-		table3d.set_hud_buttons(_table3d_hud_buttons())
+		table3d.set_hud_buttons(_hud_buttons())
 	if int(state.phase) == PHASE_GAME_OVER:
 		_open_settlement()
 	else:

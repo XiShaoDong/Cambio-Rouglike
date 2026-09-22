@@ -99,7 +99,6 @@ func render(state: Dictionary) -> void:
 	var phase := int(state.phase)
 	var viewer := int(state.viewer_id)
 	var is_current := viewer == int(state.current_player)
-	var total_players: int = state.players.size()
 	var viewer_eliminated := false
 	for player in state.players:
 		if int(player.id) == viewer and bool(player.get("eliminated", false)):
@@ -113,20 +112,16 @@ func render(state: Dictionary) -> void:
 		main.center_hint.text = "你已出局，正在观战。"
 	else:
 		if phase == PHASE_INITIAL_PEEK:
-			var ready_count: int = int(state.get("ready_count", 0))
 			main.ready_button.visible = true
-			main.ready_button.disabled = ready_count >= total_players or _ready_clicked
-			if _ready_clicked:
-				main.ready_button.text = "已准备（%d/%d）" % [ready_count, total_players]
-			else:
-				main.ready_button.text = "Ready（%d/%d）" % [ready_count, total_players]
+			main.ready_button.disabled = not ActionModel.ready_enabled(state, _ready_clicked)
+			main.ready_button.text = ActionModel.ready_text(state, _ready_clicked)
 		else:
 			main.ready_button.visible = false
 			_ready_clicked = false
 		main.center_hint.text = main._hint_for(phase, is_current)
 	var limit: int = int((state.get("run", {}) as Dictionary).get("match_limit", KongRules.DEFAULT_MATCH_LIMIT))
 	main.round_label.text = "第 %d / %d 局" % [int(state.get("match_number", 1)), limit]
-	main.bell_button.disabled = not (phase == PHASE_TURN_DRAW and is_current)
+	main.bell_button.disabled = not ActionModel.kongbaya_available(state)
 	main.bell_button.tooltip_text = "轮到你抽牌时，按下铃铛宣布 KONGBAYA！其他人各有一次最后行动。"
 	_update_pending_card(phase, is_current)
 	main._clear(main.controls_box)
@@ -259,26 +254,15 @@ func _render_controls(phase: int, is_current: bool) -> void:
 	if bool(main.latest_state.get("suspended", false)):
 		_render_suspended_controls()
 		return
-	if phase == PHASE_Q_DECISION and is_current:
-		var qd: Dictionary = main.latest_state.get("q_decision", {})
-		if bool(qd.get("own_viewed", false)):
+	for entry in ActionModel.conditional_actions(main.latest_state):
+		var action := str(entry.get("action", ""))
+		if action == ActionModel.Q_KEEP:
 			main.interaction.action_mode = ""
-			var keep: Button = main._button("Q：不交换")
-			keep.pressed.connect(func(): GameState.request_q_decision(false, -1, main._next_action_id()))
-			main._hint_actions.add_child(keep)
-			var exchange: Button = main._button("Q：交换（两张已查看的牌）")
-			exchange.pressed.connect(func(): GameState.request_q_decision(true, -1, main._next_action_id()))
-			main._hint_actions.add_child(exchange)
-	elif phase == PHASE_TURN_DECISION and is_current:
-		# Joker 变换：当前玩家抽到 Joker 且持有 Joker 遗物 → 提供"变换 Joker"入口
-		var pending: Dictionary = main.latest_state.get("pending", {})
-		if str(pending.get("rank", "")) == "JOKER":
-			var run: Dictionary = main.latest_state.get("run", {})
-			if (run.get("relics", {}) as Dictionary).has(Relics.JOKER_TRANSFORM_ID):
-				var transform: Button = main._button("变换 Joker")
-				transform.pressed.connect(main._open_joker_transform_panel)
-				main._hint_actions.add_child(transform)
-	elif phase == PHASE_GAME_OVER:
+		var btn: Button = main._button(str(entry.get("text", "")))
+		btn.disabled = not bool(entry.get("enabled", true))
+		btn.pressed.connect(main._on_action.bind(action))
+		main._hint_actions.add_child(btn)
+	if phase == PHASE_GAME_OVER:
 		var result: Dictionary = main.latest_state.result
 		if not result.get("ranking", []).is_empty():
 			return  # 结算页接管排名展示，右下角不重复
