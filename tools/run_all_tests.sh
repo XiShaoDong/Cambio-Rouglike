@@ -86,6 +86,7 @@ run_single "card_skin"  res://tests/verify_card_skin.tscn
 run_single "table3d_layout" res://tests/verify_table3d_layout.tscn
 run_single "table3d" res://tests/verify_table3d.tscn
 run_single "table3d_mouse" res://tests/verify_table3d_mouse.tscn
+run_single "actions" res://tests/verify_actions.tscn
 run_single "table3d_interaction" res://tests/verify_table3d_interaction.tscn
 run_single "hint"       res://tests/verify_hint.tscn
 
