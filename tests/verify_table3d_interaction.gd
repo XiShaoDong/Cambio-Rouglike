@@ -138,6 +138,13 @@ func _test_view() -> void:
 	var avatar = view._seat_nodes[0].get_node("Avatar")
 	_check("角色位于眼位（EYE_HEIGHT/CAMERA_BACK）", avatar.position.is_equal_approx(Vector3(0.0, view.camera.EYE_HEIGHT, -view.camera.CAMERA_BACK)))
 	_check("身体在头正下方（无水平位移）", avatar.get_node("Body").position.x == 0.0 and avatar.get_node("Body").position.z == 0.0)
+	# 默认取景：准星应指向牌堆（可点），且 hover 有高亮反馈
+	_check("默认准星指向牌堆", str(view.pick_center().get("kind", "")) == "deck")
+	_check("hover 命中可点目标", view.update_hover())
+	var deck_mesh = view.get_node("Center/Deck/Mesh")
+	_check("hover 叠加高亮", deck_mesh.material_overlay != null)
+	view.clear_hover()
+	_check("取消 hover 清除高亮", deck_mesh.material_overlay == null)
 	# 把相机对准 seat0/slot0 方块 → pick_center 命中 slot
 	var block = view._card_blocks[0][0]
 	view.camera.get_node("PitchPivot").rotation_degrees = Vector3.ZERO

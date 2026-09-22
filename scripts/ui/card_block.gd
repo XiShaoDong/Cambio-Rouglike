@@ -14,8 +14,10 @@ var _mesh: MeshInstance3D
 var _label: Label3D
 var _material: StandardMaterial3D
 var _area: Area3D
+var _pick_shape: CollisionShape3D
 var _last_slot: Dictionary = {}
 var _actionable := false
+var _pick_enabled := true
 
 func _ready() -> void:
 	_build()
@@ -25,6 +27,7 @@ func _build() -> void:
 		return
 	_built = true
 	_mesh = MeshInstance3D.new()
+	_mesh.name = "Mesh"
 	# 卡面用平面（UV 完整 0–1）。BoxMesh 的 UV 是十字展开，顶面只采样一条线 → 贴图被裁。
 	var plane := PlaneMesh.new()
 	plane.orientation = PlaneMesh.FACE_Y
@@ -48,8 +51,9 @@ func _build() -> void:
 	_area.name = "PickArea"
 	var shape := CollisionShape3D.new()
 	var pick_box := BoxShape3D.new()
-	pick_box.size = Table3dLayout.BLOCK_SIZE
+	pick_box.size = Vector3(Table3dLayout.BLOCK_SIZE.x, Table3dLayout.PICK_HEIGHT, Table3dLayout.BLOCK_SIZE.z)
 	shape.shape = pick_box
+	_pick_shape = shape
 	_area.add_child(shape)
 	_area.collision_layer = Table3dLayout.PICK_MASK
 	_area.collision_mask = 0
@@ -72,6 +76,16 @@ func pick_meta() -> Dictionary:
 	if _area == null:
 		return {}
 	return _area.get_meta("pick", {})
+
+## 启用/禁用拾取（隐藏的卡不应被准星命中）。
+func set_pick_enabled(on: bool) -> void:
+	_build()
+	if _pick_shape != null:
+		_pick_shape.disabled = not on
+	_pick_enabled = on
+
+func is_pick_enabled() -> bool:
+	return _pick_enabled
 
 ## 可操作高亮（金色）。
 func set_actionable(on: bool) -> void:

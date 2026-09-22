@@ -59,7 +59,7 @@ func _test_camera() -> void:
 	var rig := _make_camera_rig()
 	rig.frame_for_seat(0.0)
 	_check("相机基准朝向 0°", is_equal_approx(rig.base_yaw, 0.0))
-	_check("相机默认俯角", is_equal_approx(rig.pitch, Table3dCamera.DEFAULT_PITCH))
+	_check("相机默认俯角对准桌心", is_equal_approx(rig.pitch, Table3dCamera.aim_pitch_deg(rig.EYE_HEIGHT, Table3dLayout.SEAT_RADIUS + rig.CAMERA_BACK)))
 	_check("相机座位位置", rig.position.is_equal_approx(Vector3(0.0, rig.EYE_HEIGHT, Table3dLayout.SEAT_RADIUS + rig.CAMERA_BACK)))
 	rig.look(Vector2(-100.0, 0.0))
 	_check("鼠标左移 → yaw +50（方向正确、灵敏度 0.5）", is_equal_approx(rig.yaw, 50.0))

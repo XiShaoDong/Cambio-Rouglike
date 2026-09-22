@@ -13,6 +13,7 @@ const LOW_COLOR := Color(0.45, 0.55, 0.62)  # 2-6 灰蓝
 
 const PICK_LAYER := 2
 const PICK_MASK := 1 << (PICK_LAYER - 1)  # 2
+const PICK_HEIGHT := 0.3  # 拾取盒高度（薄卡从斜角也易命中）
 const ACTIONABLE_COLOR := Color(0.95, 0.82, 0.35)  # 可操作高亮（金）
 
 const COLOR_BY_RANK := {

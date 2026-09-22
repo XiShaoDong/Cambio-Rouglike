@@ -6,14 +6,19 @@ extends Node3D
 
 const PITCH_LIMIT := 60.0
 const YAW_LIMIT := 90.0
-const DEFAULT_PITCH := 20.0  # 正=俯视
 @export var EYE_HEIGHT := 2.0
 @export var CAMERA_BACK := 1.5  # 相机在座位半径外再后退的距离（多看到桌面）
 @export_range(0,1,0.05) var MOUSE_SENSITIVITY := 0.5  # 度/像素（原 1.0 过快，减半）
 
+## 默认俯角：对准桌心（正=俯视）。取景时用，保证准星起始落在桌面上。
+static func aim_pitch_deg(eye_height: float, horizontal_distance: float) -> float:
+	if horizontal_distance <= 0.001:
+		return 0.0
+	return clampf(rad_to_deg(atan2(eye_height, horizontal_distance)), -PITCH_LIMIT, PITCH_LIMIT)
+
 var base_yaw := 0.0
 var yaw := 0.0
-var pitch := DEFAULT_PITCH
+var pitch := 0.0
 
 var _built := false
 var _framed := false
@@ -54,7 +59,7 @@ func frame_for_seat(seat_angle_deg: float) -> void:
 	_framed_angle = new_base
 	base_yaw = new_base
 	yaw = base_yaw
-	pitch = DEFAULT_PITCH
+	pitch = aim_pitch_deg(EYE_HEIGHT, Table3dLayout.SEAT_RADIUS + CAMERA_BACK)
 	_apply()
 
 ## 鼠标相对位移（像素）驱动环视：鼠标右移 → 视角右转（yaw 递减；

@@ -12,6 +12,7 @@ const HUD_OFFSET := 0.55
 const HUD_HEIGHT := 0.5
 const AVATAR_GLOW_COLOR := Color(1.0, 0.85, 0.35, 0.30)  # 当前回合高亮
 const AVATAR_DIM_COLOR := Color(0.0, 0.0, 0.0, 0.55)     # 出局/离线变暗
+const HOVER_COLOR := Color(0.7, 0.95, 1.0, 0.35)         # 准星悬停目标高亮
 const STAT_VIEWPORT_SIZE := Vector2i(320, 96)
 const STAT_PANEL_OFFSET := Vector3(0.0, 0.75, 0.0)
 const STAT_PANEL_PIXEL_SIZE := 0.005
@@ -27,6 +28,8 @@ var _hud = null  # Table3dHud（场景 Hud）
 var _card_blocks := {}  # {seat: {slot: CardBlock}}
 var _avatar_glow_mat: StandardMaterial3D = null
 var _avatar_dim_mat: StandardMaterial3D = null
+var _hover_collider: Object = null
+var _hover_mat: StandardMaterial3D = null
 var _seat_panels: Array = []      # PlayerStatPanel per slot
 var _stat_viewports: Array = []
 var _bell_dome: MeshInstance3D = null
@@ -149,9 +152,11 @@ func render(state: Dictionary, actionable := Callable()) -> void:
 	var discard: Dictionary = state.get("discard", {})
 	_discard_block.setup({"card": discard} if not discard.is_empty() else {})
 	_discard_block.set_pick({"kind": "discard"})
+	_discard_block.set_pick_enabled(not discard.is_empty())
 	var pending: Dictionary = state.get("pending", {})
 	_pending_block.visible = not pending.is_empty()
 	_pending_block.set_pick({"kind": "pending"})
+	_pending_block.set_pick_enabled(not pending.is_empty())
 	if not pending.is_empty():
 		_pending_block.setup({"card": pending} if pending.has("rank") else {})
 	# HUD 放在 viewer 座位内侧、朝向 viewer
@@ -282,3 +287,49 @@ func _find_block(seat_id: int, slot: int):
 		return null
 	var block = _card_blocks[seat_id][slot]
 	return block if is_instance_valid(block) else null
+
+## 每帧准星悬停：命中可点对象时高亮它，返回是否命中。命中目标未变则不重复操作。
+func update_hover() -> bool:
+	if camera == null:
+		return false
+	var center := get_viewport().get_visible_rect().size * 0.5
+	var hit := Table3dPicker.pick_hit(camera.camera_node(), get_world_3d(), center)
+	var collider: Object = hit.get("collider")
+	if collider == _hover_collider:
+		return collider != null
+	_apply_hover(_hover_collider, false)
+	_hover_collider = collider
+	_apply_hover(collider, true)
+	return collider != null
+
+## 清除悬停高亮。
+func clear_hover() -> void:
+	_apply_hover(_hover_collider, false)
+	_hover_collider = null
+
+func _apply_hover(collider: Object, on: bool) -> void:
+	if collider == null or not is_instance_valid(collider):
+		return
+	var parent := (collider as Node).get_parent()
+	if parent == null:
+		return
+	var meshes: Array = []
+	_collect_meshes(parent, meshes)
+	for m in meshes:
+		m.material_overlay = _hover_material() if on else null
+
+func _collect_meshes(node: Node, out: Array) -> void:
+	if node is MeshInstance3D:
+		out.append(node)
+	for child in node.get_children():
+		_collect_meshes(child, out)
+
+func _hover_material() -> StandardMaterial3D:
+	if _hover_mat == null:
+		var mat := StandardMaterial3D.new()
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.albedo_color = HOVER_COLOR
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+		_hover_mat = mat
+	return _hover_mat

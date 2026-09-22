@@ -5,7 +5,8 @@ extends RefCounted
 
 const RAY_LENGTH := 100.0
 
-static func pick(cam: Camera3D, world: World3D, screen_center: Vector2) -> Dictionary:
+## 屏幕中心射线命中：返回 {"pick": meta, "collider": Area3D}；未命中返回 {}。
+static func pick_hit(cam: Camera3D, world: World3D, screen_center: Vector2) -> Dictionary:
 	if cam == null or world == null:
 		return {}
 	var from := cam.project_ray_origin(screen_center)
@@ -20,4 +21,9 @@ static func pick(cam: Camera3D, world: World3D, screen_center: Vector2) -> Dicti
 	var collider: Object = hit.get("collider")
 	if collider == null or not collider.has_meta("pick"):
 		return {}
-	return collider.get_meta("pick")
+	return {"pick": collider.get_meta("pick"), "collider": collider}
+
+## 只取拾取元数据（点击分发用）。
+static func pick(cam: Camera3D, world: World3D, screen_center: Vector2) -> Dictionary:
+	var hit := pick_hit(cam, world, screen_center)
+	return hit.get("pick", {})

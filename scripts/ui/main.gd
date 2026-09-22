@@ -146,9 +146,11 @@ func _set_table3d(on: bool) -> void:
 		game_panel.visible = false
 	else:
 		if table3d != null and is_instance_valid(table3d):
+			table3d.clear_hover()
 			table3d.set_active(false)
 		if _crosshair != null and is_instance_valid(_crosshair):
 			_crosshair.visible = false
+			_crosshair.set_active(false)
 		if _self_panel != null and is_instance_valid(_self_panel):
 			_self_panel.visible = false
 		background.visible = true
@@ -176,6 +178,21 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		_table3d_click()
 		get_viewport().set_input_as_handled()
+
+## 3D 悬停指示：每帧按准星命中更新目标高亮与准星状态（仅 3D 且无模态时）。
+func _process(_delta: float) -> void:
+	if not _table3d_active:
+		return
+	if table3d == null or not is_instance_valid(table3d):
+		return
+	if _table3d_modal_open():
+		table3d.clear_hover()
+		if _crosshair != null and is_instance_valid(_crosshair):
+			_crosshair.set_active(false)
+		return
+	var on_target: bool = table3d.update_hover()
+	if _crosshair != null and is_instance_valid(_crosshair):
+		_crosshair.set_active(on_target)
 
 func _unhandled_input(event: InputEvent) -> void:
 	# 比拼中按空格 = 停止（与 STOP 按钮等效）
