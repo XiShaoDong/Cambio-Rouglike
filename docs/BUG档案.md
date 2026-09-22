@@ -355,3 +355,53 @@
 **修复**：新增 `main._render_game_if_active()`（phase == GAME_OVER 时跳过重渲染），把 `reveal_controller`/`card_animator` 所有**动画完成回调**的 `_render_game()` 替换为它；`_on_state_updated` 进入 GAME_OVER 时先 `_clear_settlement_anim_state()`（清 `_anim_slots`/`_pending_*`/贴牌锁）再渲染；`apply_theme` 同步用守卫。
 
 **诊断方法**：结算时触发一个在途 peek 揭示 → 跑完整结算动画 → 断言所有卡牌正面朝上（`verify_settlement._test_settlement_peek_card`）。
+
+## B28：3D 环视无法移动（捕获态收不到 _unhandled_input 的 motion + 重复取景复位视角）
+
+**现象**：F10 进 3D 后移动鼠标视角完全不动，但 F10/ESC 键正常能切进切出（渲染、快照都正常）。
+
+**根因**：两个叠加 —— ① 鼠标 `MOUSE_MODE_CAPTURED` 下 `_unhandled_input` **收不到** `InputEventMouseMotion`（被 GUI 路径先消费），而键不受影响；② `Table3dCamera.frame_for_seat` 每次 `render`（状态广播）都重置 `yaw/pitch`。注意先别被"`Input.mouse_mode == CAPTURED` 判断失败"误导：实测进入 3D 时 `mouse_mode` 已是 2(CAPTURED)。
+
+**修复**：环视改走 **`main._input`**（早于 GUI 路由，保证事件必达，不受任何 Control 的 `mouse_filter` 影响）；`frame_for_seat` 同座位重复取景**不再复位**视角；方向改为 `yaw - rel.x`（鼠标右移=右转）、灵敏度 `MOUSE_SENSITIVITY`（度/像素）。
+
+**诊断方法**：`verify_table3d_mouse`（事件可达 / STOP 不吞 motion / 相机为当前 / 取景离开原点 / `look()` 改变朝向 / yaw 夹取）。排错时先看 `_input` 是否被更早的 `return` 拦掉，再确认视角是否被重复取景复位。
+
+## B29：3D 卡背只显示一部分（BoxMesh 十字 UV）
+
+**现象**：3D 卡面只显示卡背图的一部分（像被裁掉）。
+
+**根因**：Godot `BoxMesh` 的 **UV 是「十字展开」而非每面 0–1**：实测顶面四角 `V` 恒为 0，只采样贴图最上面一条线。**不是模型太小，也不是素材问题**（`back07.png` 352×512，`Image.get_used_rect()` = 整张无透明留白，比例 0.6875≈卡面 0.7）。
+
+**修复**：卡面改用 **`PlaneMesh(orientation=FACE_Y)`**（UV 完整 0–1）+ `cull_mode=CULL_DISABLED`；`Deck`（抽牌堆）也改用 `CardBlock`。点数标签用 billboard `Label3D` 悬于卡上方。
+
+**诊断方法**：打印 `BoxMesh.surface_get_arrays(0)[Mesh.ARRAY_TEX_UV]` 看各面 UV（十字展开）；`PlaneMesh FACE_Y` 四角应为 (0,0)/(1,0)/(0,1)/(1,1)。
+
+## B30：隐藏的 pending 卡仍被准星命中
+
+**现象**：3D 中准星停在牌堆位置时命中 `pending`（而不是 `deck`）；无 pending 时牌堆点不到。
+
+**根因**：`Node3D.visible=false` **不会**禁用 `CollisionObject3D`(Area3D) 的碰撞形状；隐藏的 `Pending` 与 `Deck` 同 XZ、`y` 略高，射线最近命中恒为 Pending。
+
+**修复**：`CardBlock.set_pick_enabled(on)`（直接设 `CollisionShape3D.disabled`）；`Table3dView.render` 中 `pending`/`discard` 为空即禁用拾取。
+
+**诊断方法**：`verify_table3d_interaction` 断言「默认准星指向牌堆」；隐藏 pending 后拾取不应命中它。
+
+## B31：3D 默认视角准星指向桌外 → 什么都点不到
+
+**现象**：3D 下点击完全没反应（看似"点不了任何东西"）。
+
+**根因**：`EYE_HEIGHT=3.5` + 默认俯角 20° 时，**屏幕中心射线落在桌外空旷处**（实测 `pick_center()` 返回 `{}`）；需俯到 60° 才命中自己的手牌。crosshair 是固定屏幕中心，所以默认取景下没有可点目标。
+
+**修复**：新增 `Table3dCamera.aim_pitch_deg(eye, horiz)`，`frame_for_seat` 默认俯角**对准桌心**（准星起始落在牌堆）；`Table3dLayout.PICK_HEIGHT=0.3` 加高拾取盒，薄卡斜角也易命中。
+
+**诊断方法**：实测 `view.pick_center()`；`verify_table3d_interaction` 断言默认准星指向牌堆。以后调整 `EYE_HEIGHT/CAMERA_BACK` 会经 `aim_pitch_deg` 自动重新对准。
+
+## B32：悬停对象被 render 释放 → 带类型 Object 形参报错并中断 clear_hover
+
+**现象**：运行时错误 `Table3dView.update_hover: Invalid type in function '_apply_hover' in base 'Node3D (Table3dView)'. The Object-derived class of argument 1 (previously freed) is not a subclass of the expected argument class.`
+
+**根因**：`_hover_collider` 指向的 `Area3D` 会在下一次 `render` 重建手牌时被释放；`_apply_hover(collider: Object, …)` 的**带类型形参在「传参处」就做类型检查**，函数体内的 `is_instance_valid` 根本来不及执行 → 报错并**中断 `clear_hover()`**（`_hover_collider` 未被清空，后续每帧继续报错）。
+
+**修复**：`_apply_hover` 形参**不标注类型**（传参处不做类型检查，`is_instance_valid` 兜底）；`update_hover`/`clear_hover` 先用 `is_instance_valid` 过滤出有效对象再调用。
+
+**诊断方法**：`verify_table3d_interaction` 新增「悬停对象释放后 clear_hover 安全」——把 `_hover_collider` 设为一个随即 `queue_free` 的节点，再 `clear_hover()`，断言 `_hover_collider == null`（旧代码会因报错中断导致断言失败）。

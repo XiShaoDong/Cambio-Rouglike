@@ -44,7 +44,7 @@
 - **卡牌皮肤 / TypeCards 图集（已完成，客户端展示层）**：卡牌正/背面**默认使用原始素材**（`assets/Cards/*.png` + `back07.png`），保持既有观感。开发者面板（`T` 开发者模式 · 房主对局中）新增"卡牌皮肤"全局单选：**原始 / 普通 / 石头 / 纸牌 / 玻璃**，后四者来自 4× 高清图集 `assets/TypeCards/opersze-cards-full-clear-4x.png`（3080×4928，每格 220×308；14 列 × 16 行，4 行一组 normal/stone/paper/glass，组内行 ♥♠♦♣，列 c0..c12=2..A，c13=组首行卡背 / 组第 3 行红 Joker / 组第 4 行黑 Joker；stone/paper 无黑 Joker → 回退红 Joker）。落点：`scripts/ui/card_atlas.gd`（`CardAtlas`：`face/back/joker` → 带缓存 `AtlasTexture`；`ORIGINAL/TYPES/SKINS` 常量；`static var preview_type` 默认 `original`）；`card_view.gd`（`type==original` 走旧素材，其余走图集，图集缺失回退旧素材；`card_data["type"]` 可显式覆盖预览）；`dev_tools.gd`（3 列网格皮肤按钮）。卡牌显示尺寸统一为图集原生比例 5:7（`CARD_SELF_SIZE` 64×90 / `CARD_PILE_SIZE` 76×107 / `CARD_BIG_SIZE` 110×154 / `player_area.card_size` 64×90 / 商店卡位 94×132）。**不改**服务器/协议/快照——`card_data["type"]` 为预留字段，未来接入玩法零改渲染层。测试 `verify_card_skin.gd`（35/35）；设计见 `docs/superpowers/specs/2026-09-16-card-template-design.md`。
 - **3D 桌面只读预览（Milestone 1，分支 `feature/3d-table`）**：对局中按 `F10` 在 2D 界面与 3D 桌面间切换；3D 用方块 + `Label3D` 渲染公开快照（座位手牌、抽牌堆数量、弃牌顶、中央 pending、名字/张数/货币/生命），鼠标环视（pitch ±60°、yaw 基准 ±90°、灵敏度 0.5 度/像素，鼠标右移=向右转）。纯客户端展示层：`scripts/ui/table3d_layout.gd`（纯函数布局）/`card_block.gd`/`table3d_camera.gd`/`table3d_view.gd` + `scenes/ui/table3d.tscn`。**不改**规则/协议/快照/现有测试。测试 `verify_table3d_layout`（19/19）、`verify_table3d`（34/34）、`verify_table3d_mouse`（7/7）。环视输入走 `main._input`（避免 GUI 吞事件）。不做点击交互与动画（Milestone 2+）。
 - **3D 桌面对局（Milestone 2，分支 `feature/3d-table`）**：3D 预览内用**屏幕中心准星**点击（默认俯角对准桌心，准星起始落在牌堆；悬停可点目标时准星变金 + 目标 3D 高亮 `table3d_view.update_hover`）（`Area3D` 拾取层 2 + `Table3dPicker` 射线）→ 分发到既有 `GameInteraction.on_card_pressed` / `request_take` / `_on_pending_action`；3D 操作面板（`Table3dHud`：Ready / Kongbaya / Q 决策 / 变换 Joker）；可操作高亮（emission 金）与瞬时揭示/闪色（无动画，`reveal_slot`/`flash_slot`）。2D 模态（结算/商店/Joker/比拼/重连）打开时自动释放鼠标、关闭后恢复准星环视。**角色**：每席 `Avatar`(椭圆头 `SphereMesh` + 方体身 `BoxMesh`，身体在头心正下方)；**角色放在眼位**——径向外移 `CAMERA_BACK`、头心抬到 `EYE_HEIGHT`（场景实例 `EYE_HEIGHT=3.5`、`CAMERA_BACK=1.5`、`MOUSE_SENSITIVITY=0.35`，可在检视面板调），`table3d_view._apply_avatar` 按相机参数摆位，故相机即在 viewer 头心；**viewer 自己那席整个角色隐藏（头+身体都不出现）**；出局/离线加暗 overlay、当前回合金色 overlay。角色不挂拾取层，不影响准星。**动作判定统一走 `ActionModel`；玩家状态 UI 自己=屏幕右下、他人=头顶 SubViewport 面板；Kongbaya=3D 金铃铛；pending 贴堆**。规则/协议/快照零改动。测试 `verify_table3d_interaction`（41/41）。不做动画与 3D 菜单/贴图卡面。
-- **3D 静态骨架已入场景（场景+代码混合，分支 `feature/3d-table`）**：环境/相机 rig/**桌面(5.6×5.6 方桌 + `TableEdge` 深色边框)**/4 座位(HandAnchor+NameLabel+StatLabel+**Avatar(Body+Head)**)/Center(Deck·DeckCount·DiscardTop·Pending)/Hud 全部在 `scenes/ui/table3d.tscn`（可在编辑器拖拽调位置）。**卡牌平铺桌面**：`Table3dLayout.BLOCK_SIZE = (0.7, 0.04, 1.0)`（X 宽×Y 厚×Z 深），槽位网格列沿 X、行沿 Z（+Z 朝桌心），`HandAnchor` 贴近桌面（y≈0.03），`DiscardTop`/`Pending`/`Deck` 亦平铺；**未知牌用现有卡背贴图** `assets/Cards/back07.png`（`CardBlock` 未知槽 `albedo_texture`+白底，已知槽分类色）；**卡面用 `PlaneMesh(FACE_Y)`** —— 注意 `BoxMesh` 的 UV 是十字展开会裁掉贴图，不能用。点数标签 billboard 悬于卡上方。**相机**：`EYE_HEIGHT=1.5`（头心）、`CAMERA_BACK=0`（坐姿第一人称）；`Table3dCamera` 的 `EYE_HEIGHT/CAMERA_BACK/MOUSE_SENSITIVITY` 为 `@export`，可在检视面板调。**节点名/路径是契约**，`Table3dView._bind()` 按固定路径解析、缺节点 `push_error` 不静默；`Table3dCamera` 不自建 `PitchPivot/Camera3D`（由场景提供）。**代码仍负责**：每槽 `CardBlock`（动态）、HUD 按钮内容、染色/揭示/高亮、座位位置与朝向、相机取景、HUD 跟随 viewer、角色可见性/状态 overlay、`_card_blocks`、`pick_center`。**布局数学仍在 `table3d_layout.gd`**。约定：该 `.tscn` 由开发者拥有视觉调整，Agent 改其结构前先 `git diff`/重读；动态对象（卡/按钮）不得搬进场景。
+- **3D 静态骨架已入场景（场景+代码混合，分支 `feature/3d-table`）**：环境/相机 rig/**桌面(5.6×5.6 方桌 + `TableEdge` 深色边框)**/4 座位(HandAnchor + **Avatar(Body+Head)** + 头顶 `StatPanel` Sprite3D)/Center(Deck·DeckCount·DiscardTop·Pending·KongBell 金铃铛)/Hud 全部在 `scenes/ui/table3d.tscn`（可在编辑器拖拽调位置）。**卡牌平铺桌面**：`Table3dLayout.BLOCK_SIZE = (0.7, 0.04, 1.0)`（X 宽×Y 厚×Z 深），槽位网格列沿 X、行沿 Z（+Z 朝桌心），`HandAnchor` 贴近桌面（y≈0.03），`DiscardTop`/`Pending`/`Deck` 亦平铺；**未知牌用现有卡背贴图** `assets/Cards/back07.png`（`CardBlock` 未知槽 `albedo_texture`+白底，已知槽分类色）；**卡面用 `PlaneMesh(FACE_Y)`** —— 注意 `BoxMesh` 的 UV 是十字展开会裁掉贴图，不能用。点数标签 billboard 悬于卡上方。**相机**：`Table3dCamera` 的 `EYE_HEIGHT/CAMERA_BACK/MOUSE_SENSITIVITY` 为 `@export`（场景实例 3.5/1.5/0.35，可在检视面板调）；`frame_for_seat` 默认俯角 `aim_pitch_deg()` **对准桌心**（准星起始落在牌堆，否则点不到东西）。**节点名/路径是契约**，`Table3dView._bind()` 按固定路径解析、缺节点 `push_error` 不静默；`Table3dCamera` 不自建 `PitchPivot/Camera3D`（由场景提供）。**代码仍负责**：每槽 `CardBlock`（动态）、HUD 按钮内容、染色/揭示/高亮、座位位置与朝向、相机取景、HUD 跟随 viewer、角色可见性/状态 overlay、`_card_blocks`、`pick_center`。**布局数学仍在 `table3d_layout.gd`**。约定：该 `.tscn` 由开发者拥有视觉调整，Agent 改其结构前先 `git diff`/重读；动态对象（卡/按钮）不得搬进场景。
 - **卡牌贴图分辨率坑（防复发）**：图集 1× 源图 `opersze-cards-full.png` 每卡仅 **55×77 像素**，在游戏里是**放大**显示（手牌 ≈1.16×、大牌 2×，HiDPI/窗口缩放再 ×2）→ 糊；旧素材 352×512 是缩小显示故清晰。**运行时必须用 4× 高清版**（每卡 220×308，显示尺寸小于格子 → 缩小采样、清晰）。`TextureRect` 一直是 `KEEP_ASPECT_CENTERED`（等比、无变形），故糊的原因是像素不足而非拉伸变形。
 - **卡牌视图重建约定**：`game_view._clear_area` 一律先 `remove_child` 立即移出网格、再 `queue_free` 延迟释放（**不要直接 `free()`**——卡牌点击触发重建时被点击的卡正被信号锁定，free 会报 "Object is locked"）。
 - **罚牌附加卡布局**：前 4 张主网格固定 2 列永不位移；第 5+ 张在 `ExtraLayer` 按**槽号固定绝对定位**（统一向上增长、行列固定，加新罚牌已存在卡不移动）。
@@ -121,6 +121,16 @@ UI 层已拆分（main.gd 是组合根）：
 | `dashed_border.gd` | 虚线边框占位（当前对局空槽已改透明占位，不用虚线） |
 | `scenes/ui/game_board.tscn` | 对局棋盘静态骨架（锚点+容器，布局可在编辑器拖拽）：TitleBar/HintArea/4×PlayerArea/MiddleRow·PileArea/Corner |
 | `scenes/ui/player_area.tscn` + `scripts/ui/player_area.gd` | 玩家区域模板，`@export var card_size`（默认 62×90），名字在卡牌正下方；GameBoard 直接子节点，运行时复用填充 |
+| `action_model.gd` | **纯函数**：2D/3D 共用动作与可用性判定（`conditional_actions` / `kongbaya_available` / `ready_text` / `ready_enabled`） |
+| `table3d_layout.gd` | **纯函数**：3D 布局数学（座位角度/槽位网格/分类色/拾取层与盒高/高亮色） |
+| `table3d_view.gd` | 3D 视图：`_bind()` 按固定路径解析场景骨架；按快照填每槽 `CardBlock`、头顶状态面板、铃铛发光、角色可见性与状态 overlay；`pick_center`/`update_hover`/`reveal_slot`/`flash_slot` |
+| `card_block.gd` | 3D 单卡方块：`PlaneMesh(FACE_Y)` 面 + 卡背贴图/分类色/emission + 拾取 `Area3D` + `set_pick/set_pick_enabled/reveal/restore/flash` |
+| `table3d_camera.gd` | 3D 相机 rig：`frame_for_seat`（含 `aim_pitch_deg` 对准桌心）+ `look`（yaw/pitch 夹取）；`PitchPivot/Camera3D` 由场景提供 |
+| `table3d_picker.gd` | 屏幕中心射线拾取（`pick_hit` 返回 `{pick, collider}` / `pick` 只取 meta） |
+| `table3d_hud.gd` | 3D 操作面板按钮组（Ready / Q / 变换 Joker；Kongbaya 由 3D 铃铛负责） |
+| `crosshair.gd` | 屏幕中心准星（悬停可点目标时变金放大） |
+| `player_stat_panel.gd` / `card_count_icon.gd` | 玩家状态面板（透明白灰底+黑边框，生命/金钱/卡牌数）+ 程序化卡牌图标 |
+| `scenes/ui/table3d.tscn` | 3D 对局静态骨架（环境/相机/方桌+边框/4 座位+角色/中央牌堆+金铃铛/Hud）；**归开发者所有**，节点名路径是契约 |
 
 ## 5. 状态机（`GameState.Phase` 数值不可随意变更，需同步 UI 与测试）
 
@@ -162,6 +172,7 @@ UI 层已拆分（main.gd 是组合根）：
 - **B10-B13（贴牌动画）**：贴错无红光/罚牌无 fly（reveal 按"是否贴牌"分发 + 罚牌槽挂起补飞）、罚牌 fly 位置错/提前落位（同步定位 + 先标记动画槽）、罚牌附加卡随卡数重排（按槽号固定绝对定位）、罚牌持久正面（已回退为背面 fly）。详见 `BUG档案.md`。
 - **B18-B22（本次会话新增）**：重连后手牌永久正面（移除 `_resume_hand_map` 渲染）、replace 落位后闪烁（每段 fly 各自落位刷新 `_replace_landed`）、discard-replace 后所有手牌两行 gap + J 能力 locked 报错（`_clear_area` 改为 remove_child + queue_free）、Kongbaya 不结算/可重复喊叫（`kong_caller` 哨兵 0→-1 + declare 拦截）。详见 `BUG档案.md`。
 - **B23-B26（结算页相关，本次会话新增）**：结算页按钮点不到（根 STOP + 直挂 main 末尾 + z100）；再来一局泄漏旧卡 id 致 public_card 错（`_deal_new_match` 补按局清理）；`_card_slots` 残留已释放节点致贴牌 freed instance（渲染前清空）；结算时被 peek 的牌翻回背面（`_render_game_if_active` 守卫 + 结算渲染前清动画残留）。详见 `BUG档案.md`。
+- **B28-B32（3D 视图相关，本次会话新增）**：3D 环视在捕获态收不到 `_unhandled_input` 的 motion + 重复取景复位视角（改走 `main._input` + 同座位不复位，B28）；`BoxMesh` 十字 UV 裁掉卡背（卡面改 `PlaneMesh(FACE_Y)`，B29）；隐藏的 pending 卡 `Area3D` 仍参与射线命中（`visible=false` 不关碰撞 → `CardBlock.set_pick_enabled`，B30）；默认取景俯角指向桌外致「点不到任何东西」（默认对准桌心，B31）；悬停对象被 render 释放后传带类型 `Object` 形参报错并中断 `clear_hover`（形参去类型 + `is_instance_valid`，B32）。详见 `BUG档案.md`。
 
 ## 8. 验证命令（headless 单元测试，不启动 GUI）
 
@@ -192,6 +203,18 @@ UI 层已拆分（main.gd 是组合根）：
 ... --headless --path . res://tests/verify_relics.tscn
 # 卡牌皮肤（35/35：4× 图集 region 映射/默认 original 走旧素材/类型切换重绘/显式 type 覆盖）
 ... --headless --path . res://tests/verify_card_skin.tscn
+# 3D 布局纯函数（19/19：座位角度/槽位网格/分类色/拾取层）
+... --headless --path . res://tests/verify_table3d_layout.tscn
+# 3D 渲染（34/34：CardBlock 贴图/护盾/相机取景/HUD/面板 data/场景契约）
+... --headless --path . res://tests/verify_table3d.tscn
+# 3D 环视与相机（7/7：事件可达/相机为当前/取景/朝向）
+... --headless --path . res://tests/verify_table3d_mouse.tscn
+# 3D 交互（41/41：拾取/高亮/揭示/HUD/铃铛/悬停/默认准星指向牌堆）
+... --headless --path . res://tests/verify_table3d_interaction.tscn
+# 动作模型（16/16：Q/Joker 条件、铃铛可用、Ready 文案与可用）
+... --headless --path . res://tests/verify_actions.tscn
+# 玩家状态面板（5/5：data/名字显隐/黑边框/透明白灰底）
+... --headless --path . res://tests/verify_stat_panel.tscn
 # hint 生成测试（8/8）
 ... --headless --path . res://tests/verify_hint.tscn
 # 双实例网络回归（host + client 各跑，均 exit 0）
@@ -222,7 +245,7 @@ UI 层已拆分（main.gd 是组合根）：
 ... --headless --path . res://tests/verify_proxy.tscn -- -role client -scenario baseline -mode reconnect
 ```
 
-> **开发约定**：按用户的指示**不启动 GUI**，用上述 unit test 验证后总结。每次改动后跑 `verify_protocol` + `verify_swap` + `verify_duel` + `verify_reconnect` + `verify_kongbaya` + `verify_economy` + `verify_shop` + `verify_relics` + `verify_card_skin` + 双实例 `verify_net`。
+> **开发约定**：按用户的指示**不启动 GUI**，用上述 unit test 验证后总结。每次改动后跑 `verify_protocol` + `verify_swap` + `verify_duel` + `verify_reconnect` + `verify_kongbaya` + `verify_economy` + `verify_shop` + `verify_relics` + `verify_card_skin` + **3D/UI：`verify_table3d_layout` + `verify_table3d` + `verify_table3d_mouse` + `verify_table3d_interaction` + `verify_actions` + `verify_stat_panel`** + 双实例 `verify_net`。
 
 ## 9. 给后续 Agent 的工作方式
 
