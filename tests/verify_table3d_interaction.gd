@@ -145,6 +145,14 @@ func _test_view() -> void:
 	_check("hover 叠加高亮", deck_mesh.material_overlay != null)
 	view.clear_hover()
 	_check("取消 hover 清除高亮", deck_mesh.material_overlay == null)
+	# 悬停对象被释放后应安全（历史：带类型形参传已释放对象会报错并中断 clear_hover）
+	var tmp := CardBlock.new()
+	add_child(tmp)
+	view._hover_collider = tmp
+	tmp.queue_free()
+	await get_tree().process_frame
+	view.clear_hover()
+	_check("悬停对象释放后 clear_hover 安全", view._hover_collider == null)
 	# 把相机对准 seat0/slot0 方块 → pick_center 命中 slot
 	var block = view._card_blocks[0][0]
 	view.camera.get_node("PitchPivot").rotation_degrees = Vector3.ZERO

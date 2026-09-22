@@ -39,6 +39,7 @@ static func seat_angles(count: int) -> Array:
 
 ## 槽位 -> 网格坐标（列, 行）：前 4 张 2×2（列=i%2, 行=i/2）；
 ## 第 5+ 张（罚牌）向上追加（idx=i-4, 列=idx%2, 行=-(1+idx/2)）。行向下为正。
+@warning_ignore("integer_division")
 static func slot_grid_pos(slot_index: int) -> Vector2:
 	if slot_index < 4:
 		return Vector2(float(slot_index % 2), float(slot_index / 2))

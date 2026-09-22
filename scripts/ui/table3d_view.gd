@@ -294,23 +294,28 @@ func update_hover() -> bool:
 		return false
 	var center := get_viewport().get_visible_rect().size * 0.5
 	var hit := Table3dPicker.pick_hit(camera.camera_node(), get_world_3d(), center)
-	var collider: Object = hit.get("collider")
-	if collider == _hover_collider:
+	var collider = hit.get("collider")
+	# 上一次悬停对象可能已被 render 重建释放 → 先判有效（避免传已释放对象触发类型错误）
+	var prev = _hover_collider if (_hover_collider != null and is_instance_valid(_hover_collider)) else null
+	if collider == prev:
 		return collider != null
-	_apply_hover(_hover_collider, false)
+	_apply_hover(prev, false)
 	_hover_collider = collider
 	_apply_hover(collider, true)
 	return collider != null
 
 ## 清除悬停高亮。
 func clear_hover() -> void:
-	_apply_hover(_hover_collider, false)
+	var prev = _hover_collider if (_hover_collider != null and is_instance_valid(_hover_collider)) else null
+	_apply_hover(prev, false)
 	_hover_collider = null
 
-func _apply_hover(collider: Object, on: bool) -> void:
+## 高亮/取消：作用于该拾取对象父节点下所有 MeshInstance3D。
+## 形参不标注类型：可能是已释放对象（传参处不做类型检查，函数内 is_instance_valid 兜底）。
+func _apply_hover(collider, on: bool) -> void:
 	if collider == null or not is_instance_valid(collider):
 		return
-	var parent := (collider as Node).get_parent()
+	var parent = (collider as Node).get_parent()
 	if parent == null:
 		return
 	var meshes: Array = []
