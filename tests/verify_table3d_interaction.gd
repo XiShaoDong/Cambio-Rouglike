@@ -64,9 +64,20 @@ func _test_card_block() -> void:
 	await get_tree().create_timer(0.15).timeout
 	_check("flash 结束后恢复", hidden.block_color() == Table3dLayout.UNKNOWN_COLOR)
 
-func _test_camera_accessor() -> void:
+## 构造带场景子节点的相机 rig（契约：PitchPivot/Camera3D 由场景提供）。
+func _make_camera_rig() -> Table3dCamera:
 	var rig := Table3dCamera.new()
+	var pivot := Node3D.new()
+	pivot.name = "PitchPivot"
+	rig.add_child(pivot)
+	var cam := Camera3D.new()
+	cam.name = "Camera3D"
+	pivot.add_child(cam)
 	add_child(rig)
+	return rig
+
+func _test_camera_accessor() -> void:
+	var rig := _make_camera_rig()
 	_check("camera_node 非空且为 Camera3D", rig.camera_node() != null and rig.camera_node() is Camera3D)
 
 func _test_picker() -> void:

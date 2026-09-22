@@ -43,9 +43,20 @@ func _test_card_block() -> void:
 	_check("CardBlock Joker 文本", CardBlock.card_text({"rank": "JOKER", "suit": "red"}) == "JOKER")
 	_check("CardBlock 空卡文本", CardBlock.card_text({}) == "")
 
-func _test_camera() -> void:
+## 构造带场景子节点的相机 rig（契约：PitchPivot/Camera3D 由场景提供）。
+func _make_camera_rig() -> Table3dCamera:
 	var rig := Table3dCamera.new()
+	var pivot := Node3D.new()
+	pivot.name = "PitchPivot"
+	rig.add_child(pivot)
+	var cam := Camera3D.new()
+	cam.name = "Camera3D"
+	pivot.add_child(cam)
 	add_child(rig)
+	return rig
+
+func _test_camera() -> void:
+	var rig := _make_camera_rig()
 	rig.frame_for_seat(0.0)
 	_check("相机基准朝向 0°", is_equal_approx(rig.base_yaw, 0.0))
 	_check("相机默认俯角", is_equal_approx(rig.pitch, Table3dCamera.DEFAULT_PITCH))

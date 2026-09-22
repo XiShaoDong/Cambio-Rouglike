@@ -27,12 +27,11 @@ func _build() -> void:
 	if _built:
 		return
 	_built = true
-	_pivot = Node3D.new()
-	_pivot.name = "PitchPivot"
-	add_child(_pivot)
-	_camera = Camera3D.new()
-	_camera.name = "Camera3D"
-	_pivot.add_child(_camera)
+	# 从场景解析（scenes/ui/table3d.tscn）：CameraRig(本节点) → PitchPivot → Camera3D
+	_pivot = get_node_or_null("PitchPivot")
+	_camera = _pivot.get_node_or_null("Camera3D") if _pivot != null else null
+	if _pivot == null or _camera == null:
+		push_error("[Table3dCamera] 场景缺少 PitchPivot/Camera3D 节点")
 
 ## 相机节点访问器（供射线拾取用）。
 func camera_node() -> Camera3D:
@@ -66,5 +65,7 @@ func look(rel: Vector2) -> void:
 	_apply()
 
 func _apply() -> void:
+	if _pivot == null:
+		return
 	rotation_degrees = Vector3(0.0, yaw, 0.0)
 	_pivot.rotation_degrees = Vector3(-pitch, 0.0, 0.0)
