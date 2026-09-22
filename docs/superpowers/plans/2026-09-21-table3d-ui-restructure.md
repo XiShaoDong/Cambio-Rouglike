@@ -180,7 +180,7 @@ static func ready_enabled(state: Dictionary, ready_clicked: bool) -> bool:
 - [ ] **Step 4: 跑测试确认通过**
 
 Run: `... --headless --path . res://tests/verify_actions.tscn`
-Expected: `=== ACTIONS RESULT: 15/15 passed ===`，exit 0。
+Expected: `=== ACTIONS RESULT: 16/16 passed ===`，exit 0。
 
 - [ ] **Step 5: 注册全量回归**
 
@@ -789,4 +789,4 @@ git commit -m "feat: Kongbaya 金色铃铛（抽牌堆左侧）+ pending 贴堆"
 
 - **Spec 覆盖**：§2 ActionModel → Task 1/2/6；§3 面板 → Task 3；§4 自己面板 → Task 5；§5 他方面板 → Task 4；§6 铃铛 → Task 6；§7 pending → Task 6；§8 测试 → Task 1/3/4/6。
 - **占位符**：无 TBD/TODO；代码步骤给完整代码。
-- **类型一致性**：`ActionModel`（`conditional_actions/kongbaya_available/ready_text/ready_enabled`，键 `action/text/enabled`）、`PlayerStatPanel.set_data/name_visible/name_text/data`、`main._on_action/_hud_buttons/_self_panel/_update_self_panel`、`Table3dView._seat_panels/_stat_viewports/_bell_dome/_bell_mat` 跨任务一致；测试计数 15 / 5 / 34 / 36。
+- **类型一致性**：`ActionModel`（`conditional_actions/kongbaya_available/ready_text/ready_enabled`，键 `action/text/enabled`）、`PlayerStatPanel.set_data/name_visible/name_text/data`、`main._on_action/_hud_buttons/_self_panel/_update_self_panel`、`Table3dView._seat_panels/_stat_viewports/_bell_dome/_bell_mat` 跨任务一致；测试计数 16 / 5 / 34 / 36。
