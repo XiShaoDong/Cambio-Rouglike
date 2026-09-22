@@ -8,6 +8,7 @@ const PITCH_LIMIT := 60.0
 const YAW_LIMIT := 90.0
 const DEFAULT_PITCH := 20.0  # 正=俯视
 const EYE_HEIGHT := 1.6
+const CAMERA_BACK := 1.0  # 相机在座位半径外再后退的距离（多看到桌面）
 const MOUSE_SENSITIVITY := 0.5  # 度/像素（原 1.0 过快，减半）
 
 var base_yaw := 0.0
@@ -44,7 +45,7 @@ func frame_for_seat(seat_angle_deg: float) -> void:
 	_build()
 	var a := deg_to_rad(seat_angle_deg)
 	var dir := Vector3(sin(a), 0.0, cos(a))
-	position = dir * Table3dLayout.SEAT_RADIUS + Vector3(0.0, EYE_HEIGHT, 0.0)
+	position = dir * (Table3dLayout.SEAT_RADIUS + CAMERA_BACK) + Vector3(0.0, EYE_HEIGHT, 0.0)
 	var new_base := rad_to_deg(atan2(dir.x, dir.z))
 	# 同一座位重复 render 时保留用户当前环视，避免视角被复位
 	if _framed and is_equal_approx(new_base, _framed_angle):

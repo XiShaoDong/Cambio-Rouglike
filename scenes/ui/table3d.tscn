@@ -1,9 +1,10 @@
-[gd_scene load_steps=11 format=3]
+[gd_scene load_steps=14 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/table3d_view.gd" id="1_view"]
 [ext_resource type="Script" path="res://scripts/ui/table3d_camera.gd" id="2_cam"]
 [ext_resource type="Script" path="res://scripts/ui/card_block.gd" id="3_block"]
 [ext_resource type="Script" path="res://scripts/ui/table3d_hud.gd" id="4_hud"]
+[ext_resource type="Texture2D" path="res://assets/Cards/back07.png" id="5_back"]
 
 [sub_resource type="Environment" id="Environment_1"]
 background_mode = 1
@@ -13,16 +14,23 @@ ambient_light_color = Color(1, 1, 1, 1)
 ambient_light_energy = 1.2
 
 [sub_resource type="BoxMesh" id="TableMesh"]
-size = Vector3(6.4, 0.08, 6.4)
+size = Vector3(5.6, 0.08, 5.6)
 
 [sub_resource type="StandardMaterial3D" id="TableMat"]
 albedo_color = Color(0.16, 0.18, 0.22, 1)
+
+[sub_resource type="BoxMesh" id="TableEdgeMesh"]
+size = Vector3(5.9, 0.12, 5.9)
+
+[sub_resource type="StandardMaterial3D" id="TableEdgeMat"]
+albedo_color = Color(0.09, 0.1, 0.12, 1)
 
 [sub_resource type="BoxMesh" id="DeckMesh"]
 size = Vector3(0.7, 0.25, 1)
 
 [sub_resource type="StandardMaterial3D" id="DeckMat"]
-albedo_color = Color(0.3, 0.32, 0.38, 1)
+albedo_color = Color(1, 1, 1, 1)
+albedo_texture = ExtResource("5_back")
 
 [sub_resource type="BoxShape3D" id="DeckShape"]
 size = Vector3(0.7, 0.25, 1)
@@ -46,6 +54,11 @@ transform = Transform3D(1, 0, 0, 0, 0.939693, -0.34202, 0, 0.34202, 0.939693, 0,
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.04, 0)
 mesh = SubResource("TableMesh")
 material_override = SubResource("TableMat")
+
+[node name="TableEdge" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.09, 0)
+mesh = SubResource("TableEdgeMesh")
+material_override = SubResource("TableEdgeMat")
 
 [node name="Seats" type="Node3D" parent="."]
 

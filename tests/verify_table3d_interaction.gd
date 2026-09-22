@@ -38,7 +38,7 @@ func _test_card_block() -> void:
 	_check("拾取 Area 在 PICK_LAYER", block.get_node("PickArea").collision_layer == Table3dLayout.PICK_MASK)
 	# 高亮
 	block.set_actionable(true)
-	_check("可操作高亮色", block.block_color() == Table3dLayout.ACTIONABLE_COLOR)
+	_check("可操作高亮色", block.is_emissive() and block.emission_color() == Table3dLayout.ACTIONABLE_COLOR)
 	block.set_actionable(false)
 	_check("取消高亮回分类色", block.block_color() == Table3dLayout.known_color_for_rank("A"))
 	# protected 优先于 actionable
@@ -46,7 +46,7 @@ func _test_card_block() -> void:
 	add_child(prot)
 	prot.setup({"protected": true, "card": {"rank": "K", "suit": "♠"}})
 	prot.set_actionable(true)
-	_check("protected 优先于 actionable", prot.block_color() == CardBlock.PROTECTED_COLOR)
+	_check("protected 优先于 actionable", prot.emission_color() == CardBlock.PROTECTED_COLOR)
 	# 揭示 / 恢复
 	var hidden := CardBlock.new()
 	add_child(hidden)
@@ -57,12 +57,12 @@ func _test_card_block() -> void:
 	_check("reveal 带色", hidden.block_color() == Color(0.2, 0.9, 0.4))
 	hidden.restore()
 	_check("restore 后回到未知（无文本）", hidden.label_text() == "")
-	_check("restore 后回到未知灰", hidden.block_color() == Table3dLayout.UNKNOWN_COLOR)
+	_check("restore 后回到未知卡背", hidden.has_back_texture() and hidden.block_color() == Color.WHITE)
 	# flash 短暂染色后恢复
 	hidden.flash(Color(0.2, 0.6, 1.0), 0.05)
 	_check("flash 立即染色", hidden.block_color() == Color(0.2, 0.6, 1.0))
 	await get_tree().create_timer(0.15).timeout
-	_check("flash 结束后恢复", hidden.block_color() == Table3dLayout.UNKNOWN_COLOR)
+	_check("flash 结束后恢复卡背", hidden.has_back_texture() and hidden.block_color() == Color.WHITE)
 
 ## 构造带场景子节点的相机 rig（契约：PitchPivot/Camera3D 由场景提供）。
 func _make_camera_rig() -> Table3dCamera:
@@ -153,8 +153,8 @@ func _test_view() -> void:
 		"draw_count": 30, "discard": {}, "pending": {}, "phase": 2,
 	}, func(seat: int, slot: int) -> bool: return seat == 0 and slot == 0)
 	await get_tree().process_frame
-	_check("render(actionable) 高亮", view._card_blocks[0][0].block_color() == Table3dLayout.ACTIONABLE_COLOR)
-	_check("非可操作不高亮", view._card_blocks[0][1].block_color() == Table3dLayout.UNKNOWN_COLOR)
+	_check("render(actionable) 高亮", view._card_blocks[0][0].emission_color() == Table3dLayout.ACTIONABLE_COLOR)
+	_check("非可操作不高亮", not view._card_blocks[0][1].is_emissive())
 	# 揭示 / 恢复
 	view.reveal_slot(0, 0, {"rank": "A", "suit": "♥"}, Color(0.2, 0.9, 0.4), 0.05)
 	_check("reveal_slot 显示 A♥", view._card_blocks[0][0].label_text() == "A♥")

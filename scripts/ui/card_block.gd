@@ -5,6 +5,9 @@ extends Node3D
 ## 纯展示层：不做规则/隐私判断（已知/未知由快照 slot 是否含 "card" 决定）。
 
 const PROTECTED_COLOR := Color(0.62, 0.35, 0.85)
+const BACK_TEXTURE_PATH := "res://assets/Cards/back07.png"
+
+static var _back_tex: Texture2D = null
 
 var _built := false
 var _mesh: MeshInstance3D
@@ -71,15 +74,16 @@ func set_actionable(on: bool) -> void:
 	_actionable = on
 	_apply_color()
 
-## 瞬时揭示：临时显示 card 正面；color.a>0 时同时染色。用 restore() 回到最近 setup(slot)。
+## 瞬时揭示：临时显示 card 正面；color.a>0 时染该色，否则用牌面分类色。
+## 用 restore() 回到最近 setup(slot)。
 func reveal(card: Dictionary, color := Color(0, 0, 0, 0)) -> void:
 	_build()
 	_label.text = card_text(card)
-	if color.a > 0.0:
-		_material.albedo_color = color
-		_material.emission_enabled = false
+	_material.albedo_texture = null
+	_material.albedo_color = color if color.a > 0.0 else Table3dLayout.known_color_for_rank(str(card.get("rank", "")))
+	_material.emission_enabled = false
 
-## 回到最近一次 setup(slot) 的状态（标签 + 颜色）。
+## 回到最近一次 setup(slot) 的状态（标签 + 贴图/颜色）。
 func restore() -> void:
 	_build()
 	setup(_last_slot)
@@ -87,27 +91,40 @@ func restore() -> void:
 ## 短暂染色（不改标签），dur 秒后恢复。
 func flash(color: Color, dur: float) -> void:
 	_build()
+	_material.albedo_texture = null
 	_material.albedo_color = color
 	_material.emission_enabled = false
 	get_tree().create_timer(dur).timeout.connect(func():
 		if is_instance_valid(self):
 			_apply_color())
 
+## 未知牌（无 "card"）用现有卡背贴图；已知牌用分类色。发光由 protected/actionable 决定。
 func _apply_color() -> void:
-	var is_protected := bool(_last_slot.get("protected", false))
-	if is_protected:
-		_material.albedo_color = PROTECTED_COLOR
+	var card: Dictionary = _last_slot.get("card", {})
+	if card.is_empty():
+		_material.albedo_texture = _back_texture()
+		_material.albedo_color = Color.WHITE
+	else:
+		_material.albedo_texture = null
+		_material.albedo_color = Table3dLayout.slot_color(_last_slot)
+	_apply_emission()
+
+func _apply_emission() -> void:
+	if bool(_last_slot.get("protected", false)):
 		_material.emission_enabled = true
 		_material.emission = PROTECTED_COLOR
 		_material.emission_energy_multiplier = 1.5
 	elif _actionable:
-		_material.albedo_color = Table3dLayout.ACTIONABLE_COLOR
 		_material.emission_enabled = true
 		_material.emission = Table3dLayout.ACTIONABLE_COLOR
 		_material.emission_energy_multiplier = 0.6
 	else:
-		_material.albedo_color = Table3dLayout.slot_color(_last_slot)
 		_material.emission_enabled = false
+
+static func _back_texture() -> Texture2D:
+	if _back_tex == null:
+		_back_tex = load(BACK_TEXTURE_PATH)
+	return _back_tex
 
 ## 卡片显示文本（"A♥"；Joker 显示 "JOKER"；空卡空串）。
 static func card_text(card: Dictionary) -> String:
@@ -126,3 +143,10 @@ func block_color() -> Color:
 
 func is_emissive() -> bool:
 	return _material != null and _material.emission_enabled
+
+func emission_color() -> Color:
+	return _material.emission if _material != null else Color.BLACK
+
+## 当前是否使用卡背贴图（未知牌）。
+func has_back_texture() -> bool:
+	return _material != null and _material.albedo_texture != null
