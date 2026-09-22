@@ -49,4 +49,4 @@ func _run() -> void:
 	_check("slot_color 已知 A", Table3dLayout.slot_color({"card": {"rank": "A"}}) == ace)
 	_check("slot_color 未知空", Table3dLayout.slot_color({}) == Table3dLayout.UNKNOWN_COLOR)
 	_check("slot_color 只有 card_id 视为未知", Table3dLayout.slot_color({"card_id": "x"}) == Table3dLayout.UNKNOWN_COLOR)
-	_check("方块 5:7 比例", is_equal_approx(Table3dLayout.BLOCK_SIZE.x / Table3dLayout.BLOCK_SIZE.y, 0.7))
+	_check("方块 5:7 比例", is_equal_approx(Table3dLayout.BLOCK_SIZE.x / Table3dLayout.BLOCK_SIZE.z, 0.7))

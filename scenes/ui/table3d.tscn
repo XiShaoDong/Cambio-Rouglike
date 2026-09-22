@@ -53,7 +53,7 @@ material_override = SubResource("TableMat")
 transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, 2.4)
 
 [node name="HandAnchor" type="Node3D" parent="Seats/Seat0"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.03, 0)
 
 [node name="NameLabel" type="Label3D" parent="Seats/Seat0"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.55, 0)
@@ -73,7 +73,7 @@ font_size = 64
 transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 2.4, 0, 0)
 
 [node name="HandAnchor" type="Node3D" parent="Seats/Seat1"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.03, 0)
 
 [node name="NameLabel" type="Label3D" parent="Seats/Seat1"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.55, 0)
@@ -93,7 +93,7 @@ font_size = 64
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -2.4)
 
 [node name="HandAnchor" type="Node3D" parent="Seats/Seat2"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.03, 0)
 
 [node name="NameLabel" type="Label3D" parent="Seats/Seat2"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.55, 0)
@@ -113,7 +113,7 @@ font_size = 64
 transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, -2.4, 0, 0)
 
 [node name="HandAnchor" type="Node3D" parent="Seats/Seat3"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.03, 0)
 
 [node name="NameLabel" type="Label3D" parent="Seats/Seat3"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.55, 0)
@@ -152,11 +152,11 @@ collision_mask = 0
 shape = SubResource("DeckShape")
 
 [node name="DiscardTop" type="Node3D" parent="Center"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.9, 0.08, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.9, 0.03, 0)
 script = ExtResource("3_block")
 
 [node name="Pending" type="Node3D" parent="Center"]
-transform = Transform3D(1.5, 0, 0, 0, 1.5, 0, 0, 0, 1.5, -0.9, 0.9, 0)
+transform = Transform3D(1.5, 0, 0, 0, 1.5, 0, 0, 0, 1.5, -0.9, 0.03, 0)
 script = ExtResource("3_block")
 
 [node name="Hud" type="Node3D" parent="."]

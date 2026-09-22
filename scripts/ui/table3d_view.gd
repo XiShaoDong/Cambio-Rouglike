@@ -130,10 +130,11 @@ func _render_seat(node: Node3D, p: Dictionary) -> void:
 	for i in slots.size():
 		var block = CardBlockScript.new()
 		var grid: Vector2 = Table3dLayout.slot_grid_pos(i)
+		# 卡牌平铺桌面：列沿 X，行沿 Z（+Z 朝桌心，罚牌追加行向玩家侧）
 		block.position = Vector3(
 			grid.x * (Table3dLayout.BLOCK_SIZE.x + Table3dLayout.BLOCK_GAP.x),
-			-grid.y * (Table3dLayout.BLOCK_SIZE.y + Table3dLayout.BLOCK_GAP.y),
-			0.0)
+			0.0,
+			grid.y * (Table3dLayout.BLOCK_SIZE.z + Table3dLayout.BLOCK_GAP.z))
 		hand.add_child(block)
 		block.setup(slots[i])
 		block.set_pick({"kind": "slot", "seat": int(p.id), "slot": i})

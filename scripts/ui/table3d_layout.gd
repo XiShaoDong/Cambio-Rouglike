@@ -4,8 +4,8 @@ extends RefCounted
 ## 职责：座位角度、槽位网格坐标、已知牌分类色、尺寸常量。
 ## 纯函数、无节点依赖 → headless 可测。
 
-const BLOCK_SIZE := Vector3(0.7, 1.0, 0.04)
-const BLOCK_GAP := Vector3(0.06, 0.06, 0.0)
+const BLOCK_SIZE := Vector3(0.7, 0.04, 1.0)   # 平铺桌面：X 宽 × Y 厚 × Z 深
+const BLOCK_GAP := Vector3(0.06, 0.0, 0.06)
 const TABLE_RADIUS := 3.2
 const SEAT_RADIUS := 2.4
 const UNKNOWN_COLOR := Color(0.20, 0.20, 0.22)

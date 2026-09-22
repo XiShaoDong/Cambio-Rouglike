@@ -33,7 +33,7 @@ func _build() -> void:
 	_label.no_depth_test = true
 	_label.pixel_size = 0.0025
 	_label.font_size = 96
-	_label.position = Vector3(0.0, 0.0, Table3dLayout.BLOCK_SIZE.z * 0.5 + 0.02)
+	_label.position = Vector3(0.0, Table3dLayout.BLOCK_SIZE.y * 0.5 + 0.08, 0.0)
 	add_child(_label)
 	# 拾取标记：独立物理层，仅用于射线拾取
 	_area = Area3D.new()
