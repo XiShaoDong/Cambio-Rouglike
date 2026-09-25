@@ -26,17 +26,17 @@ func _arr_eq(a: Array, b: Array) -> bool:
 	return true
 
 func _run() -> void:
-	_check("seat_angles(2)", _arr_eq(Table3dLayout.seat_angles(2), [0.0, 180.0]))
-	_check("seat_angles(3)", _arr_eq(Table3dLayout.seat_angles(3), [0.0, 120.0, 240.0]))
-	_check("seat_angles(4)", _arr_eq(Table3dLayout.seat_angles(4), [0.0, 90.0, 180.0, 270.0]))
+	_check("seat_angles(2)", _arr_eq(Table3dLayout.seat_angles(2), [0.0, 270.0]))
+	_check("seat_angles(3)", _arr_eq(Table3dLayout.seat_angles(3), [0.0, 270.0, 90.0]))
+	_check("seat_angles(4)", _arr_eq(Table3dLayout.seat_angles(4), [0.0, 270.0, 90.0, 180.0]))
 	_check("seat_angles(0)", Table3dLayout.seat_angles(0).is_empty())
 	_check("slot_grid_pos 0", Table3dLayout.slot_grid_pos(0) == Vector2(0, 0))
 	_check("slot_grid_pos 1", Table3dLayout.slot_grid_pos(1) == Vector2(1, 0))
 	_check("slot_grid_pos 2", Table3dLayout.slot_grid_pos(2) == Vector2(0, 1))
 	_check("slot_grid_pos 3", Table3dLayout.slot_grid_pos(3) == Vector2(1, 1))
-	_check("slot_grid_pos 4 追加", Table3dLayout.slot_grid_pos(4) == Vector2(0, -1))
-	_check("slot_grid_pos 5 追加", Table3dLayout.slot_grid_pos(5) == Vector2(1, -1))
-	_check("slot_grid_pos 6 追加", Table3dLayout.slot_grid_pos(6) == Vector2(0, -2))
+	_check("slot_grid_pos 4 第三列上", Table3dLayout.slot_grid_pos(4) == Vector2(2, 0))
+	_check("slot_grid_pos 5 第三列下", Table3dLayout.slot_grid_pos(5) == Vector2(2, 1))
+	_check("slot_grid_pos 6 第四列上", Table3dLayout.slot_grid_pos(6) == Vector2(3, 0))
 	var joker := Table3dLayout.known_color_for_rank("JOKER")
 	var ace := Table3dLayout.known_color_for_rank("A")
 	var king := Table3dLayout.known_color_for_rank("K")

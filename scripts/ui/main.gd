@@ -352,7 +352,10 @@ func _ready() -> void:
 	GameState.lobby_updated.connect(func(l: Dictionary): lobby.update_lobby(l))
 	GameState.state_updated.connect(_on_state_updated)
 	GameState.private_reveal_received.connect(_show_private_reveal)
-	GameState.card_exchange_animated.connect(func(data: Dictionary): animator.handle_exchange(data))
+	# 3D 下不播 2D 换牌/贴牌 fly（3D 尚无这些动画，2D 副本会浮在 3D 画面上）
+	GameState.card_exchange_animated.connect(func(data: Dictionary):
+		if not _table3d_active:
+			animator.handle_exchange(data))
 	GameState.peek_highlighted.connect(_on_peek_highlight)
 	GameState.toast_received.connect(_show_toast)
 	GameState.command_rejected.connect(_on_command_rejected)
@@ -640,7 +643,7 @@ func _render_game() -> void:
 
 ## 罚牌 fly：事件到达时目标槽位可能尚未渲染（追加的第 5+ 张），render 后再补飞。
 func _flush_slap_penalties() -> void:
-	if _pending_slap_penalties.is_empty():
+	if _table3d_active or _pending_slap_penalties.is_empty():
 		return
 	var remaining: Array = []
 	for item in _pending_slap_penalties:
@@ -820,8 +823,9 @@ func _on_pending_action() -> void:
 	var actor := int(latest_state.get("viewer_id", 0))
 	var big_data: Dictionary = pending.duplicate()
 	big_data.erase("source")
-	# 隐藏棋盘大牌，播副本动画飞向弃牌堆（落位后弃牌堆显示，大牌不重建）
-	animator._animate_discard_pending(big_data, actor)
+	# 隐藏棋盘大牌，播副本动画飞向弃牌堆（落位后弃牌堆显示，大牌不重建）；3D 下无 2D fly
+	if not _table3d_active:
+		animator._animate_discard_pending(big_data, actor)
 	if KongRules.has_ability(str(pending.get("rank", ""))):
 		_pending_hidden_for_ability = true
 		# 能力牌弃牌：本地立即在弃牌堆顶部显示该牌，避免被旧状态覆盖，直到服务器确认

@@ -6,7 +6,7 @@ extends RefCounted
 
 const BLOCK_SIZE := Vector3(0.7, 0.04, 1.0)   # 平铺桌面：X 宽 × Y 厚 × Z 深
 const BLOCK_GAP := Vector3(0.06, 0.0, 0.06)
-const TABLE_RADIUS := 2.8
+const TABLE_RADIUS := 3.5  # 桌面半边长（场景 Table 网格 7×7）×2 前基准
 const SEAT_RADIUS := 2.4
 const UNKNOWN_COLOR := Color(0.20, 0.20, 0.22)
 const LOW_COLOR := Color(0.45, 0.55, 0.62)  # 2-6 灰蓝
@@ -28,23 +28,28 @@ const COLOR_BY_RANK := {
 	"7": Color(0.35, 0.60, 0.85),
 }
 
-## 座位角度（度）：viewer 恒为 0°（近侧，正对相机），其余沿圆均分。
+## 座位角度（度）按 2D 棋盘箱位对齐（0°=近侧 +Z）。
+## 索引 0 = viewer 近侧；之后依次对应 2D 的「左箱 / 右箱 / 上箱」：
+## 左 = 270°(-X)、右 = 90°(+X)、上(远) = 180°(-Z)。玩家数 >4 时忽略多余座位。
+const ANGLE_ORDER := [0.0, 270.0, 90.0, 180.0]
+
 static func seat_angles(count: int) -> Array:
 	var angles: Array = []
 	if count <= 0:
 		return angles
-	for i in count:
-		angles.append(float(i) * 360.0 / float(count))
+	for i in mini(count, ANGLE_ORDER.size()):
+		angles.append(float(ANGLE_ORDER[i]))
 	return angles
 
-## 槽位 -> 网格坐标（列, 行）：前 4 张 2×2（列=i%2, 行=i/2）；
-## 第 5+ 张（罚牌）向上追加（idx=i-4, 列=idx%2, 行=-(1+idx/2)）。行向下为正。
+## 槽位 -> 网格坐标（列, 行）：主牌 4 张 2×2（与 2D 同：0/1 上排、2/3 下排，
+## 故开局揭示的 2/3 落在下排）；第 5+ 张（罚牌）向右追新列，每列先上格后下格：
+## idx=i-4, 列=2+idx/2, 行=idx%2。row 0 = 远离自己（上/远），row 1 = 靠近自己（下/近）。
 @warning_ignore("integer_division")
 static func slot_grid_pos(slot_index: int) -> Vector2:
 	if slot_index < 4:
 		return Vector2(float(slot_index % 2), float(slot_index / 2))
 	var idx := slot_index - 4
-	return Vector2(float(idx % 2), float(-(1 + idx / 2)))
+	return Vector2(float(2 + idx / 2), float(idx % 2))
 
 ## 已知牌分类色（仅展示区分）。
 static func known_color_for_rank(rank: String) -> Color:

@@ -405,3 +405,13 @@
 **修复**：`_apply_hover` 形参**不标注类型**（传参处不做类型检查，`is_instance_valid` 兜底）；`update_hover`/`clear_hover` 先用 `is_instance_valid` 过滤出有效对象再调用。
 
 **诊断方法**：`verify_table3d_interaction` 新增「悬停对象释放后 clear_hover 安全」——把 `_hover_collider` 设为一个随即 `queue_free` 的节点，再 `clear_hover()`，断言 `_hover_collider == null`（旧代码会因报错中断导致断言失败）。
+
+## B33：3D 座位/手牌与 2D 左右、前后相反（座位角度均分 + 座位节点旋转镜像）
+
+**现象**：2D 棋盘左下是 A、右下是 J，切到 3D 后左边是 J、右边是 A；且自己手牌的槽位既向左又向后（靠近自己的一侧反而排在前四张的后两格），新加的牌向左手侧/上方走，与 2D 观感相反。
+
+**根因**：两处叠加 —— ① `Table3dLayout.seat_angles` 把 viewer 之后的座位按圆**均分**递增角度（下一个对手 → `+X` = 屏幕右），而 2D `_render_players` 是「`others[0]`→左箱、`others[1]`→右箱、`others[2]`→上箱」，故左右相反；② `table3d_view._render_seat` 直接把 `slot_grid_pos` 的列/行当作本地 `+X/+Z`，而座位节点朝向为 `a+180°`（本地 `+Z`→桌心、本地 `+X`→持有者左侧），于是每个座位的手牌被**整体旋转 180°**：列向左、行朝向自己（与 2D 的行序相反）。
+
+**修复**：纯 3D 展示层，不动 2D/服务器/协议。`seat_angles` 改为**按 2D 箱位对齐** `[0, 270, 90, 180]`（viewer 近侧 / 左 / 右 / 远，不再均分）；`slot_grid_pos` 改为**主牌 2×2 行优先（与 2D 同：0/1 上排、2/3 下排，故开局揭示的 2/3 落在下排）+ 罚牌向右追新列、每列先上（远）后下（近）**（`slot<4` → `(slot%2, slot/2)`；`slot>=4` → `(2+(slot-4)/2, (slot-4)%2)`）；`_render_seat` 取本地 `-列`×X、`(1-行)`×Z，从而列向持有者右手侧、行 0 远离/行 1 靠近，新槽位向右手侧追加（第三列 = 4 上 / 5 下）。座位节点旋转与头像位置不变。
+
+**诊断方法**：`verify_table3d_layout` 断言 `seat_angles(4)==[0,270,90,180]`、主牌 `slot_grid_pos(0..3)==(0,0)/(1,0)/(0,1)/(1,1)`、罚牌 `slot_grid_pos(4)==(2,0)`/`(5)==(2,1)`（第三列先上后下）；`verify_table3d_interaction` 的 slot0 拾取改为**从正上方垂直下看**（避免侧向射线被同排其它卡遮挡）。

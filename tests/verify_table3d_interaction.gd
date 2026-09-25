@@ -38,31 +38,33 @@ func _test_card_block() -> void:
 	_check("拾取 Area 在 PICK_LAYER", block.get_node("PickArea").collision_layer == Table3dLayout.PICK_MASK)
 	# 高亮
 	block.set_actionable(true)
-	_check("可操作高亮色", block.is_emissive() and block.emission_color() == Table3dLayout.ACTIONABLE_COLOR)
+	_check("可操作边缘高亮色", block.has_glow() and block.glow_color() == Table3dLayout.ACTIONABLE_COLOR)
 	block.set_actionable(false)
-	_check("取消高亮回分类色", block.block_color() == Table3dLayout.known_color_for_rank("A"))
+	_check("取消高亮回牌面", block.has_face_texture() and not block.has_glow())
 	# protected 优先于 actionable
 	var prot := CardBlock.new()
 	add_child(prot)
 	prot.setup({"protected": true, "card": {"rank": "K", "suit": "♠"}})
 	prot.set_actionable(true)
-	_check("protected 优先于 actionable", prot.emission_color() == CardBlock.PROTECTED_COLOR)
+	_check("protected 优先于 actionable", prot.glow_color() == CardBlock.PROTECTED_COLOR)
 	# 揭示 / 恢复
 	var hidden := CardBlock.new()
 	add_child(hidden)
 	hidden.setup({"card_id": "c1"})
 	_check("未知牌初始无文本", hidden.label_text() == "")
 	hidden.reveal({"rank": "Q", "suit": "♦"}, Color(0.2, 0.9, 0.4))
-	_check("reveal 后显示 Q♦", hidden.label_text() == "Q♦")
-	_check("reveal 带色", hidden.block_color() == Color(0.2, 0.9, 0.4))
+	await get_tree().create_timer(CardBlock.FLIP_DURATION + 0.05).timeout
+	_check("reveal 翻到正面显示 Q♦", hidden.label_text() == "Q♦")
+	_check("reveal 用牌面 + 彩色发光", hidden.has_face_texture() and hidden.has_glow() and hidden.glow_color() == Color(0.2, 0.9, 0.4))
 	hidden.restore()
-	_check("restore 后回到未知（无文本）", hidden.label_text() == "")
+	await get_tree().create_timer(CardBlock.FLIP_DURATION + 0.05).timeout
+	_check("restore 翻回未知（无文本）", hidden.label_text() == "")
 	_check("restore 后回到未知卡背", hidden.has_back_texture() and hidden.block_color() == Color.WHITE)
-	# flash 短暂染色后恢复
+	# flash 短暂边缘发光后恢复
 	hidden.flash(Color(0.2, 0.6, 1.0), 0.05)
-	_check("flash 立即染色", hidden.block_color() == Color(0.2, 0.6, 1.0))
+	_check("flash 立即染色", hidden.has_glow() and hidden.glow_color() == Color(0.2, 0.6, 1.0))
 	await get_tree().create_timer(0.15).timeout
-	_check("flash 结束后恢复卡背", hidden.has_back_texture() and hidden.block_color() == Color.WHITE)
+	_check("flash 结束后恢复卡背", hidden.has_back_texture() and not hidden.has_glow() and hidden.block_color() == Color.WHITE)
 
 ## 构造带场景子节点的相机 rig（契约：PitchPivot/Camera3D 由场景提供）。
 func _make_camera_rig() -> Table3dCamera:
@@ -141,10 +143,10 @@ func _test_view() -> void:
 	# 默认取景：准星应指向牌堆（可点），且 hover 有高亮反馈
 	_check("默认准星指向牌堆", str(view.pick_center().get("kind", "")) == "deck")
 	_check("hover 命中可点目标", view.update_hover())
-	var deck_mesh = view.get_node("Center/Deck/Mesh")
-	_check("hover 叠加高亮", deck_mesh.material_overlay != null)
+	var deck_block = view.get_node("Center/Deck")
+	_check("hover 边缘高亮", deck_block.has_glow())
 	view.clear_hover()
-	_check("取消 hover 清除高亮", deck_mesh.material_overlay == null)
+	_check("取消 hover 清除高亮", not deck_block.has_glow())
 	# 悬停对象被释放后应安全（历史：带类型形参传已释放对象会报错并中断 clear_hover）
 	var tmp := CardBlock.new()
 	add_child(tmp)
@@ -153,11 +155,11 @@ func _test_view() -> void:
 	await get_tree().process_frame
 	view.clear_hover()
 	_check("悬停对象释放后 clear_hover 安全", view._hover_collider == null)
-	# 把相机对准 seat0/slot0 方块 → pick_center 命中 slot
+	# 从 slot0 正上方垂直下看 → pick_center 命中 slot0（避免被同列 slot1 遮挡）
 	var block = view._card_blocks[0][0]
-	view.camera.get_node("PitchPivot").rotation_degrees = Vector3.ZERO
+	view.camera.get_node("PitchPivot").rotation_degrees = Vector3(-90.0, 0.0, 0.0)
 	view.camera.rotation_degrees = Vector3.ZERO
-	view.camera.global_position = block.global_position + Vector3(0.0, 0.0, 1.2)
+	view.camera.global_position = block.global_position + Vector3(0.0, 1.2, 0.0)
 	await get_tree().physics_frame
 	var pick: Dictionary = view.pick_center()
 	_check("pick_center 命中槽位", str(pick.get("kind", "")) == "slot" and int(pick.get("seat", -1)) == 0 and int(pick.get("slot", -1)) == 0)
@@ -173,12 +175,13 @@ func _test_view() -> void:
 		"draw_count": 30, "discard": {}, "pending": {}, "phase": 2,
 	}, func(seat: int, slot: int) -> bool: return seat == 0 and slot == 0)
 	await get_tree().process_frame
-	_check("render(actionable) 高亮", view._card_blocks[0][0].emission_color() == Table3dLayout.ACTIONABLE_COLOR)
-	_check("非可操作不高亮", not view._card_blocks[0][1].is_emissive())
-	# 揭示 / 恢复
-	view.reveal_slot(0, 0, {"rank": "A", "suit": "♥"}, Color(0.2, 0.9, 0.4), 0.05)
-	_check("reveal_slot 显示 A♥", view._card_blocks[0][0].label_text() == "A♥")
-	await get_tree().create_timer(0.15).timeout
+	_check("render(actionable) 高亮", view._card_blocks[0][0].glow_color() == Table3dLayout.ACTIONABLE_COLOR)
+	_check("非可操作不高亮", not view._card_blocks[0][1].has_glow())
+	# 揭示 / 恢复（水平翻转）
+	view.reveal_slot(0, 0, {"rank": "A", "suit": "♥"}, Color(0.2, 0.9, 0.4), 0.6)
+	await get_tree().create_timer(CardBlock.FLIP_DURATION + 0.05).timeout
+	_check("reveal_slot 翻到正面显示 A♥", view._card_blocks[0][0].label_text() == "A♥")
+	await get_tree().create_timer(0.6).timeout
 	_check("reveal_slot 后恢复无文本", view._card_blocks[0][0].label_text() == "")
 	# HUD 可拾取
 	view.set_hud_buttons([{"text": "Ready", "action": "ready", "enabled": true}])
@@ -193,3 +196,45 @@ func _test_view() -> void:
 	_check("pick_center 命中 HUD", str(hud_pick.get("kind", "")) == "hud" and str(hud_pick.get("action", "")) == "ready")
 	_check("铃铛拾取标记", view.get_node("Center/KongBell/PickArea").get_meta("pick", {}).get("action", "") == "kongbaya")
 	_check("pending 与牌堆同尺寸（scale 1）", view.get_node("Center/Pending").scale.is_equal_approx(Vector3.ONE))
+	# 回合标识：当前行动者名字面板上方的红色倒三角
+	var players := [
+		{"id": 0, "name": "甲", "count": 2, "currency": 0, "health": 2,
+		 "slots": [{"card_id": "c1"}, {"card_id": "c2"}, {"card_id": "c3"}, {"card_id": "c4"}]},
+		{"id": 1, "name": "乙", "count": 4, "currency": 0, "health": 2,
+		 "slots": [{"card_id": "c9"}, {"card_id": "c10"}, {"card_id": "c11"}, {"card_id": "c12"}]},
+	]
+	view.render({"viewer_id": 0, "current_player": 1, "players": players,
+		"draw_count": 30, "discard": {}, "pending": {}, "phase": 2})
+	await get_tree().process_frame
+	var m0 = view._seat_nodes[0].get_node_or_null("Avatar/TurnMarker")
+	var m1 = view._seat_nodes[1].get_node_or_null("Avatar/TurnMarker")
+	_check("回合标识：当前行动者显示", m1 != null and m1.visible)
+	_check("回合标识：非当前行动者隐藏", m0 != null and not m0.visible)
+	var fill = m1.get_node_or_null("Fill") if m1 != null else null
+	var hint = m1.get_node_or_null("LookHint") if m1 != null else null
+	var outline = m1.get_node_or_null("Outline") if m1 != null else null
+	var marker_ok := false
+	var ring_ok := false
+	if fill != null and (fill.mesh as ArrayMesh) != null:
+		var verts: PackedVector3Array = (fill.mesh as ArrayMesh).surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+		marker_ok = verts.size() == 3 and (fill.material_override as StandardMaterial3D).albedo_color == Table3dView.TURN_MARKER_COLOR
+	if outline != null and (outline.mesh as ArrayMesh) != null:
+		var o_verts: PackedVector3Array = (outline.mesh as ArrayMesh).surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+		ring_ok = o_verts.size() == 18 and (outline.material_override as StandardMaterial3D).albedo_color == Table3dView.TURN_MARKER_OUTLINE_COLOR
+	_check("回合标识：红色倒三角（3 顶点）", marker_ok)
+	_check("回合标识：空心黑边（18 顶点环，不遮红心）", ring_ok)
+	_check("回合标识：顶部「看牌」提示", hint != null and hint.text == Table3dView.TURN_MARKER_HINT and hint.modulate == Table3dView.TURN_MARKER_HINT_COLOR)
+	view.render({"viewer_id": 0, "current_player": 1, "players": players,
+		"draw_count": 30, "discard": {}, "pending": {}, "phase": 7})
+	await get_tree().process_frame
+	_check("回合标识：GAME_OVER 不显示", not m1.visible)
+	# 揭示跨 render 保持：状态广播重建卡牌后仍重新翻到正面
+	view.render({"viewer_id": 0, "current_player": 1, "players": players,
+		"draw_count": 30, "discard": {}, "pending": {}, "phase": 2})
+	await get_tree().process_frame
+	view.reveal_slot(0, 0, {"rank": "K", "suit": "♣"}, Color(0.2, 0.9, 0.4), 1.0)
+	await get_tree().create_timer(CardBlock.FLIP_DURATION + 0.05).timeout
+	view.render({"viewer_id": 0, "current_player": 1, "players": players,
+		"draw_count": 30, "discard": {}, "pending": {}, "phase": 2})
+	await get_tree().create_timer(CardBlock.FLIP_DURATION + 0.05).timeout
+	_check("揭示跨 render 保持正面", view._card_blocks[0][0].label_text() == "K♣")

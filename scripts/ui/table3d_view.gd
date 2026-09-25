@@ -13,9 +13,20 @@ const HUD_HEIGHT := 0.5
 const AVATAR_GLOW_COLOR := Color(1.0, 0.85, 0.35, 0.30)  # 当前回合高亮
 const AVATAR_DIM_COLOR := Color(0.0, 0.0, 0.0, 0.55)     # 出局/离线变暗
 const HOVER_COLOR := Color(0.7, 0.95, 1.0, 0.35)         # 准星悬停目标高亮
-const STAT_VIEWPORT_SIZE := Vector2i(320, 96)
+const STAT_VIEWPORT_SIZE := Vector2i(320, 120)
 const STAT_PANEL_OFFSET := Vector3(0.0, 0.75, 0.0)
 const STAT_PANEL_PIXEL_SIZE := 0.005
+
+# 回合标识：当前行动者名字面板上方的红色倒三角（黑色描边，billboard，纯展示），顶部提示「看牌」
+const TURN_MARKER_COLOR := Color(0.92, 0.15, 0.15)         # 填充：红色
+const TURN_MARKER_OUTLINE_COLOR := Color(0.02, 0.02, 0.02)  # 描边：黑色（空心环，不遮红心）
+const TURN_MARKER_SIZE := Vector2(0.45, 0.34)             # 宽 × 高
+const TURN_MARKER_OUTLINE_SCALE := 1.35                   # 描边外扩
+const TURN_MARKER_OFFSET := Vector3(0.0, 1.22, 0.0)       # 紧贴名字面板上方（避免与名字重叠）
+const TURN_MARKER_HINT := "看牌"
+const TURN_MARKER_HINT_COLOR := Color(1.0, 1.0, 1.0)     # 白色
+const TURN_MARKER_HINT_OFFSET := Vector3(0.0, 0.42, 0.0)  # 三角顶部上方
+const TURN_MARKER_HIDDEN_PHASES := [0, 7, 10]             # LOBBY / GAME_OVER / SHOP 不显示
 
 var camera = null  # Table3dCamera（场景 CameraRig）
 var _bind_done := false
@@ -32,6 +43,9 @@ var _hover_collider: Object = null
 var _hover_mat: StandardMaterial3D = null
 var _seat_panels: Array = []      # PlayerStatPanel per slot
 var _stat_viewports: Array = []
+var _seat_markers: Array = []     # 回合标识 Node3D per slot（供外部查询）
+var _reveals := {}                # "seat_slot" -> {card, color, token}（跨 render 保持揭示/翻牌）
+var _reveal_seq := 0
 var _bell_dome: MeshInstance3D = null
 var _bell_mat: StandardMaterial3D = null
 
@@ -93,8 +107,14 @@ func _bind() -> void:
 		sprite.position = STAT_PANEL_OFFSET
 		if avatar != null:
 			avatar.add_child(sprite)
+		var marker := _make_turn_marker(TURN_MARKER_SIZE)
+		marker.position = TURN_MARKER_OFFSET
+		marker.visible = false
+		if avatar != null:
+			avatar.add_child(marker)
 		_seat_panels.append(panel)
 		_stat_viewports.append(sub)
+		_seat_markers.append(marker)
 	_bound = true
 
 ## 显示/隐藏预览（不处理点击与动画）。
@@ -147,6 +167,11 @@ func render(state: Dictionary, actionable := Callable()) -> void:
 				if _card_blocks.has(seat) and _card_blocks[seat].has(slot_index):
 					_card_blocks[seat][slot_index].set_actionable(bool(actionable.call(seat, slot_index)))
 		slot_i += 1
+	# 重建后重新应用在途揭示（否则状态广播会把翻牌冲回背面）
+	for key in _reveals.keys():
+		var parts: PackedStringArray = str(key).split("_")
+		if parts.size() == 2:
+			_apply_reveal(int(parts[0]), int(parts[1]))
 	# 中央
 	_deck_label.text = str(int(state.get("draw_count", 0)))
 	var discard: Dictionary = state.get("discard", {})
@@ -187,15 +212,21 @@ func _render_seat(node: Node3D, p: Dictionary) -> void:
 		child.queue_free()
 	var slots: Array = p.get("slots", [])
 	for i in slots.size():
+		var slot: Dictionary = slots[i]
+		# 空槽（贴牌成功/交出后卡片被清掉）不渲染 → 卡牌消失（与 2D 空槽透明占位一致）
+		if str(slot.get("card_id", "")).is_empty() and not slot.has("card"):
+			continue
 		var block = CardBlockScript.new()
 		var grid: Vector2 = Table3dLayout.slot_grid_pos(i)
-		# 卡牌平铺桌面：列沿 X，行沿 Z（+Z 朝桌心，罚牌追加行向玩家侧）
+		# 卡牌平铺桌面（对齐 2D 观感）：列向「持有者右手侧」增长、行 0 远离持有者 / 行 1 靠近。
+		# 座位节点朝向 a+180°，本地 -X → 持有者右侧，本地 +Z → 桌心（即远离持有者），
+		# 故列取 -X、行取 (1-行) 的 +Z，新槽位向右（持有者右手侧）追加。
 		block.position = Vector3(
-			grid.x * (Table3dLayout.BLOCK_SIZE.x + Table3dLayout.BLOCK_GAP.x),
+			-grid.x * (Table3dLayout.BLOCK_SIZE.x + Table3dLayout.BLOCK_GAP.x),
 			0.0,
-			grid.y * (Table3dLayout.BLOCK_SIZE.z + Table3dLayout.BLOCK_GAP.z))
+			(1.0 - grid.y) * (Table3dLayout.BLOCK_SIZE.z + Table3dLayout.BLOCK_GAP.z))
 		hand.add_child(block)
-		block.setup(slots[i])
+		block.setup(slot)
 		block.set_pick({"kind": "slot", "seat": int(p.id), "slot": i})
 		if not _card_blocks.has(int(p.id)):
 			_card_blocks[int(p.id)] = {}
@@ -234,6 +265,10 @@ func _apply_avatar(seat_node: Node3D, p: Dictionary, viewer: int, state: Diction
 		head.material_overlay = overlay
 	if body != null:
 		body.material_overlay = overlay
+	# 回合标识：仅当前行动者、且自己那席因角色隐藏而不显示
+	var marker := avatar.get_node_or_null("TurnMarker")
+	if marker != null:
+		marker.visible = avatar.visible and _is_current_turn(state, seat)
 
 func _avatar_glow() -> StandardMaterial3D:
 	if _avatar_glow_mat == null:
@@ -253,6 +288,88 @@ func _make_overlay(color: Color) -> StandardMaterial3D:
 	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	return mat
 
+## 是否当前行动者的回合（LOBBY/GAME_OVER/SHOP 不显示）。
+func _is_current_turn(state: Dictionary, seat: int) -> bool:
+	if seat != int(state.get("current_player", -1)):
+		return false
+	return not TURN_MARKER_HIDDEN_PHASES.has(int(state.get("phase", -1)))
+
+## 倒三角网格（XY 平面，apex 朝下），配合 billboard 始终面向相机。
+static func _triangle_mesh(size: Vector2) -> ArrayMesh:
+	var w := size.x
+	var h := size.y
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = PackedVector3Array([
+		Vector3(-w * 0.5, h * 0.5, 0.0),
+		Vector3(w * 0.5, h * 0.5, 0.0),
+		Vector3(0.0, -h * 0.5, 0.0),
+	])
+	arrays[Mesh.ARRAY_TEX_UV] = PackedVector2Array([
+		Vector2(0.0, 0.0), Vector2(1.0, 0.0), Vector2(0.5, 1.0),
+	])
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
+
+## 倒三角空心边环（外三角 - 内三角），用于「黑边不遮红心」。
+static func _triangle_ring_mesh(size: Vector2, scale: float) -> ArrayMesh:
+	var hw := size.x * 0.5
+	var hh := size.y * 0.5
+	var ow := hw * scale
+	var oh := hh * scale
+	var inner := [Vector3(-hw, hh, 0.0), Vector3(hw, hh, 0.0), Vector3(0.0, -hh, 0.0)]
+	var outer := [Vector3(-ow, oh, 0.0), Vector3(ow, oh, 0.0), Vector3(0.0, -oh, 0.0)]
+	var verts := PackedVector3Array()
+	for k in 3:
+		var n := (k + 1) % 3
+		verts.push_back(outer[k]); verts.push_back(outer[n]); verts.push_back(inner[n])
+		verts.push_back(outer[k]); verts.push_back(inner[n]); verts.push_back(inner[k])
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
+
+## 回合标识：加粗描边的黑色倒三角 + 顶部「看牌」提示（各自 billboard）。
+func _make_turn_marker(size: Vector2) -> Node3D:
+	var root := Node3D.new()
+	root.name = "TurnMarker"
+	var outline := MeshInstance3D.new()
+	outline.name = "Outline"
+	outline.mesh = _triangle_ring_mesh(size, TURN_MARKER_OUTLINE_SCALE)
+	outline.material_override = _marker_material(TURN_MARKER_OUTLINE_COLOR)
+	root.add_child(outline)
+	var fill := MeshInstance3D.new()
+	fill.name = "Fill"
+	fill.mesh = _triangle_mesh(size)
+	fill.material_override = _marker_material(TURN_MARKER_COLOR)
+	root.add_child(fill)
+	var hint := Label3D.new()
+	hint.name = "LookHint"
+	hint.text = TURN_MARKER_HINT
+	hint.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	hint.no_depth_test = true
+	hint.pixel_size = 0.002
+	hint.font_size = 96
+	hint.modulate = TURN_MARKER_HINT_COLOR
+	hint.position = TURN_MARKER_HINT_OFFSET
+	root.add_child(hint)
+	return root
+
+func _marker_material(color: Color) -> StandardMaterial3D:
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = color
+	mat.emission_enabled = true
+	mat.emission = color
+	mat.emission_energy_multiplier = 1.0
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	mat.no_depth_test = true
+	return mat
+
 ## 屏幕中心射线拾取（准星）。
 func pick_center() -> Dictionary:
 	if camera == null:
@@ -260,15 +377,33 @@ func pick_center() -> Dictionary:
 	var center := get_viewport().get_visible_rect().size * 0.5
 	return Table3dPicker.pick(camera.camera_node(), get_world_3d(), center)
 
-## 瞬时揭示某槽位（dur 秒后恢复）。槽位不存在则忽略。
+## 瞬时揭示某槽位（水平翻到正面，dur 秒后翻回）。槽位不存在则忽略；
+## 记录在 `_reveals`，`render` 重建卡牌后会重新应用（否则状态广播会把翻牌冲掉）。
 func reveal_slot(seat_id: int, slot: int, card: Dictionary, color := Color(0, 0, 0, 0), dur := 1.5) -> void:
-	var block = _find_block(seat_id, slot)
-	if block == null:
-		return
-	block.reveal(card, color)
+	var key := "%d_%d" % [seat_id, slot]
+	_reveal_seq += 1
+	var token := _reveal_seq
+	_reveals[key] = {"card": card, "color": color, "token": token}
+	_apply_reveal(seat_id, slot)
 	get_tree().create_timer(dur).timeout.connect(func():
-		if is_instance_valid(block):
-			block.restore())
+		if not _reveals.has(key):
+			return
+		if int(_reveals[key].get("token", -1)) != token:
+			return   # 已被更新的揭示取代
+		_reveals.erase(key)
+		var b = _find_block(seat_id, slot)
+		if b != null:
+			b.restore())
+
+## 对当前（可能刚重建的）卡牌应用登记中的揭示。
+func _apply_reveal(seat_id: int, slot: int) -> void:
+	var key := "%d_%d" % [seat_id, slot]
+	if not _reveals.has(key):
+		return
+	var r: Dictionary = _reveals[key]
+	var b = _find_block(seat_id, slot)
+	if b != null:
+		b.reveal(r.get("card", {}), r.get("color", Color(0, 0, 0, 0)))
 
 ## 短暂染色提醒（不翻面）。
 func flash_slot(seat_id: int, slot: int, color: Color, dur: float) -> void:
@@ -316,7 +451,11 @@ func _apply_hover(collider, on: bool) -> void:
 	if collider == null or not is_instance_valid(collider):
 		return
 	var parent = (collider as Node).get_parent()
-	if parent == null:
+	if parent == null or not is_instance_valid(parent):
+		return
+	# 卡牌类（CardBlock）走边缘发光，与状态高亮同一套；其余（HUD 按钮等）用叠加薄色。
+	if parent.has_method("set_hover"):
+		parent.call("set_hover", on, HOVER_COLOR)
 		return
 	var meshes: Array = []
 	_collect_meshes(parent, meshes)

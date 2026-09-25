@@ -27,8 +27,8 @@ func _test_card_block() -> void:
 	add_child(known)
 	known.setup({"card": {"rank": "A", "suit": "♥"}})
 	_check("CardBlock 已知牌文本 A♥", known.label_text() == "A♥")
-	_check("CardBlock 已知牌颜色", known.block_color() == Table3dLayout.known_color_for_rank("A"))
-	_check("CardBlock 非保护不自发光", not known.is_emissive())
+	_check("CardBlock 已知牌用正面贴图", known.has_face_texture() and known.block_color() == Color.WHITE and known.albedo_texture() == load("res://assets/Cards/hearts_ace.png"))
+	_check("CardBlock 非保护无发光", not known.has_glow())
 	var unknown := CardBlock.new()
 	add_child(unknown)
 	unknown.setup({})
@@ -37,8 +37,8 @@ func _test_card_block() -> void:
 	var prot := CardBlock.new()
 	add_child(prot)
 	prot.setup({"protected": true, "card": {"rank": "K", "suit": "♠"}})
-	_check("CardBlock 护盾自发光", prot.is_emissive())
-	_check("CardBlock 护盾紫色", prot.is_emissive() and prot.emission_color() == CardBlock.PROTECTED_COLOR)
+	_check("CardBlock 护盾发光", prot.has_glow())
+	_check("CardBlock 护盾紫色", prot.has_glow() and prot.glow_color() == CardBlock.PROTECTED_COLOR)
 	_check("CardBlock 护盾仍显示点数", prot.label_text() == "K♠")
 	_check("CardBlock Joker 文本", CardBlock.card_text({"rank": "JOKER", "suit": "red"}) == "JOKER")
 	_check("CardBlock 空卡文本", CardBlock.card_text({}) == "")
@@ -131,3 +131,17 @@ func _test_view_render() -> void:
 	_check("弃牌顶标签 7♣", (center.get_node("DiscardTop") as CardBlock).label_text() == "7♣")
 	_check("pending 标签 Q♦", (center.get_node("Pending") as CardBlock).label_text() == "Q♦")
 	_check("pending 可见", (center.get_node("Pending") as Node3D).visible)
+	# 空槽（贴牌成功被清掉的牌）不渲染 → 卡牌消失
+	view.render({
+		"viewer_id": 0,
+		"players": [
+			{"id": 0, "name": "甲", "count": 3, "currency": 100, "health": 2, "eliminated": false,
+			 "slots": [{"card_id": "c1"}, {"card_id": ""}, {"card_id": "c3"}, {"card_id": "c4"}]},
+			{"id": 1, "name": "乙", "count": 1, "currency": 80, "health": 2, "eliminated": false,
+			 "slots": [{"card_id": "c9"}, {"card_id": "c10"}, {"card_id": "c11"}, {"card_id": "c12"}]},
+		],
+		"draw_count": 28, "discard": {}, "pending": {}, "phase": 6,
+	})
+	await get_tree().process_frame
+	_check("空槽不渲染（卡牌消失）", view._seat_nodes[0].get_node("HandAnchor").get_child_count() == 3)
+	_check("空槽无 CardBlock 登记", not view._card_blocks[0].has(1) and view._card_blocks[0].has(3))
