@@ -39,6 +39,11 @@ var _flash_color := Color(0, 0, 0, 0)
 var _hovered := false
 var _hover_color := Color(0.7, 0.95, 1.0)
 var _flip_tween: Tween = null
+static var _anim_cfg: CardAnimationConfig = null
+var hover_anim_enabled := false
+var _hover_p := 0.0
+var _ray_local := Vector2.ZERO
+var _hover_tween: Tween = null
 
 ## 翻牌半程时长（水平翻转：scale.x 1→0 换面 →0→1），与 2D `flip_to_face` 同策略。
 const FLIP_DURATION := 0.25
@@ -113,11 +118,17 @@ func _build() -> void:
 	_area.collision_layer = Table3dLayout.PICK_MASK
 	_area.collision_mask = 0
 	add_child(_area)
+	set_process(false)
 
 ## 设置槽位内容（立即生效、打断在途翻牌）。
 func setup(slot: Dictionary) -> void:
 	_build()
 	_kill_flip()
+	if _hover_tween != null and _hover_tween.is_valid():
+		_hover_tween.kill()
+	_hover_tween = null
+	_hover_p = 0.0
+	_ray_local = Vector2.ZERO
 	if _visual != null:
 		_visual.transform = Transform3D.IDENTITY
 	scale = Vector3.ONE
@@ -315,6 +326,58 @@ func label_text() -> String:
 func visual_node() -> Node3D:
 	_build()
 	return _visual
+
+static func _cfg() -> CardAnimationConfig:
+	if _anim_cfg == null:
+		_anim_cfg = CardAnimationConfig.new()
+	return _anim_cfg
+
+func hover_progress() -> float:
+	return _hover_p
+
+## hover 抬起/倾斜：on=true 抬到 hover 姿态，false 落回；immediate 直接置值不缓动（跨 render 重放用）。
+func set_hover_pose(on: bool, ray_local: Vector2, immediate := false) -> void:
+	_build()
+	_ray_local = ray_local
+	if _hover_tween != null and _hover_tween.is_valid():
+		_hover_tween.kill()
+	_hover_tween = null
+	var target := 1.0 if on else 0.0
+	if immediate:
+		_hover_p = target
+		_apply_hover_pose()
+		return
+	if is_equal_approx(_hover_p, target):
+		_apply_hover_pose()
+		return
+	var cfg := _cfg()
+	var dur := cfg.hover_in_dur if on else cfg.hover_out_dur
+	var trans := Tween.TRANS_BACK if on else Tween.TRANS_CUBIC
+	if hover_anim_enabled:
+		set_process(true)
+	_hover_tween = create_tween()
+	_hover_tween.tween_property(self, "_hover_p", target, dur).set_trans(trans).set_ease(Tween.EASE_OUT)
+
+func _process(_delta: float) -> void:
+	if not hover_anim_enabled:
+		set_process(false)
+		return
+	_apply_hover_pose()
+
+## 用 compose 的位移/旋转驱动 `_visual`（不写 scale，避免与揭示翻转抢属性）。
+func _apply_hover_pose() -> void:
+	if _visual == null:
+		return
+	if _hover_p <= 0.0:
+		_visual.transform = Transform3D.IDENTITY
+		return
+	var c := CardAnimationMath.compose(
+		{"hover": _hover_p, "press": 0.0, "flip": 0.0, "land": 0.0},
+		_cfg().to_dict(), 0.0, _ray_local)
+	var rot: Vector3 = c["visual_rot_deg"]
+	_visual.transform = Transform3D(
+		Basis.from_euler(Vector3(deg_to_rad(rot.x), deg_to_rad(rot.y), deg_to_rad(rot.z))),
+		c["visual_pos"])
 
 func block_color() -> Color:
 	return _material.albedo_color if _material != null else Color.BLACK

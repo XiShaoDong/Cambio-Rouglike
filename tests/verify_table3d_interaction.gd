@@ -24,6 +24,7 @@ func _run() -> void:
 	await _test_picker()
 	_test_hud()
 	await _test_view()
+	await _test_hover_pose()
 
 func _test_layout_pick() -> void:
 	_check("PICK_LAYER == 2", Table3dLayout.PICK_LAYER == 2)
@@ -245,3 +246,22 @@ func _test_view() -> void:
 		"draw_count": 30, "discard": {}, "pending": {}, "phase": 2})
 	await get_tree().create_timer(CardBlock.FLIP_DURATION + 0.05).timeout
 	_check("揭示跨 render 保持正面", view._card_blocks[0][0].label_text() == "K♣")
+
+func _test_hover_pose() -> void:
+	var cfg := CardAnimationConfig.new()
+	var b := CardBlock.new()
+	b.hover_anim_enabled = true
+	add_child(b)
+	b.setup({"card": {"rank": "A", "suit": "♥"}})
+	b.set_hover_pose(true, Vector2.ZERO)
+	await get_tree().create_timer(cfg.hover_in_dur + 0.1).timeout
+	_check("own hover 抬起", b.hover_progress() > 0.9 and b.visual_node().position.y > 0.0)
+	b.set_hover_pose(false, Vector2.ZERO)
+	await get_tree().create_timer(cfg.hover_out_dur + 0.1).timeout
+	_check("离开落回", b.hover_progress() < 0.1 and absf(b.visual_node().position.y) < 0.001)
+	var c := CardBlock.new()
+	add_child(c)
+	c.setup({"card": {"rank": "2", "suit": "♣"}})
+	c.set_hover_pose(true, Vector2.ZERO)
+	await get_tree().create_timer(cfg.hover_in_dur + 0.1).timeout
+	_check("未启用动画的块不抬", c.visual_node().position.is_equal_approx(Vector3.ZERO))
