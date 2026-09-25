@@ -31,6 +31,7 @@ func _test_config() -> void:
 	_check("config 默认值合法", c.validate().is_empty())
 	_check("config to_dict 键数", c.to_dict().size() == CardAnimationConfig.KEYS.size())
 	_check("config 默认 hover_lift", is_equal_approx(c.hover_lift, 0.12))
+	_check("config 默认 hover_clearance", is_equal_approx(c.hover_clearance, 0.03))
 	var bad := CardAnimationConfig.new()
 	bad.hover_lift = -1.0
 	_check("config 非法值被抓", bad.validate().has("hover_lift"))
@@ -76,9 +77,13 @@ func _test_height_shadow_compose() -> void:
 	_check("land 0 → 1", is_equal_approx(M.land_scale(0.0, cd), 1.0))
 	_check("land 1 → 1", is_equal_approx(M.land_scale(1.0, cd), 1.0))
 	var c := M.compose({"hover": 1.0, "press": 0.0, "flip": 0.0, "land": 0.0}, cd, 0.0, Vector2.ZERO)
-	_check("compose hover 位移", is_equal_approx((c["visual_pos"] as Vector3).y, cd["hover_lift"]))
+	var half_len: float = Table3dLayout.BLOCK_SIZE.z * 0.5 * cd["hover_scale"]
+	var comp: float = maxf(cd["hover_lift"], cd["hover_clearance"] + half_len * sin(deg_to_rad(cd["hover_pitch"])))
+	_check("compose hover 位移=离桌补偿", is_equal_approx((c["visual_pos"] as Vector3).y, comp))
 	_check("compose hover 缩放", is_equal_approx(float(c["visual_scale"]), cd["hover_scale"]))
 	_check("compose hover 仰角(朝玩家=负 rot_x)", is_equal_approx((c["visual_rot_deg"] as Vector3).x, -cd["hover_pitch"]))
+	var near_y: float = (c["visual_pos"] as Vector3).y - half_len * sin(deg_to_rad(absf((c["visual_rot_deg"] as Vector3).x)))
+	_check("compose hover 近边不穿桌", near_y >= cd["hover_clearance"] - 1e-4)
 	var cf := M.compose({"hover": 0.0, "press": 0.0, "flip": 0.5, "land": 0.0}, cd, 0.0, Vector2.ZERO)
 	_check("compose flip_deg 90", is_equal_approx(float(cf["flip_deg"]), 90.0))
 	_check("compose flip 高度峰值", is_equal_approx((cf["visual_pos"] as Vector3).y, cd["flip_lift"]))

@@ -8,10 +8,11 @@ var idle_speed := 1.2
 var idle_rot_z := 0.5
 var idle_rot_x := 0.3
 var hover_lift := 0.12
+var hover_clearance := 0.03
 var hover_scale := 1.06
-var hover_pitch := 28.0
-var max_tilt := 4.0
-var hover_in_dur := 0.12
+var hover_pitch := 14.0
+var max_tilt := 2.0
+var hover_in_dur := 0.5
 var hover_out_dur := 0.20
 var press_dur := 0.08
 var press_min := 0.97
@@ -27,7 +28,7 @@ var shadow_alpha_loss := 0.50
 
 const KEYS := [
 	"idle_amp", "idle_speed", "idle_rot_z", "idle_rot_x",
-	"hover_lift", "hover_scale", "hover_pitch", "max_tilt",
+	"hover_lift", "hover_clearance", "hover_scale", "hover_pitch", "max_tilt",
 	"hover_in_dur", "hover_out_dur", "press_dur", "press_min", "press_over",
 	"flip_dur", "flip_lift", "land_dur", "land_over", "land_under",
 	"shadow_base_alpha", "shadow_scale_loss", "shadow_alpha_loss",
