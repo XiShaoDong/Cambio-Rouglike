@@ -16,7 +16,7 @@
 - 不做 press 压缩、真实 3D 翻转替换揭示、blob 阴影、idle 悬浮。
 - 不做他人手牌 / 中央牌堆的抬起。
 - 不改 2D 棋盘、不动规则/协议/快照/`request_*`。
-- **本期不做 hover 缩放**（`hover_scale`）：避免与揭示的 `scale.x` 翻转抢同一节点属性；先只做位移 + 旋转。
+- **本期不做 hover 缩放**（`hover_scale`）：先只做位移 + 旋转；后续可在 `_visual` 上安全补加（与揭示已分节点）。
 
 ## 2. 现状（关键约束）
 
@@ -32,8 +32,8 @@
 ### 3.1 CardBlock 视觉 pivot（防抖核心）
 
 - `_build()` 新增根子节点 `_visual: Node3D`，把 `Glow*` / `Mesh` / `Label3D` 挂到 `_visual` 下；**拾取 `Area3D` 留在根**。
-- 现有 `reveal/restore` 的水平翻转改为作用于 `_visual.scale:x`；`setup(slot)` 复位 `_visual`（`scale=ONE` + hover pose 归零）。
-- 结果：动画移动 `_visual`，根与拾取盒静止 → hover 判定稳定。
+- 揭示的 `scale.x` 水平翻转**保持作用于根 `self.scale`（不改）**，与 `_visual` 的 hover 位移/旋转不抢属性（`Basis` 会重置 scale，故两者必须分节点）；`setup(slot)` 额外复位 `_visual` 的 hover pose。
+- 结果：hover 动画只移动 `_visual`，根与拾取盒静止 → hover 判定稳定。
 
 ### 3.2 CardBlock hover pose 驱动
 
@@ -98,7 +98,7 @@
 | 同一时刻只 hover 一个槽 | 准星唯一，`_hover_slot` 单值 |
 | `ray_local` tilt 方向 | 与沙盒同帧（viewer 自己的座位朝向 + 相机在座后），复用同样符号；测试与人工确认 |
 | 重建瞬间弹跳 | `_hover_slot` 跨 render 重放，且用 `immediate=true` |
-| 与揭示 flip 抢 `_visual.scale.x` | hover 不写 scale（仅 pos/rot）；reveal 独占 scale.x |
+| 与揭示 flip 抢属性 | hover 只写 `_visual` 的 pos/rot；揭示写根 `self.scale.x`，二者分节点不冲突（根缩放会带动 `_visual`，符合揭示整体翻转语义）；hover 不写 `_visual.scale` |
 | 打开 2D 模态时 | `main` 已 `clear_hover()` → pose 复位 |
 
 **明确不做**：press、真实翻转、阴影、idle、他人/中央卡抬起、hover 缩放。
