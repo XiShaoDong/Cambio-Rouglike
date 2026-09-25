@@ -885,6 +885,8 @@ func _build() -> void:
 		actor.position = Vector3((float(i) - float(count - 1) * 0.5) * actor_gap, 0.03, 0.0)
 		actor.rotation_degrees = Vector3(0.0, 180.0, 0.0)
 		add_child(actor)
+		# _ready 已在 add_child 时同步执行 → body 可用；挂 pick 元数据供准星拾取
+		actor.body.set_pick({"kind": "card", "index": i})
 		actors.append(actor)
 	var layer := CanvasLayer.new()
 	layer.name = "UI"
