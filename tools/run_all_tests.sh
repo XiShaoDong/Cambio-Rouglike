@@ -89,6 +89,7 @@ run_single "table3d_mouse" res://tests/verify_table3d_mouse.tscn
 run_single "actions" res://tests/verify_actions.tscn
 run_single "stat_panel" res://tests/verify_stat_panel.tscn
 run_single "table3d_interaction" res://tests/verify_table3d_interaction.tscn
+run_single "card_animation" res://tests/verify_card_animation.tscn
 run_single "hint"       res://tests/verify_hint.tscn
 
 if [ "$QUICK" -eq 1 ]; then

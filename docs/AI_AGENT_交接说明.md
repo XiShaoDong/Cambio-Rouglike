@@ -131,6 +131,7 @@ UI 层已拆分（main.gd 是组合根）：
 | `crosshair.gd` | 屏幕中心准星（悬停可点目标时变金放大） |
 | `player_stat_panel.gd` / `card_count_icon.gd` | 玩家状态面板（名字在框上方、放大 2×；框内透明白灰底+黑边框，**框宽自适应内容**，生命/金钱/卡牌数）+ 程序化卡牌图标 |
 | `scenes/ui/table3d.tscn` | 3D 对局静态骨架（环境/相机/方桌+边框/4 座位+角色/中央牌堆+金铃铛/Hud）；**归开发者所有**，节点名路径是契约 |
+| `card_animation_config.gd` / `card_animation_math.gd` / `card_animation.gd` / `card_animation_sandbox.gd` | 卡牌交互动效沙盒：参数集中配置 + 纯函数（状态机/缓动/高度/阴影/compose）+ 控制器（标量进度驱动）+ 沙盒（5 卡/准星/左键翻牌） |
 
 ## 5. 状态机（`GameState.Phase` 数值不可随意变更，需同步 UI 与测试）
 
@@ -218,6 +219,8 @@ UI 层已拆分（main.gd 是组合根）：
 ... --headless --path . res://tests/verify_stat_panel.tscn
 # hint 生成测试（8/8）
 ... --headless --path . res://tests/verify_hint.tscn
+# 卡牌交互动效沙盒（61/61：配置/状态机/缓动/高度/阴影/compose/控制器/沙盒）
+... --headless --path . res://tests/verify_card_animation.tscn
 # 双实例网络回归（host + client 各跑，均 exit 0）
 ... --headless --path . res://tests/verify_net.tscn -- -role host
 ... --headless --path . res://tests/verify_net.tscn -- -role client
@@ -246,7 +249,7 @@ UI 层已拆分（main.gd 是组合根）：
 ... --headless --path . res://tests/verify_proxy.tscn -- -role client -scenario baseline -mode reconnect
 ```
 
-> **开发约定**：按用户的指示**不启动 GUI**，用上述 unit test 验证后总结。每次改动后跑 `verify_protocol` + `verify_swap` + `verify_duel` + `verify_reconnect` + `verify_kongbaya` + `verify_economy` + `verify_shop` + `verify_relics` + `verify_card_skin` + **3D/UI：`verify_table3d_layout` + `verify_table3d` + `verify_table3d_mouse` + `verify_table3d_interaction` + `verify_actions` + `verify_stat_panel`** + 双实例 `verify_net`。
+> **开发约定**：按用户的指示**不启动 GUI**，用上述 unit test 验证后总结。每次改动后跑 `verify_protocol` + `verify_swap` + `verify_duel` + `verify_reconnect` + `verify_kongbaya` + `verify_economy` + `verify_shop` + `verify_relics` + `verify_card_skin` + **3D/UI：`verify_table3d_layout` + `verify_table3d` + `verify_table3d_mouse` + `verify_table3d_interaction` + `verify_actions` + `verify_stat_panel` + `verify_card_animation`** + 双实例 `verify_net`。
 
 ## 9. 给后续 Agent 的工作方式
 
