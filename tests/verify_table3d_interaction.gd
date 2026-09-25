@@ -246,6 +246,30 @@ func _test_view() -> void:
 		"draw_count": 30, "discard": {}, "pending": {}, "phase": 2})
 	await get_tree().create_timer(CardBlock.FLIP_DURATION + 0.05).timeout
 	_check("揭示跨 render 保持正面", view._card_blocks[0][0].label_text() == "K♣")
+	# hover 动效：仅 own 槽启用；抬起时拾取盒不动；跨 render 保持
+	var players_h := [
+		{"id": 0, "name": "甲", "count": 2, "currency": 0, "health": 2,
+		 "slots": [{"card_id": "c1"}, {"card_id": "c2"}, {"card_id": "c3"}, {"card_id": "c4"}]},
+		{"id": 1, "name": "乙", "count": 4, "currency": 0, "health": 2,
+		 "slots": [{"card_id": "c9"}, {"card_id": "c10"}, {"card_id": "c11"}, {"card_id": "c12"}]},
+	]
+	view.render({"viewer_id": 0, "players": players_h, "draw_count": 30, "discard": {}, "pending": {}, "phase": 2})
+	await get_tree().process_frame
+	_check("own 槽启用 hover 动画", view._card_blocks[0][0].hover_anim_enabled)
+	_check("非 own 槽不启用", not view._card_blocks[1][0].hover_anim_enabled)
+	var hb = view._card_blocks[0][0]
+	var base_pos: Vector3 = hb.position
+	var area_pos: Vector3 = hb.get_node("PickArea").global_position
+	hb.set_hover_pose(true, Vector2.ZERO)
+	await get_tree().create_timer(CardAnimationConfig.new().hover_in_dur + 0.1).timeout
+	_check("own hover 抬起", hb.visual_node().position.y > 0.0)
+	_check("抬起时拾取盒不移动", hb.position.is_equal_approx(base_pos) and hb.get_node("PickArea").global_position.is_equal_approx(area_pos))
+	view._hover_slot = {"seat": 0, "slot": 0}
+	view._hover_ray_local = Vector2.ZERO
+	view.render({"viewer_id": 0, "players": players_h, "draw_count": 30, "discard": {}, "pending": {}, "phase": 2})
+	await get_tree().process_frame
+	_check("跨 render 保持 hover 抬起", view._card_blocks[0][0].hover_progress() == 1.0)
+	_check("跨 render 后视觉抬起", view._card_blocks[0][0].visual_node().position.y > 0.0)
 
 func _test_hover_pose() -> void:
 	var cfg := CardAnimationConfig.new()

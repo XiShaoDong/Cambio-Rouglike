@@ -37,6 +37,9 @@ var _discard_block = null  # CardBlock（场景 Center/DiscardTop）
 var _pending_block = null  # CardBlock（场景 Center/Pending）
 var _hud = null  # Table3dHud（场景 Hud）
 var _card_blocks := {}  # {seat: {slot: CardBlock}}
+var _viewer := 0
+var _hover_slot := {}
+var _hover_ray_local := Vector2.ZERO
 var _avatar_glow_mat: StandardMaterial3D = null
 var _avatar_dim_mat: StandardMaterial3D = null
 var _hover_collider: Object = null
@@ -132,6 +135,7 @@ func render(state: Dictionary, actionable := Callable()) -> void:
 	if players.is_empty():
 		return
 	var viewer := int(state.get("viewer_id", 0))
+	_viewer = viewer
 	var angles := Table3dLayout.seat_angles(players.size())
 	var others: Array = []
 	for p in players:
@@ -189,7 +193,30 @@ func render(state: Dictionary, actionable := Callable()) -> void:
 	var v_dir := Vector3(sin(deg_to_rad(v_angle)), 0.0, cos(deg_to_rad(v_angle)))
 	_hud.position = v_dir * (Table3dLayout.SEAT_RADIUS - HUD_OFFSET) + Vector3(0.0, HUD_HEIGHT, 0.0)
 	_hud.rotation_degrees = Vector3(0.0, v_angle + 180.0, 0.0)
+	_reapply_hover_pose()
 	_update_bell(state)
+
+## 重建后重放在途 hover（immediate，避免广播导致弹跳）。
+func _reapply_hover_pose() -> void:
+	if _hover_slot.is_empty():
+		return
+	var b = _find_block(int(_hover_slot.get("seat", -1)), int(_hover_slot.get("slot", -1)))
+	if b != null and b.hover_anim_enabled:
+		b.set_hover_pose(true, _hover_ray_local, true)
+
+func _ray_local_for_block(b, hit_pos: Vector3) -> Vector2:
+	var p: Vector3 = b.global_transform.affine_inverse() * hit_pos
+	return Vector2(
+		clampf(p.x / (Table3dLayout.BLOCK_SIZE.x * 0.5), -1.0, 1.0),
+		clampf(p.z / (Table3dLayout.BLOCK_SIZE.z * 0.5), -1.0, 1.0))
+
+func _leave_hover_slot() -> void:
+	if _hover_slot.is_empty():
+		return
+	var b = _find_block(int(_hover_slot.get("seat", -1)), int(_hover_slot.get("slot", -1)))
+	if b != null:
+		b.set_hover_pose(false, Vector2.ZERO)
+	_hover_slot = {}
 
 ## 铃铛可用性：金色亮 / 暗。
 func _update_bell(state: Dictionary) -> void:
@@ -228,6 +255,7 @@ func _render_seat(node: Node3D, p: Dictionary) -> void:
 		hand.add_child(block)
 		block.setup(slot)
 		block.set_pick({"kind": "slot", "seat": int(p.id), "slot": i})
+		block.hover_anim_enabled = int(p.id) == _viewer
 		if not _card_blocks.has(int(p.id)):
 			_card_blocks[int(p.id)] = {}
 		_card_blocks[int(p.id)][i] = block
@@ -432,18 +460,42 @@ func update_hover() -> bool:
 	var collider = hit.get("collider")
 	# 上一次悬停对象可能已被 render 重建释放 → 先判有效（避免传已释放对象触发类型错误）
 	var prev = _hover_collider if (_hover_collider != null and is_instance_valid(_hover_collider)) else null
-	if collider == prev:
-		return collider != null
-	_apply_hover(prev, false)
-	_hover_collider = collider
-	_apply_hover(collider, true)
+	if collider != prev:
+		_apply_hover(prev, false)
+		_hover_collider = collider
+		_apply_hover(collider, true)
+	_update_hover_pose(hit)
 	return collider != null
+
+## 仅 viewer 自己手牌槽驱动抬起/倾斜；其他 kind/座位不动 pose。
+func _update_hover_pose(hit: Dictionary) -> void:
+	var meta: Dictionary = hit.get("pick", {})
+	var is_slot := str(meta.get("kind", "")) == "slot"
+	if not is_slot:
+		_leave_hover_slot()
+		return
+	var seat := int(meta.get("seat", -1))
+	var slot := int(meta.get("slot", -1))
+	var b = _find_block(seat, slot)
+	if b == null or not b.hover_anim_enabled:
+		_leave_hover_slot()
+		return
+	var rl := _ray_local_for_block(b, hit.get("position", Vector3.ZERO))
+	_hover_ray_local = rl
+	var same := not _hover_slot.is_empty() and int(_hover_slot.get("seat", -1)) == seat and int(_hover_slot.get("slot", -1)) == slot
+	if same:
+		b.set_hover_pose(true, rl)
+	else:
+		_leave_hover_slot()
+		_hover_slot = {"seat": seat, "slot": slot}
+		b.set_hover_pose(true, rl, false)
 
 ## 清除悬停高亮。
 func clear_hover() -> void:
 	var prev = _hover_collider if (_hover_collider != null and is_instance_valid(_hover_collider)) else null
 	_apply_hover(prev, false)
 	_hover_collider = null
+	_leave_hover_slot()
 
 ## 高亮/取消：作用于该拾取对象父节点下所有 MeshInstance3D。
 ## 形参不标注类型：可能是已释放对象（传参处不做类型检查，函数内 is_instance_valid 兜底）。
