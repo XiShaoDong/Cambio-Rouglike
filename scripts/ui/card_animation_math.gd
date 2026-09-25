@@ -104,7 +104,8 @@ static func compose(progress: Dictionary, cfg: Dictionary, idle_time: float, ray
 	var h := height(progress, cfg, idle_time)
 	var hold_x := cos(idle_time * 0.5) * float(cfg["idle_rot_x"]) * (1.0 - hover)
 	var hold_z := sin(idle_time * 0.7) * float(cfg["idle_rot_z"]) * (1.0 - hover)
-	var rot_x := hold_x + float(cfg["hover_pitch"]) * hover - ray_local.y * float(cfg["max_tilt"])
+	# hover_pitch 正值 = 卡面向玩家（本地帧下需取负 rot_x；见沙盒实测）
+	var rot_x := hold_x - float(cfg["hover_pitch"]) * hover - ray_local.y * float(cfg["max_tilt"])
 	var rot_y := ray_local.x * float(cfg["max_tilt"])
 	var scale := (1.0 + (float(cfg["hover_scale"]) - 1.0) * hover) * press_scale(press, cfg) * land_scale(land, cfg)
 	return {

@@ -78,7 +78,7 @@ func _test_height_shadow_compose() -> void:
 	var c := M.compose({"hover": 1.0, "press": 0.0, "flip": 0.0, "land": 0.0}, cd, 0.0, Vector2.ZERO)
 	_check("compose hover 位移", is_equal_approx((c["visual_pos"] as Vector3).y, cd["hover_lift"]))
 	_check("compose hover 缩放", is_equal_approx(float(c["visual_scale"]), cd["hover_scale"]))
-	_check("compose hover 仰角", is_equal_approx((c["visual_rot_deg"] as Vector3).x, cd["hover_pitch"]))
+	_check("compose hover 仰角(朝玩家=负 rot_x)", is_equal_approx((c["visual_rot_deg"] as Vector3).x, -cd["hover_pitch"]))
 	var cf := M.compose({"hover": 0.0, "press": 0.0, "flip": 0.5, "land": 0.0}, cd, 0.0, Vector2.ZERO)
 	_check("compose flip_deg 90", is_equal_approx(float(cf["flip_deg"]), 90.0))
 	_check("compose flip 高度峰值", is_equal_approx((cf["visual_pos"] as Vector3).y, cd["flip_lift"]))
@@ -102,6 +102,7 @@ func _test_controller() -> void:
 	add_child(a)
 	await get_tree().process_frame
 	_check("控制器已建节点", a.visual != null and a.shadow != null and a.body != null)
+	_check("控制器基准拾取盒(不随动画)", a.pick_area != null and not a.body.is_pick_enabled())
 	a.enter_hover()
 	await get_tree().create_timer(a.config.hover_in_dur + 0.05).timeout
 	_check("hover 抬升", a.visual.position.y > 0.0)

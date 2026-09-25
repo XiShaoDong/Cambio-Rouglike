@@ -20,6 +20,7 @@ var flip_turns := 0
 var visual: Node3D
 var body: CardBlock
 var shadow: MeshInstance3D
+var pick_area: Area3D
 
 var _idle_time := 0.0
 var _tweens := {}
@@ -52,7 +53,25 @@ func _build() -> void:
 	mat.albedo_color = Color(0.0, 0.0, 0.0, config.shadow_base_alpha)
 	shadow.material_override = mat
 	add_child(shadow)
+	# 基准拾取盒：挂在 CardActor（不随动画移动），避免卡抬起/倾斜时 hover 抖动。
+	# 用基准盒做 hover 判定，CardBlock 自带拾取禁用。
+	pick_area = Area3D.new()
+	pick_area.name = "PickArea"
+	pick_area.collision_layer = Table3dLayout.PICK_MASK
+	pick_area.collision_mask = 0
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(Table3dLayout.BLOCK_SIZE.x, Table3dLayout.PICK_HEIGHT, Table3dLayout.BLOCK_SIZE.z)
+	shape.shape = box
+	pick_area.add_child(shape)
+	add_child(pick_area)
+	body.set_pick_enabled(false)
 	_apply()
+
+## 设置基准拾取元数据（供准星拾取；拾取盒不随动画移动）。
+func set_pick(meta: Dictionary) -> void:
+	_build()
+	pick_area.set_meta("pick", meta)
 
 func _progress() -> Dictionary:
 	return {"hover": hover_p, "press": press_p, "flip": flip_p, "land": land_p}
