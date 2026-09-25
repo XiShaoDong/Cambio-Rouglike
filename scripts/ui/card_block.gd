@@ -23,6 +23,7 @@ static var _back_tex: Texture2D = null
 static var _face_cache := {}
 
 var _built := false
+var _visual: Node3D
 var _mesh: MeshInstance3D
 var _label: Label3D
 var _material: StandardMaterial3D
@@ -49,6 +50,10 @@ func _build() -> void:
 	if _built:
 		return
 	_built = true
+	# 视觉 pivot：hover 位移/旋转作用于它；拾取 Area3D 留在根，不随动画移动。
+	_visual = Node3D.new()
+	_visual.name = "Visual"
+	add_child(_visual)
 	# 外发光层：垫在卡面下方、略大的平面，仅在卡边露出（随卡朝向/朝向一致）。
 	for i in GLOW_LAYERS.size():
 		var spec: Dictionary = GLOW_LAYERS[i]
@@ -69,7 +74,7 @@ func _build() -> void:
 		gmat.albedo_color = Color(1.0, 1.0, 1.0, 0.0)
 		glow.material_override = gmat
 		glow.visible = false
-		add_child(glow)
+		_visual.add_child(glow)
 		_glow_nodes.append({"node": glow, "mat": gmat, "alpha": float(spec["alpha"])})
 	_mesh = MeshInstance3D.new()
 	_mesh.name = "Mesh"
@@ -88,14 +93,14 @@ func _build() -> void:
 	_material.uv1_scale = Vector3(-1.0, -1.0, 1.0)
 	_material.uv1_offset = Vector3(1.0, 1.0, 0.0)
 	_mesh.material_override = _material
-	add_child(_mesh)
+	_visual.add_child(_mesh)
 	_label = Label3D.new()
 	_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_label.no_depth_test = true
 	_label.pixel_size = 0.0025
 	_label.font_size = 96
 	_label.position = Vector3(0.0, Table3dLayout.BLOCK_SIZE.y * 0.5 + 0.08, 0.0)
-	add_child(_label)
+	_visual.add_child(_label)
 	# 拾取标记：独立物理层，仅用于射线拾取
 	_area = Area3D.new()
 	_area.name = "PickArea"
@@ -113,6 +118,8 @@ func _build() -> void:
 func setup(slot: Dictionary) -> void:
 	_build()
 	_kill_flip()
+	if _visual != null:
+		_visual.transform = Transform3D.IDENTITY
 	scale = Vector3.ONE
 	_apply_slot(slot)
 
@@ -303,6 +310,11 @@ static func card_text(card: Dictionary) -> String:
 
 func label_text() -> String:
 	return _label.text if _label != null else ""
+
+## 视觉子节点（hover 位移/旋转作用于它；拾取盒在根，不受影响）。
+func visual_node() -> Node3D:
+	_build()
+	return _visual
 
 func block_color() -> Color:
 	return _material.albedo_color if _material != null else Color.BLACK

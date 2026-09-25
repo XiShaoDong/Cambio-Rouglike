@@ -65,6 +65,13 @@ func _test_card_block() -> void:
 	_check("flash 立即染色", hidden.has_glow() and hidden.glow_color() == Color(0.2, 0.6, 1.0))
 	await get_tree().create_timer(0.15).timeout
 	_check("flash 结束后恢复卡背", hidden.has_back_texture() and not hidden.has_glow() and hidden.block_color() == Color.WHITE)
+	# 视觉 pivot：hover 只动 _visual，拾取盒留根
+	var vb := CardBlock.new()
+	add_child(vb)
+	vb.setup({"card": {"rank": "A", "suit": "♥"}})
+	_check("视觉 pivot 为根子节点", vb.visual_node() != null and vb.visual_node().get_parent() == vb)
+	_check("拾取盒仍在根", vb.get_node("PickArea") != null and vb.get_node("PickArea").get_parent() == vb)
+	_check("Mesh 挂在视觉 pivot 下", vb.visual_node().has_node("Mesh"))
 
 ## 构造带场景子节点的相机 rig（契约：PitchPivot/Camera3D 由场景提供）。
 func _make_camera_rig() -> Table3dCamera:
