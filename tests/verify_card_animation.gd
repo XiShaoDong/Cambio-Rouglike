@@ -24,6 +24,7 @@ func _run() -> void:
 	_test_height_shadow_compose()
 	_test_show_back()
 	await _test_controller()
+	await _test_sandbox()
 
 func _test_config() -> void:
 	var c := CardAnimationConfig.new()
@@ -121,3 +122,29 @@ func _test_controller() -> void:
 	await get_tree().create_timer(a.config.hover_out_dur + 0.05).timeout
 	# IDLE 会恢复 idle 悬浮（±idle_amp），故只校验状态与不再抬升
 	_check("离开悬停 → IDLE", a.state == CardAnimationMath.IDLE and absf(a.visual.position.y) <= a.config.idle_amp + 0.001)
+
+func _test_sandbox() -> void:
+	var scene: PackedScene = load("res://scenes/ui/card_animation_sandbox.tscn")
+	var s = scene.instantiate()
+	add_child(s)
+	await get_tree().process_frame
+	await get_tree().physics_frame
+	await get_tree().process_frame
+	_check("沙盒 5 张卡", s.actors.size() == 5)
+	_check("沙盒相机已取景", s.camera != null and s.camera.camera_node() != null)
+	_check("准星命中某张卡", s.hovered >= 0)
+	var center := s.get_viewport().get_visible_rect().size * 0.5
+	var hit := Table3dPicker.pick_hit(s.camera.camera_node(), s.get_world_3d(), center)
+	_check("pick_hit 含命中点 position", hit.has("position") and hit.get("position") is Vector3)
+	s.auto_hover = false
+	if s.hovered >= 0:
+		s.actors[s.hovered].exit_hover()
+	s.play(0, "hover")
+	await get_tree().create_timer(s.actors[0].config.hover_in_dur + 0.05).timeout
+	_check("沙盒 play hover 抬升", s.actors[0].visual.position.y > 0.0)
+	s.play(0, "flip")
+	await get_tree().create_timer(s.actors[0].config.press_dur + s.actors[0].config.flip_dur + s.actors[0].config.land_dur + 0.15).timeout
+	_check("沙盒 play flip 显示背面", s.actors[0].showing_back)
+	s.play(0, "reset")
+	await get_tree().process_frame
+	_check("沙盒 reset 回正面", not s.actors[0].showing_back and s.actors[0].flip_turns == 0)

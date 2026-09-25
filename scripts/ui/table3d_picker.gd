@@ -21,7 +21,7 @@ static func pick_hit(cam: Camera3D, world: World3D, screen_center: Vector2) -> D
 	var collider: Object = hit.get("collider")
 	if collider == null or not collider.has_meta("pick"):
 		return {}
-	return {"pick": collider.get_meta("pick"), "collider": collider}
+	return {"pick": collider.get_meta("pick"), "collider": collider, "position": hit.get("position", Vector3.ZERO)}
 
 ## 只取拾取元数据（点击分发用）。
 static func pick(cam: Camera3D, world: World3D, screen_center: Vector2) -> Dictionary:
