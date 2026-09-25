@@ -111,14 +111,14 @@ func _tween_prop(prop: String, to: float, dur: float, trans: int, ease: int) -> 
 
 func enter_hover() -> void:
 	hovering = true
-	if state == CardAnimationMath.FLIP or state == CardAnimationMath.LAND:
+	if state == CardAnimationMath.PRESS or state == CardAnimationMath.FLIP or state == CardAnimationMath.LAND:
 		return
 	state = CardAnimationMath.HOVER
 	_tween_prop("hover_p", 1.0, config.hover_in_dur, Tween.TRANS_BACK, Tween.EASE_OUT)
 
 func exit_hover() -> void:
 	hovering = false
-	if state == CardAnimationMath.FLIP or state == CardAnimationMath.LAND:
+	if state == CardAnimationMath.PRESS or state == CardAnimationMath.FLIP or state == CardAnimationMath.LAND:
 		return
 	state = CardAnimationMath.IDLE
 	_tween_prop("hover_p", 0.0, config.hover_out_dur, Tween.TRANS_CUBIC, Tween.EASE_OUT)
@@ -145,7 +145,14 @@ func _on_flip_done() -> void:
 
 func _on_land_done() -> void:
 	land_p = 0.0
-	state = CardAnimationMath.HOVER if hovering else CardAnimationMath.IDLE
+	# 翻牌途中可能已离开/进入：按当前 hovering 决定并回正 hover_p（防卡在抬起态）
+	if hovering:
+		state = CardAnimationMath.HOVER
+		if hover_p < 1.0:
+			_tween_prop("hover_p", 1.0, config.hover_in_dur, Tween.TRANS_BACK, Tween.EASE_OUT)
+	else:
+		state = CardAnimationMath.IDLE
+		_tween_prop("hover_p", 0.0, config.hover_out_dur, Tween.TRANS_CUBIC, Tween.EASE_OUT)
 
 func reset() -> void:
 	for k in _tweens:

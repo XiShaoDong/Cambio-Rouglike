@@ -123,6 +123,19 @@ func _test_controller() -> void:
 	await get_tree().create_timer(a.config.hover_out_dur + 0.05).timeout
 	# IDLE 会恢复 idle 悬浮（±idle_amp），故只校验状态与不再抬升
 	_check("离开悬停 → IDLE", a.state == CardAnimationMath.IDLE and absf(a.visual.position.y) <= a.config.idle_amp + 0.001)
+	# 翻牌途中离开：落定后应回 IDLE 且 hover 归零（防卡在抬起态）
+	a.enter_hover()
+	await get_tree().create_timer(a.config.hover_in_dur + 0.05).timeout
+	a.click()
+	await get_tree().create_timer(a.config.press_dur + 0.02).timeout
+	_check("翻牌途中离开前处于 FLIP", a.state == CardAnimationMath.FLIP)
+	a.exit_hover()
+	await get_tree().create_timer(a.config.flip_dur + a.config.land_dur + a.config.hover_out_dur + 0.2).timeout
+	_check("翻牌途中离开 → 落定 IDLE", a.state == CardAnimationMath.IDLE)
+	_check("翻牌途中离开 → hover 归零", a.hover_p < 0.02)
+	a.enter_hover()
+	await get_tree().create_timer(a.config.hover_in_dur + 0.05).timeout
+	_check("可重新 hover 抬起", a.visual.position.y > 0.0)
 
 func _test_sandbox() -> void:
 	var scene: PackedScene = load("res://scenes/ui/card_animation_sandbox.tscn")
@@ -131,7 +144,7 @@ func _test_sandbox() -> void:
 	await get_tree().process_frame
 	await get_tree().physics_frame
 	await get_tree().process_frame
-	_check("沙盒 5 张卡", s.actors.size() == 5)
+	_check("沙盒 10 张卡(2×5)", s.actors.size() == 10)
 	_check("沙盒相机已取景", s.camera != null and s.camera.camera_node() != null)
 	_check("准星命中某张卡", s.hovered >= 0)
 	var center := s.get_viewport().get_visible_rect().size * 0.5

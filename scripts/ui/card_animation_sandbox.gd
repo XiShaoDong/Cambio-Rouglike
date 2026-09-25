@@ -1,6 +1,6 @@
 class_name CardAnimationSandbox
 extends Node3D
-## 卡牌交互动效沙盒：一排 5 张平放卡；屏幕中心准星 + 鼠标转相机；左键翻牌。
+## 卡牌交互动效沙盒：两行（2×5）平放卡；屏幕中心准星 + 鼠标转相机；左键翻牌。
 ## 纯展示原型：不接游戏逻辑/协议/快照。
 
 const SAMPLE_CARDS := [
@@ -11,7 +11,11 @@ const SAMPLE_CARDS := [
 	{"rank": "10", "suit": "♥"},
 ]
 
+const ROWS := 2
+const COLS := 5
+
 var actor_gap := Table3dLayout.BLOCK_SIZE.x + 0.15
+var row_gap := Table3dLayout.BLOCK_SIZE.z + 0.2
 var actors: Array = []
 var camera: Table3dCamera
 var crosshair: Crosshair
@@ -25,16 +29,23 @@ func _ready() -> void:
 	if DisplayServer.get_name() != "headless":
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
+@warning_ignore("integer_division")
 func _build() -> void:
 	camera = get_node_or_null("CameraRig")
 	if camera != null:
 		camera.frame_for_seat(0.0)
-	var count := SAMPLE_CARDS.size()
+	var count := ROWS * COLS
+	# 行 0 = 近排（落在桌心，准星初始命中），行 1 向远处后退 row_gap
 	for i in count:
+		var col_i := i % COLS
+		var row_i := i / COLS
 		var actor := CardAnimation.new()
 		actor.name = "Card%d" % i
-		actor.card_data = SAMPLE_CARDS[i]
-		actor.position = Vector3((float(i) - float(count - 1) * 0.5) * actor_gap, 0.03, 0.0)
+		actor.card_data = SAMPLE_CARDS[i % SAMPLE_CARDS.size()]
+		actor.position = Vector3(
+			(float(col_i) - (COLS - 1) * 0.5) * actor_gap,
+			0.03,
+			-float(row_i) * row_gap)
 		actor.rotation_degrees = Vector3(0.0, 180.0, 0.0)
 		add_child(actor)
 		# 基准拾取盒（不随动画移动）挂 pick 元数据供准星拾取
