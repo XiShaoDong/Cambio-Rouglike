@@ -23,6 +23,7 @@ func _run() -> void:
 	_test_easing()
 	_test_height_shadow_compose()
 	_test_show_back()
+	await _test_controller()
 
 func _test_config() -> void:
 	var c := CardAnimationConfig.new()
@@ -93,3 +94,30 @@ func _test_show_back() -> void:
 	_check("切背面：隐藏点数", b.label_text() == "")
 	b.show_back(false)
 	_check("回正面：点数恢复", b.label_text() == "A♥" and b.has_face_texture())
+
+func _test_controller() -> void:
+	var a := CardAnimation.new()
+	a.config = CardAnimationConfig.new()
+	add_child(a)
+	await get_tree().process_frame
+	_check("控制器已建节点", a.visual != null and a.shadow != null and a.body != null)
+	a.enter_hover()
+	await get_tree().create_timer(a.config.hover_in_dur + 0.05).timeout
+	_check("hover 抬升", a.visual.position.y > 0.0)
+	_check("hover 阴影缩小", a.shadow.scale.x < 1.0)
+	var mat: StandardMaterial3D = a.shadow.material_override
+	_check("hover 阴影变淡", mat.albedo_color.a < a.config.shadow_base_alpha)
+	a.click()
+	await get_tree().create_timer(a.config.press_dur + 0.03).timeout
+	_check("点击后进入 FLIP", a.state == CardAnimationMath.FLIP)
+	a.click()
+	await get_tree().create_timer(0.02).timeout
+	_check("FLIP 中点击被忽略", a.state == CardAnimationMath.FLIP)
+	await get_tree().create_timer(a.config.flip_dur + a.config.land_dur + 0.15).timeout
+	_check("翻牌后显示背面", a.showing_back)
+	_check("翻牌后仍悬停 → HOVER", a.state == CardAnimationMath.HOVER)
+	_check("land 后缩放≈hover_scale", absf(a.visual.scale.x - a.config.hover_scale) < 0.03)
+	a.exit_hover()
+	await get_tree().create_timer(a.config.hover_out_dur + 0.05).timeout
+	# IDLE 会恢复 idle 悬浮（±idle_amp），故只校验状态与不再抬升
+	_check("离开悬停 → IDLE", a.state == CardAnimationMath.IDLE and absf(a.visual.position.y) <= a.config.idle_amp + 0.001)
