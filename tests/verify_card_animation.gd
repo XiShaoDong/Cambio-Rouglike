@@ -22,6 +22,7 @@ func _run() -> void:
 	_test_state_machine()
 	_test_easing()
 	_test_height_shadow_compose()
+	_test_show_back()
 
 func _test_config() -> void:
 	var c := CardAnimationConfig.new()
@@ -81,3 +82,14 @@ func _test_height_shadow_compose() -> void:
 	_check("compose flip 高度峰值", is_equal_approx((cf["visual_pos"] as Vector3).y, cd["flip_lift"]))
 	var ct := M.compose({"hover": 0.0, "press": 0.0, "flip": 0.0, "land": 0.0}, cd, 0.0, Vector2(0.5, -0.5))
 	_check("compose 准星 tilt 方向", (ct["visual_rot_deg"] as Vector3).x > 0.0 and (ct["visual_rot_deg"] as Vector3).y > 0.0)
+
+func _test_show_back() -> void:
+	var b := CardBlock.new()
+	add_child(b)
+	b.setup({"card": {"rank": "A", "suit": "♥"}})
+	_check("初始正面点数", b.label_text() == "A♥" and b.has_face_texture())
+	b.show_back(true)
+	_check("切背面：卡背贴图", b.has_back_texture())
+	_check("切背面：隐藏点数", b.label_text() == "")
+	b.show_back(false)
+	_check("回正面：点数恢复", b.label_text() == "A♥" and b.has_face_texture())

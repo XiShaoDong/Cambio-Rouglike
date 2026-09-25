@@ -221,6 +221,19 @@ func _apply_color() -> void:
 		_material.albedo_color = Color.WHITE if face != null else Table3dLayout.slot_color(_last_slot)
 	_paint_glow()
 
+## 切换显示面：back=true 显示卡背并隐藏点数；false 恢复最近 setup(slot) 的正面。
+## 供 CardAnimation 控制器独占的真实 3D 翻牌使用（不触发自带 scale.x 翻转）。
+func show_back(back: bool) -> void:
+	_build()
+	if back:
+		_showing_back = true
+		_material.albedo_texture = _back_texture()
+		_material.albedo_color = Color.WHITE
+		_label.text = ""
+		_paint_glow()
+	else:
+		_apply_slot(_last_slot)
+
 ## 按优先级决定边缘发光颜色：flash > protected > actionable > hover。
 func _paint_glow() -> void:
 	if _flash_color.a > 0.0:
