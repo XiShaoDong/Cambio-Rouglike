@@ -21,6 +21,7 @@ func _run() -> void:
 	_test_config()
 	_test_state_machine()
 	_test_easing()
+	_test_height_shadow_compose()
 
 func _test_config() -> void:
 	var c := CardAnimationConfig.new()
@@ -53,3 +54,30 @@ func _test_easing() -> void:
 	_check("ease_out_back 端点", is_equal_approx(M.ease_out_back(0.0), 0.0) and is_equal_approx(M.ease_out_back(1.0), 1.0))
 	_check("ease_out_back 过冲", M.ease_out_back(0.7) > 1.0)
 	_check("lerp_f 中点", is_equal_approx(M.lerp_f(0.0, 10.0, 0.5), 5.0))
+
+func _test_height_shadow_compose() -> void:
+	var M := CardAnimationMath
+	var cd := CardAnimationConfig.new().to_dict()
+	_check("height t=0 ≈0", absf(M.height({"hover": 0.0, "flip": 0.0}, cd, 0.0)) < 0.0001)
+	_check("height hover=1 抑制 idle", is_equal_approx(M.height({"hover": 1.0, "flip": 0.0}, cd, 1.0), cd["hover_lift"]))
+	_check("height flip=0.5 峰值", is_equal_approx(M.height({"hover": 0.0, "flip": 0.5}, cd, 0.0), cd["flip_lift"]))
+	_check("shadow h=0 scale=1", is_equal_approx(M.shadow_scale_for(0.0, cd), 1.0))
+	_check("shadow h=0 alpha=base", is_equal_approx(M.shadow_alpha_for(0.0, cd), cd["shadow_base_alpha"]))
+	var maxh: float = cd["hover_lift"] + cd["flip_lift"]
+	_check("shadow h=max scale", is_equal_approx(M.shadow_scale_for(maxh, cd), 1.0 - cd["shadow_scale_loss"]))
+	_check("shadow h=max alpha", is_equal_approx(M.shadow_alpha_for(maxh, cd), cd["shadow_base_alpha"] * (1.0 - cd["shadow_alpha_loss"])))
+	_check("press 0 → 1", is_equal_approx(M.press_scale(0.0, cd), 1.0))
+	_check("press 1 → 1", is_equal_approx(M.press_scale(1.0, cd), 1.0))
+	_check("press 三段最低 ≈ min", M.press_scale(0.33, cd) <= cd["press_min"] + 0.001)
+	_check("press 三段过冲 ≈ over", M.press_scale(0.66, cd) >= cd["press_over"] - 0.001)
+	_check("land 0 → 1", is_equal_approx(M.land_scale(0.0, cd), 1.0))
+	_check("land 1 → 1", is_equal_approx(M.land_scale(1.0, cd), 1.0))
+	var c := M.compose({"hover": 1.0, "press": 0.0, "flip": 0.0, "land": 0.0}, cd, 0.0, Vector2.ZERO)
+	_check("compose hover 位移", is_equal_approx((c["visual_pos"] as Vector3).y, cd["hover_lift"]))
+	_check("compose hover 缩放", is_equal_approx(float(c["visual_scale"]), cd["hover_scale"]))
+	_check("compose hover 仰角", is_equal_approx((c["visual_rot_deg"] as Vector3).x, cd["hover_pitch"]))
+	var cf := M.compose({"hover": 0.0, "press": 0.0, "flip": 0.5, "land": 0.0}, cd, 0.0, Vector2.ZERO)
+	_check("compose flip_deg 90", is_equal_approx(float(cf["flip_deg"]), 90.0))
+	_check("compose flip 高度峰值", is_equal_approx((cf["visual_pos"] as Vector3).y, cd["flip_lift"]))
+	var ct := M.compose({"hover": 0.0, "press": 0.0, "flip": 0.0, "land": 0.0}, cd, 0.0, Vector2(0.5, -0.5))
+	_check("compose 准星 tilt 方向", (ct["visual_rot_deg"] as Vector3).x > 0.0 and (ct["visual_rot_deg"] as Vector3).y > 0.0)

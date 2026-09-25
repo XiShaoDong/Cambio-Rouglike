@@ -54,3 +54,64 @@ static func ease_out_back(t: float, s := 1.70158) -> float:
 
 static func lerp_f(a: float, b: float, t: float) -> float:
 	return a + (b - a) * clampf(t, 0.0, 1.0)
+
+## 压缩曲线：0→press_min→press_over→1（t 0..1，三段 ease_out_cubic）。
+static func press_scale(p: float, cfg: Dictionary) -> float:
+	p = clampf(p, 0.0, 1.0)
+	var mn: float = cfg["press_min"]
+	var ov: float = cfg["press_over"]
+	if p < 0.33:
+		return lerp_f(1.0, mn, ease_out_cubic(p / 0.33))
+	if p < 0.66:
+		return lerp_f(mn, ov, ease_out_cubic((p - 0.33) / 0.33))
+	return lerp_f(ov, 1.0, ease_out_cubic((p - 0.66) / 0.34))
+
+## 落牌回弹曲线：0→land_over→land_under→1。
+static func land_scale(l: float, cfg: Dictionary) -> float:
+	l = clampf(l, 0.0, 1.0)
+	var ov: float = cfg["land_over"]
+	var un: float = cfg["land_under"]
+	if l < 0.4:
+		return lerp_f(1.0, ov, ease_out_cubic(l / 0.4))
+	if l < 0.75:
+		return lerp_f(ov, un, ease_out_cubic((l - 0.4) / 0.35))
+	return lerp_f(un, 1.0, ease_out_cubic((l - 0.75) / 0.25))
+
+## 离桌高度：idle 悬浮（hover 时抑制）+ hover 抬升 + 翻牌弧线。
+static func height(progress: Dictionary, cfg: Dictionary, idle_time: float) -> float:
+	var hover := float(progress.get("hover", 0.0))
+	var flip := float(progress.get("flip", 0.0))
+	var idle := float(cfg["idle_amp"]) * (1.0 - hover) * sin(idle_time * float(cfg["idle_speed"]))
+	var flip_arc := float(cfg["flip_lift"]) * sin(flip * PI)
+	return idle + float(cfg["hover_lift"]) * hover + flip_arc
+
+static func _height_norm(height_value: float, cfg: Dictionary) -> float:
+	var max_h := float(cfg["hover_lift"]) + float(cfg["flip_lift"])
+	return clampf(height_value / max_h, 0.0, 1.0) if max_h > 0.0 else 0.0
+
+static func shadow_scale_for(height_value: float, cfg: Dictionary) -> float:
+	return 1.0 - _height_norm(height_value, cfg) * float(cfg["shadow_scale_loss"])
+
+static func shadow_alpha_for(height_value: float, cfg: Dictionary) -> float:
+	return float(cfg["shadow_base_alpha"]) * (1.0 - _height_norm(height_value, cfg) * float(cfg["shadow_alpha_loss"]))
+
+## 合成本帧变换偏移。flip 单独返回（控制器按卡长轴用 Basis 组合，不受仰角影响）。
+static func compose(progress: Dictionary, cfg: Dictionary, idle_time: float, ray_local: Vector2) -> Dictionary:
+	var hover := clampf(float(progress.get("hover", 0.0)), 0.0, 1.0)
+	var press := clampf(float(progress.get("press", 0.0)), 0.0, 1.0)
+	var flip := clampf(float(progress.get("flip", 0.0)), 0.0, 1.0)
+	var land := clampf(float(progress.get("land", 0.0)), 0.0, 1.0)
+	var h := height(progress, cfg, idle_time)
+	var hold_x := cos(idle_time * 0.5) * float(cfg["idle_rot_x"]) * (1.0 - hover)
+	var hold_z := sin(idle_time * 0.7) * float(cfg["idle_rot_z"]) * (1.0 - hover)
+	var rot_x := hold_x + float(cfg["hover_pitch"]) * hover - ray_local.y * float(cfg["max_tilt"])
+	var rot_y := ray_local.x * float(cfg["max_tilt"])
+	var scale := (1.0 + (float(cfg["hover_scale"]) - 1.0) * hover) * press_scale(press, cfg) * land_scale(land, cfg)
+	return {
+		"visual_pos": Vector3(0.0, h, 0.0),
+		"visual_rot_deg": Vector3(rot_x, rot_y, hold_z),
+		"flip_deg": flip * 180.0,
+		"visual_scale": scale,
+		"shadow_scale": shadow_scale_for(h, cfg),
+		"shadow_alpha": shadow_alpha_for(h, cfg),
+	}
