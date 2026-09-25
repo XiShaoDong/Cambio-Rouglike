@@ -92,6 +92,7 @@ func _apply() -> void:
 	shadow.scale = Vector3(float(c["shadow_scale"]), 1.0, float(c["shadow_scale"]))
 	var mat: StandardMaterial3D = shadow.material_override
 	mat.albedo_color = Color(0.0, 0.0, 0.0, float(c["shadow_alpha"]))
+	shadow.visible = config.shadow_enabled
 	var vis_back := (flip_turns % 2) == 1
 	if state == CardAnimationMath.FLIP:
 		vis_back = ((flip_turns + (1 if flip_p >= 0.5 else 0)) % 2) == 1
