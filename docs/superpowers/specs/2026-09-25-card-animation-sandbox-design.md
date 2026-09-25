@@ -85,7 +85,7 @@ IDLE ⇄ HOVER ──点击── PRESS ──(50~90ms)── FLIP ──(翻牌
 # progress = {hover, press, flip, land}; ray_local = 准星交点在该卡基准下的局部坐标，clamp(-1..1)
 static func compose(progress: Dictionary, cfg: Dictionary,
         idle_time: float, ray_local: Vector2) -> Dictionary
-# 返回 {visual_pos, visual_rot_deg, visual_scale, shadow_scale, shadow_alpha, shadow_pos}
+# 返回 {visual_pos, visual_rot_deg, flip_deg, visual_scale, shadow_scale, shadow_alpha}
 ```
 
 - `height = idle_amp*(1-hover)*sin(idle_time*idle_speed) + hover_lift*hover + flip_lift*sin(flip*PI)`
@@ -96,7 +96,7 @@ static func compose(progress: Dictionary, cfg: Dictionary,
 - `scale = (1 + (hover_scale-1)*hover) * press_scale(press) * land_scale(land)`
 - **旋转合成用 `Basis`/`Quaternion` 组合（非裸 Euler 赋值）**：`visual.basis = 仰角/tilt 的 Basis * 绕卡长轴翻转的 Basis`，保证翻轴始终是卡的长轴、不受仰角影响。
 - `shadow_scale = 1 - heightNorm*shadow_scale_loss`，`shadow_alpha = shadow_base_alpha*(1 - heightNorm*shadow_alpha_loss)`，`heightNorm = clamp(height/(hover_lift+flip_lift), 0, 1)`
-- `shadow_pos = (卡基准 x, 桌面 y + 0.002, 卡基准 z)`
+- 阴影位置由控制器置于卡基准 x/z、桌面 y（`Shadow` 是 `CardActor` 子节点，**不随高度/旋转移动**；只有 `scale`/`alpha` 随高度变化）
 
 所有效果都化为标量在公式里相加/相乘，Tween 之间不可能争抢同一属性。
 
