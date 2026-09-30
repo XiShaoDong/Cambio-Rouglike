@@ -415,3 +415,33 @@
 **修复**：纯 3D 展示层，不动 2D/服务器/协议。`seat_angles` 改为**按 2D 箱位对齐** `[0, 270, 90, 180]`（viewer 近侧 / 左 / 右 / 远，不再均分）；`slot_grid_pos` 改为**主牌 2×2 行优先（与 2D 同：0/1 上排、2/3 下排，故开局揭示的 2/3 落在下排）+ 罚牌向右追新列、每列先上（远）后下（近）**（`slot<4` → `(slot%2, slot/2)`；`slot>=4` → `(2+(slot-4)/2, (slot-4)%2)`）；`_render_seat` 取本地 `-列`×X、`(1-行)`×Z，从而列向持有者右手侧、行 0 远离/行 1 靠近，新槽位向右手侧追加（第三列 = 4 上 / 5 下）。座位节点旋转与头像位置不变。
 
 **诊断方法**：`verify_table3d_layout` 断言 `seat_angles(4)==[0,270,90,180]`、主牌 `slot_grid_pos(0..3)==(0,0)/(1,0)/(0,1)/(1,1)`、罚牌 `slot_grid_pos(4)==(2,0)`/`(5)==(2,1)`（第三列先上后下）；`verify_table3d_interaction` 的 slot0 拾取改为**从正上方垂直下看**（避免侧向射线被同排其它卡遮挡）。
+
+## B34：hover 卡牌边缘反复触发 hover/unhover（抖动）
+
+**现象**：卡牌 hover 抬起/倾斜后，准星停在卡边缘会**反复 hover→unhover 抖动**；越靠近卡边缘越明显。
+
+**根因**：hover 动画移动的是**卡牌本体**，而拾取 `Area3D` 是它的子节点 → 卡一抬起/倾斜，拾取盒随之移出准星射线 → 判定"未命中"→ 卡落回 → 又命中 → 抖动。倾斜时准星在边缘（`ray_local≈±1`）尤其容易把卡推出射线。
+
+**修复**：**拾取判定固定在基准位、不随动画移动**。① 沙盒：`CardAnimation` 在自身（不动的根）上挂一个静态 `PickArea`，`CardBlock` 自带拾取禁用；② 3D 桌面：`CardBlock` 新增 `_visual` 视觉 pivot，`Mesh`/`Glow*`/`Label` 移入其下，**拾取 `Area3D` 留在根**，hover 只动 `_visual`；`table3d_view` 另记 `_hover_slot` 跨 `render()` 重建即时重放（避免每次快照弹一下）。
+
+**诊断方法**：`verify_card_animation`「控制器基准拾取盒(不随动画)」「抬升时拾取盒不移动」；`verify_table3d_interaction`「own hover 抬起」「抬起时拾取盒不移动」。
+
+## B35：翻牌途中离开卡牌 → 永久卡在 hover 抬起态
+
+**现象**：卡牌揭示/翻牌动画进行中把准星移开，卡**一直保持抬起**不落回；再次 hover 才"重置"。
+
+**根因**：`exit_hover()` 在 `PRESS/FLIP/LAND` 期间提前 `return`（不在翻牌中途强行落回），只把 `hovering=false`；但 `_on_land_done()` 只改 `state` 而**不回正 `hover_p`** → `hover_p` 停在 1，卡保持抬起。
+
+**修复**：`_on_land_done()` 按当前 `hovering` 决定：仍悬停 → `HOVER` 并重新抬到 1；已离开 → `IDLE` 且把 `hover_p` 缓动回 0。`enter/exit_hover` 在 `PRESS/FLIP/LAND` 期间只记录 `hovering`。
+
+**诊断方法**：`verify_card_animation`「翻牌途中离开 → 落定 IDLE / hover 归零」「可重新 hover 抬起」。
+
+## B36：揭示翻牌比旧版快了一倍
+
+**现象**：把揭示从 `scale.x` 压扁换成 3D 翻转后，翻牌动作明显变快。
+
+**根因**：旧实现 `_flip_to` 是**两段**各 `FLIP_DURATION(0.25)`（合计 0.5s：压到 0 换面、再展开）；新实现 `_reveal_to` 只跑**一段** `FLIP_DURATION`（0.25s）→ 只有旧版一半时长。
+
+**修复**：`FLIP_DURATION := 0.5`（重新定义为**整段翻转时长**），并同步测试等待（`_test_reveal_flip` 的结束等待由 `FLIP_DURATION*0.5` 改回 `FLIP_DURATION`；跨 render 用例的保持时长 1.0→2.0s 以容纳更长翻转）。
+
+**诊断方法**：`verify_table3d_interaction`「揭示结束进度 1」「揭示跨 render 保持正面」按 `CardBlock.FLIP_DURATION` 等待。
