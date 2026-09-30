@@ -27,7 +27,9 @@ var _visual: Node3D
 var _flip: Node3D
 var _back_node: MeshInstance3D
 var _back_material: StandardMaterial3D
-var _bend := 0.0                  # 弯曲量（远端贴桌、近端上翘的高度）
+var _bend := 0.0                  # 弯曲高度（近端上翘量）
+var _bend_start := 0.5           # 弯曲起点：从远端算起的比例（0=整段都弯，0.5=从中心开始）
+var _bend_exponent := 2.0        # 曲度指数：1=直线斜坡，2=抛物线（更圆），越大越在近端陡起
 var _base_front: Array = []       # 正面未弯曲顶点数组（用于每帧重建）
 var _base_back: Array = []        # 背面未弯曲顶点数组
 var _mesh: MeshInstance3D
@@ -409,11 +411,32 @@ func set_bend(amount: float) -> void:
 	if _back_node != null:
 		_back_node.mesh = _bent_mesh(_base_back)
 
-## 弯曲曲线：z>0（远端）为 0；z<0（近端）按 t² 平滑上升，t = -z / 半长。
+## 设置弯曲起点（0..1，从远端算起）与曲度指数（>0）；立即重建当前弯曲形态。
+func set_bend_profile(start: float, exponent: float) -> void:
+	_build()
+	_bend_start = clampf(start, 0.0, 0.99)
+	_bend_exponent = maxf(exponent, 0.05)
+	if not is_zero_approx(_bend):
+		if _mesh != null:
+			_mesh.mesh = _bent_mesh(_base_front)
+		if _back_node != null:
+			_back_node.mesh = _bent_mesh(_base_back)
+
+func bend_start() -> float:
+	return _bend_start
+
+func bend_exponent() -> float:
+	return _bend_exponent
+
+## 弯曲曲线：远端(z=+half)为 0；从 s = start 起按 (s-start) 的 exponent 次幂平滑上升；
+## s = 1 为近端(z=-half)，此处抬到 _bend。
 func _bend_curve(z: float) -> float:
 	var half := Table3dLayout.BLOCK_SIZE.z * 0.5
-	var t := clampf(-z / half, 0.0, 1.0)
-	return _bend * t * t
+	var s := (half - z) / (2.0 * half)   # 0=远端, 1=近端
+	if s <= _bend_start:
+		return 0.0
+	var span := maxf(1.0 - _bend_start, 1e-4)
+	return _bend * pow((s - _bend_start) / span, _bend_exponent)
 
 func _bent_mesh(base: Array) -> ArrayMesh:
 	var arr := base.duplicate(true)

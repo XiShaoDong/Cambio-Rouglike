@@ -14,6 +14,11 @@ const SAMPLE_CARDS := [
 const ROWS := 2
 const COLS := 5
 
+## 可在检视面板调：弯曲高度 / 起点（0=整段弯，0.5=从中心）/ 曲度指数（1=直线，2=抛物线）。
+@export var hover_bend_max := 0.3
+@export var hover_bend_start := 0.5
+@export var hover_bend_curve := 2.0
+
 var actor_gap := Table3dLayout.BLOCK_SIZE.x + 0.15
 var row_gap := Table3dLayout.BLOCK_SIZE.z + 0.2
 var actors: Array = []
@@ -43,7 +48,9 @@ func _build() -> void:
 		actor.name = "Card%d" % i
 		actor.card_data = SAMPLE_CARDS[i % SAMPLE_CARDS.size()]
 		actor.hover_bend = true
-		actor.hover_bend_max = 0.3
+		actor.hover_bend_max = hover_bend_max
+		actor.hover_bend_start = hover_bend_start
+		actor.hover_bend_curve = hover_bend_curve
 		actor.position = Vector3(
 			(float(col_i) - (COLS - 1) * 0.5) * actor_gap,
 			0.03,

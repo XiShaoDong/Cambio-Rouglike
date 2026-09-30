@@ -7,6 +7,8 @@ extends Node3D
 ## 沙盒实验：hover 用顶点弯曲（近端上翘、远端贴平）替代刚性抬起/倾斜。
 @export var hover_bend := false
 @export var hover_bend_max := 0.3
+@export var hover_bend_start := 0.5    # 弯曲起点（从远端算起，0=整段弯，0.5=从中心）
+@export var hover_bend_curve := 2.0    # 曲度指数（1=直线，2=抛物线，越大近端越陡）
 
 var config: CardAnimationConfig = CardAnimationConfig.new()
 var state := CardAnimationMath.IDLE
@@ -87,6 +89,7 @@ func _apply() -> void:
 	if visual == null:
 		return
 	if hover_bend and body != null:
+		body.set_bend_profile(hover_bend_start, hover_bend_curve)
 		body.set_bend(hover_p * hover_bend_max)
 	var hover_c := 0.0 if hover_bend else hover_p
 	var c := CardAnimationMath.compose({"hover": hover_c, "press": press_p, "flip": flip_p, "land": land_p}, config.to_dict(), _idle_time, ray_local)

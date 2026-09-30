@@ -114,6 +114,24 @@ func _test_bend() -> void:
 		min_y = minf(min_y, v.y)
 	_check("弯曲：远端贴平(最小 y≈0)", absf(min_y) < 0.001)
 	_check("弯曲：近端上翘(最大 y≈0.3)", absf(max_y - 0.3) < 0.02)
+	# 起点 0（整段弯曲）→ 中心处已抬起
+	b.set_bend_profile(0.0, 1.0)
+	var mid_y := 0.0
+	var best := 1e9
+	for v in b.mesh_vertices():
+		if absf(v.z) < best:
+			best = absf(v.z)
+			mid_y = v.y
+	_check("起点 0：中心处已抬起", mid_y > 0.01)
+	# 起点 0.5 → 中心仍贴平
+	b.set_bend_profile(0.5, 2.0)
+	mid_y = 0.0
+	best = 1e9
+	for v in b.mesh_vertices():
+		if absf(v.z) < best:
+			best = absf(v.z)
+			mid_y = v.y
+	_check("起点 0.5：中心处仍贴平", absf(mid_y) < 0.001)
 	b.set_bend(0.0)
 	var flat := true
 	for v in b.mesh_vertices():
