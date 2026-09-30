@@ -19,6 +19,7 @@ func _check(name: String, ok: bool) -> void:
 
 func _run() -> void:
 	_test_config()
+	_test_math()
 
 func _test_config() -> void:
 	var c := CardFlyConfig.new()
@@ -32,3 +33,32 @@ func _test_config() -> void:
 	swapped.flip_start = 0.9
 	swapped.flip_end = 0.2
 	_check("flip_start > flip_end 被抓", swapped.validate().has("flip_start"))
+
+func _test_math() -> void:
+	var cfg := CardFlyConfig.new().to_dict()
+	_check("duration 短距取下限", is_equal_approx(CardFlyMath.duration_for(0.0, cfg), cfg["duration_min"]))
+	_check("duration 长距取上限", is_equal_approx(CardFlyMath.duration_for(1000.0, cfg), cfg["duration_max"]))
+	_check("duration 中距单调不减", CardFlyMath.duration_for(100.0, cfg) <= CardFlyMath.duration_for(300.0, cfg))
+	_check("ease_in_out_cubic 端点", is_equal_approx(CardFlyMath.ease_in_out_cubic(0.0), 0.0) and is_equal_approx(CardFlyMath.ease_in_out_cubic(1.0), 1.0))
+	_check("smoothstep 端点", is_equal_approx(CardFlyMath.smoothstep(0.0), 0.0) and is_equal_approx(CardFlyMath.smoothstep(1.0), 1.0))
+	_check("arc p=0 ≈0", absf(CardFlyMath.arc_lift(0.0, cfg)) < 0.0001)
+	_check("arc p=1 ≈0", absf(CardFlyMath.arc_lift(1.0, cfg)) < 0.0001)
+	_check("arc p=0.5 峰值", is_equal_approx(CardFlyMath.arc_lift(0.5, cfg), cfg["arc_height"]))
+	_check("flip_t 窗口前=0", is_equal_approx(CardFlyMath.flip_t(0.0, cfg), 0.0))
+	_check("flip_t 窗口后=1", is_equal_approx(CardFlyMath.flip_t(1.0, cfg), 1.0))
+	_check("flip_t 窗口内单调", CardFlyMath.flip_t(0.4, cfg) < CardFlyMath.flip_t(0.6, cfg))
+	var s := Transform3D(Basis.IDENTITY, Vector3(0.0, 0.03, 0.0))
+	var e := Transform3D(Basis.from_euler(Vector3(0.0, PI, 0.0)), Vector3(2.0, 0.03, 1.0))
+	var c0 := CardFlyMath.compose(s, e, 0.0, 0.0, 180.0, cfg)
+	_check("compose p=0 起点", c0["origin"].distance_to(s.origin) < 0.0001)
+	var c1 := CardFlyMath.compose(s, e, 1.0, 0.0, 180.0, cfg)
+	_check("compose p=1 终点", c1["origin"].distance_to(e.origin) < 0.0001)
+	var cm := CardFlyMath.compose(s, e, 0.5, 0.0, 180.0, cfg)
+	_check("compose p=0.5 抬升", cm["origin"].y > s.origin.y + 0.1)
+	# 无额外滚转时：p=1 的 basis 与 end 一致
+	var n0 := CardFlyMath.compose(s, e, 1.0, 0.0, 0.0, cfg)
+	_check("roll_delta=0 终点 basis=end", n0["basis"].is_equal_approx(e.basis))
+	# roll_start=180 把正面法线翻到朝下
+	var r0 := CardFlyMath.compose(s, e, 0.0, 0.0, 0.0, cfg)
+	var r180 := CardFlyMath.compose(s, e, 0.0, 180.0, 0.0, cfg)
+	_check("roll_start=180 法线反向", (r0["basis"] * Vector3(0.0, 1.0, 0.0)).dot(r180["basis"] * Vector3(0.0, 1.0, 0.0)) < 0.0)
