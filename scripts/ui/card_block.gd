@@ -24,6 +24,9 @@ static var _face_cache := {}
 
 var _built := false
 var _visual: Node3D
+var _flip: Node3D
+var _back_node: MeshInstance3D
+var _back_material: StandardMaterial3D
 var _mesh: MeshInstance3D
 var _label: Label3D
 var _material: StandardMaterial3D
@@ -59,6 +62,10 @@ func _build() -> void:
 	_visual = Node3D.new()
 	_visual.name = "Visual"
 	add_child(_visual)
+	# 揭示 pivot：绕卡长轴旋转 + 抬起 + 朝玩家倾斜（与 hover 的 _visual 分节点）。
+	_flip = Node3D.new()
+	_flip.name = "Flip"
+	_visual.add_child(_flip)
 	# 外发光层：垫在卡面下方、略大的平面，仅在卡边露出（随卡朝向/朝向一致）。
 	for i in GLOW_LAYERS.size():
 		var spec: Dictionary = GLOW_LAYERS[i]
@@ -98,14 +105,32 @@ func _build() -> void:
 	_material.uv1_scale = Vector3(-1.0, -1.0, 1.0)
 	_material.uv1_offset = Vector3(1.0, 1.0, 0.0)
 	_mesh.material_override = _material
-	_visual.add_child(_mesh)
+	_mesh.position = Vector3(0.0, 0.002, 0.0)
+	_flip.add_child(_mesh)
+	# 背面板：同样"正面朝上"，预旋 180° 绕 Z（净 360° → 翻面后正向不镜像）。
+	_back_node = MeshInstance3D.new()
+	_back_node.name = "Back"
+	var bplane := PlaneMesh.new()
+	bplane.orientation = PlaneMesh.FACE_Y
+	bplane.size = Vector2(Table3dLayout.BLOCK_SIZE.x, Table3dLayout.BLOCK_SIZE.z)
+	_back_node.mesh = bplane
+	_back_node.position = Vector3(0.0, -0.002, 0.0)
+	_back_node.rotation_degrees = Vector3(0.0, 0.0, 180.0)
+	_back_material = StandardMaterial3D.new()
+	_back_material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_back_material.uv1_scale = Vector3(-1.0, -1.0, 1.0)
+	_back_material.uv1_offset = Vector3(1.0, 1.0, 0.0)
+	_back_material.albedo_texture = _back_texture()
+	_back_material.albedo_color = Color.WHITE
+	_back_node.material_override = _back_material
+	_flip.add_child(_back_node)
 	_label = Label3D.new()
 	_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_label.no_depth_test = true
 	_label.pixel_size = 0.0025
 	_label.font_size = 96
 	_label.position = Vector3(0.0, Table3dLayout.BLOCK_SIZE.y * 0.5 + 0.08, 0.0)
-	_visual.add_child(_label)
+	_flip.add_child(_label)
 	# 拾取标记：独立物理层，仅用于射线拾取
 	_area = Area3D.new()
 	_area.name = "PickArea"
@@ -326,6 +351,16 @@ func label_text() -> String:
 func visual_node() -> Node3D:
 	_build()
 	return _visual
+
+## 背面片（揭示翻面后朝上）。
+func back_node() -> MeshInstance3D:
+	_build()
+	return _back_node
+
+## 揭示翻转 pivot。
+func flip_node() -> Node3D:
+	_build()
+	return _flip
 
 static func _cfg() -> CardAnimationConfig:
 	if _anim_cfg == null:

@@ -72,7 +72,11 @@ func _test_card_block() -> void:
 	vb.setup({"card": {"rank": "A", "suit": "♥"}})
 	_check("视觉 pivot 为根子节点", vb.visual_node() != null and vb.visual_node().get_parent() == vb)
 	_check("拾取盒仍在根", vb.get_node("PickArea") != null and vb.get_node("PickArea").get_parent() == vb)
-	_check("Mesh 挂在视觉 pivot 下", vb.visual_node().has_node("Mesh"))
+	_check("Mesh 挂在视觉 pivot 下", vb.visual_node().has_node("Flip/Mesh"))
+	# 双面几何：背面板 + 揭示 pivot
+	_check("有背面板", vb.back_node() != null)
+	_check("背面板预旋转 180°(绕卡长轴)", absf(vb.back_node().rotation_degrees.z - 180.0) < 0.01)
+	_check("揭示 pivot 在 visual 下", vb.flip_node() != null and vb.flip_node().get_parent() == vb.visual_node())
 
 ## 构造带场景子节点的相机 rig（契约：PitchPivot/Camera3D 由场景提供）。
 func _make_camera_rig() -> Table3dCamera:
