@@ -47,6 +47,9 @@ var hover_anim_enabled := false
 var _hover_p := 0.0
 var _ray_local := Vector2.ZERO
 var _hover_tween: Tween = null
+var _reveal_p := 0.0
+var _front_is_back := true
+var _back_is_back := true
 
 ## 翻牌半程时长（水平翻转：scale.x 1→0 换面 →0→1），与 2D `flip_to_face` 同策略。
 const FLIP_DURATION := 0.25
@@ -149,6 +152,9 @@ func _build() -> void:
 func setup(slot: Dictionary) -> void:
 	_build()
 	_kill_flip()
+	_reveal_p = 0.0
+	if _flip != null:
+		_flip.transform = Transform3D.IDENTITY
 	if _hover_tween != null and _hover_tween.is_valid():
 		_hover_tween.kill()
 	_hover_tween = null
@@ -200,39 +206,52 @@ func set_hover(on: bool, color := Color(0.7, 0.95, 1.0)) -> void:
 	_hover_color = color
 	_paint_glow()
 
-## 瞬时揭示：水平翻转到 card 正面；color.a>0 时用该色**边缘发光**（保留牌面），否则回当前高亮。
-## 用 restore() 翻回最近 setup(slot)。
+## 揭示翻转到 card（写到底面板，几何连续换面）；color.a>0 时用该色边缘发光。
 func reveal(card: Dictionary, color := Color(0, 0, 0, 0)) -> void:
 	_build()
-	_flip_to(func(): _show_face(card, color))
-
-## 回到最近一次 setup(slot) 的状态（标签 + 贴图/颜色 + 高亮），水平翻转回去。
-func restore() -> void:
-	_build()
-	_flip_to(func(): _apply_slot(_last_slot))
-
-## 翻牌中点：切到 card 正面。
-func _show_face(card: Dictionary, color: Color) -> void:
+	_back_material.albedo_texture = _face_texture(card) if not card.is_empty() else _back_texture()
+	_back_material.albedo_color = Color.WHITE
+	_back_is_back = card.is_empty()
 	_label.text = card_text(card)
-	_showing_back = false
-	var face := _face_texture(card)
-	_material.albedo_texture = face
-	_material.albedo_color = Color.WHITE if face != null else Table3dLayout.known_color_for_rank(str(card.get("rank", "")))
 	if color.a > 0.0:
 		_apply_glow_layers(color)
 	else:
 		_paint_glow()
+	_reveal_to(1.0)
 
-## 水平翻转（scale.x 1→0 → mid() 换面 →0→1），与 2D 同策略。不在树内则直接执行。
-func _flip_to(mid: Callable) -> void:
+## 翻回最近一次 setup(slot) 的状态（贴图/标签/高亮）。
+func restore() -> void:
+	_build()
+	var card: Dictionary = _last_slot.get("card", {})
+	_label.text = "" if card.is_empty() else card_text(card)
+	_paint_glow()
+	_reveal_to(0.0)
+
+func _reveal_to(target: float) -> void:
 	_kill_flip()
 	if not is_inside_tree():
-		mid.call()
+		_reveal_p = target
+		_apply_flip_pose()
 		return
+	set_process(true)
 	_flip_tween = create_tween()
-	_flip_tween.tween_property(self, "scale:x", 0.0, FLIP_DURATION)
-	_flip_tween.tween_callback(mid)
-	_flip_tween.tween_property(self, "scale:x", 1.0, FLIP_DURATION)
+	_flip_tween.tween_property(self, "_reveal_p", target, FLIP_DURATION).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
+
+## 揭示翻转姿态：绕长轴 0→180° + 抬起 + 朝玩家倾斜（sin 包络，末了回平）。
+func _apply_flip_pose() -> void:
+	if _flip == null:
+		return
+	if _reveal_p <= 0.0:
+		_flip.transform = Transform3D.IDENTITY
+		return
+	var cfg := _cfg()
+	var arc := sin(_reveal_p * PI)
+	var basis := Basis.from_euler(Vector3(-deg_to_rad(cfg.hover_pitch * arc), 0.0, 0.0)) \
+			* Basis(Vector3(0.0, 0.0, 1.0), deg_to_rad(_reveal_p * 180.0))
+	_flip.transform = Transform3D(basis, Vector3(0.0, cfg.flip_lift * arc, 0.0))
+
+func reveal_progress() -> float:
+	return _reveal_p
 
 func _kill_flip() -> void:
 	if _flip_tween != null and _flip_tween.is_valid():
@@ -255,13 +274,19 @@ func _apply_color() -> void:
 	var card: Dictionary = _last_slot.get("card", {})
 	if card.is_empty():
 		_showing_back = true
+		_front_is_back = true
 		_material.albedo_texture = _back_texture()
 		_material.albedo_color = Color.WHITE
 	else:
 		_showing_back = false
+		_front_is_back = false
 		var face := _face_texture(card)
 		_material.albedo_texture = face
 		_material.albedo_color = Color.WHITE if face != null else Table3dLayout.slot_color(_last_slot)
+	if _back_material != null and _reveal_p <= 0.0:
+		_back_material.albedo_texture = _back_texture()
+		_back_material.albedo_color = Color.WHITE
+		_back_is_back = true
 	_paint_glow()
 
 ## 切换显示面：back=true 显示卡背并隐藏点数；false 恢复最近 setup(slot) 的正面。
@@ -270,6 +295,7 @@ func show_back(back: bool) -> void:
 	_build()
 	if back:
 		_showing_back = true
+		_front_is_back = true
 		_material.albedo_texture = _back_texture()
 		_material.albedo_color = Color.WHITE
 		_label.text = ""
@@ -394,10 +420,12 @@ func set_hover_pose(on: bool, ray_local: Vector2, immediate := false) -> void:
 	_hover_tween.tween_property(self, "_hover_p", target, dur).set_trans(trans).set_ease(Tween.EASE_OUT)
 
 func _process(_delta: float) -> void:
-	if not hover_anim_enabled:
-		set_process(false)
-		return
 	_apply_hover_pose()
+	_apply_flip_pose()
+	var hb := _hover_tween != null and _hover_tween.is_valid()
+	var fb := _flip_tween != null and _flip_tween.is_valid()
+	if not hb and not fb and _hover_p <= 0.0 and _reveal_p <= 0.0:
+		set_process(false)
 
 ## 用 compose 的位移/旋转驱动 `_visual`（不写 scale，避免与揭示翻转抢属性）。
 func _apply_hover_pose() -> void:
@@ -414,11 +442,19 @@ func _apply_hover_pose() -> void:
 		Basis.from_euler(Vector3(deg_to_rad(rot.x), deg_to_rad(rot.y), deg_to_rad(rot.z))),
 		c["visual_pos"])
 
+func _display_material() -> StandardMaterial3D:
+	return _material if _reveal_p < 0.5 else _back_material
+
+func _display_is_back() -> bool:
+	return _front_is_back if _reveal_p < 0.5 else _back_is_back
+
 func block_color() -> Color:
-	return _material.albedo_color if _material != null else Color.BLACK
+	var m := _display_material()
+	return m.albedo_color if m != null else Color.BLACK
 
 func albedo_texture() -> Texture2D:
-	return _material.albedo_texture if _material != null else null
+	var m := _display_material()
+	return m.albedo_texture if m != null else null
 
 ## 当前是否有边缘发光，及其基色（rgb；a 为 0/1 表示开关）。
 func has_glow() -> bool:
@@ -429,8 +465,10 @@ func glow_color() -> Color:
 
 ## 当前是否使用卡背贴图（未知牌）。
 func has_back_texture() -> bool:
-	return _material != null and _material.albedo_texture != null and _showing_back
+	var m := _display_material()
+	return m != null and m.albedo_texture != null and _display_is_back()
 
 ## 当前是否使用真实牌面贴图（已知牌且贴图可用）。
 func has_face_texture() -> bool:
-	return _material != null and _material.albedo_texture != null and not _showing_back
+	var m := _display_material()
+	return m != null and m.albedo_texture != null and not _display_is_back()

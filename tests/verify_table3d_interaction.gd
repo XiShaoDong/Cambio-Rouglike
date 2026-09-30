@@ -25,6 +25,7 @@ func _run() -> void:
 	_test_hud()
 	await _test_view()
 	await _test_hover_pose()
+	await _test_reveal_flip()
 
 func _test_layout_pick() -> void:
 	_check("PICK_LAYER == 2", Table3dLayout.PICK_LAYER == 2)
@@ -293,3 +294,19 @@ func _test_hover_pose() -> void:
 	c.set_hover_pose(true, Vector2.ZERO)
 	await get_tree().create_timer(cfg.hover_in_dur + 0.1).timeout
 	_check("未启用动画的块不抬", c.visual_node().position.is_equal_approx(Vector3.ZERO))
+
+func _test_reveal_flip() -> void:
+	var b := CardBlock.new()
+	add_child(b)
+	b.setup({"card_id": "x"})
+	b.reveal({"rank": "Q", "suit": "♦"})
+	await get_tree().create_timer(CardBlock.FLIP_DURATION * 0.5).timeout
+	_check("揭示中途进度 ~0.5", absf(b.reveal_progress() - 0.5) < 0.2)
+	_check("揭示中途 flip 节点已变换", not b.flip_node().transform.is_equal_approx(Transform3D.IDENTITY))
+	await get_tree().create_timer(CardBlock.FLIP_DURATION * 0.5 + 0.08).timeout
+	_check("揭示结束进度 1", is_equal_approx(b.reveal_progress(), 1.0))
+	_check("揭示不用 scale.x", b.scale.is_equal_approx(Vector3.ONE))
+	_check("揭示末态显示牌面", b.has_face_texture() and b.label_text() == "Q♦")
+	b.restore()
+	await get_tree().create_timer(CardBlock.FLIP_DURATION + 0.08).timeout
+	_check("restore 后进度 0 且回卡背", is_equal_approx(b.reveal_progress(), 0.0) and b.has_back_texture())
