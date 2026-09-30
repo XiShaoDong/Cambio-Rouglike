@@ -23,7 +23,7 @@ func handle_input(event: InputEvent) -> bool:
 			main._show_toast("开发者模式 %s" % ("ON" if main.dev_mode else "OFF"))
 			refresh_panel()
 			return true
-		elif event.keycode == KEY_F10:
+		elif event.keycode == KEY_F10 or event.keycode == KEY_V:
 			main._toggle_table3d()
 			return true
 	return false
@@ -60,7 +60,7 @@ func refresh_panel() -> void:
 	box.add_child(slap_btn)
 	_build_skin_row(box)
 	var preview_btn := Button.new()
-	preview_btn.text = "3D 预览（F10）"
+	preview_btn.text = "3D 预览（F10 / V）"
 	preview_btn.pressed.connect(main._toggle_table3d)
 	box.add_child(preview_btn)
 	for player in main.latest_state.players:

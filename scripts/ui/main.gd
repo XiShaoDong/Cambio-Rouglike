@@ -166,7 +166,7 @@ func _input(event: InputEvent) -> void:
 	if _table3d_modal_open():
 		return   # 交给 2D 模态
 	if event is InputEventKey and event.pressed and not event.echo \
-			and (event.keycode == KEY_F10 or event.keycode == KEY_ESCAPE):
+			and (event.keycode == KEY_F10 or event.keycode == KEY_V or event.keycode == KEY_ESCAPE):
 		_set_table3d(false)
 		get_viewport().set_input_as_handled()
 		return
