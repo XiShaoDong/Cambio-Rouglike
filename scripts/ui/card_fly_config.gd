@@ -3,16 +3,14 @@ extends RefCounted
 ## 3D 换牌飞牌参数（集中配置；代码不出现散落魔法数）。
 ## 控制器与纯数学均按 to_dict() 访问。
 
-var duration_base := 0.60
-var duration_per_dist := 0.004
-var duration_min := 0.60
-var duration_max := 1.80
+var speed := 3.0          # 恒定移动速度（世界单位/秒）：时长 = 距离 / speed
+var duration_min := 0.15  # 时长下限（仅防止同位置飞行的零时长）
 var arc_height := 0.35
 var flip_start := 0.35
 var flip_end := 0.65
 
 const KEYS := [
-	"duration_base", "duration_per_dist", "duration_min", "duration_max",
+	"speed", "duration_min",
 	"arc_height", "flip_start", "flip_end",
 ]
 

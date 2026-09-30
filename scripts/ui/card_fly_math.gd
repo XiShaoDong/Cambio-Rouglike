@@ -13,10 +13,13 @@ static func smoothstep(t: float) -> float:
 	t = clampf(t, 0.0, 1.0)
 	return t * t * (3.0 - 2.0 * t)
 
-## 距离 → 时长（秒）。与 2D CardAnimator._fly 同量级。
+## 距离 → 时长（秒）：恒定速度 —— 时长 = 距离 / speed（距离越远时长越长，速度不变）。
+## duration_min 仅作下限，防止同位置飞行的零时长。
 static func duration_for(dist: float, cfg: Dictionary) -> float:
-	return clampf(float(cfg["duration_base"]) + dist * float(cfg["duration_per_dist"]),
-		float(cfg["duration_min"]), float(cfg["duration_max"]))
+	var sp := float(cfg["speed"])
+	if sp <= 0.0:
+		return float(cfg["duration_min"])
+	return maxf(dist / sp, float(cfg["duration_min"]))
 
 ## 路径进度 = 缓动(p)。
 static func path_t(p: float, _cfg: Dictionary = {}) -> float:

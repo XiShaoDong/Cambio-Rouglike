@@ -28,6 +28,7 @@ func _test_config() -> void:
 	_check("config 默认值合法", c.validate().is_empty())
 	_check("config to_dict 键数", c.to_dict().size() == CardFlyConfig.KEYS.size())
 	_check("config 默认 arc_height", is_equal_approx(c.arc_height, 0.35))
+	_check("config 默认 speed", is_equal_approx(c.speed, 3.0))
 	var bad := CardFlyConfig.new()
 	bad.arc_height = -1.0
 	_check("config 非法值被抓", bad.validate().has("arc_height"))
@@ -38,9 +39,9 @@ func _test_config() -> void:
 
 func _test_math() -> void:
 	var cfg := CardFlyConfig.new().to_dict()
-	_check("duration 短距取下限", is_equal_approx(CardFlyMath.duration_for(0.0, cfg), cfg["duration_min"]))
-	_check("duration 长距取上限", is_equal_approx(CardFlyMath.duration_for(1000.0, cfg), cfg["duration_max"]))
-	_check("duration 中距单调不减", CardFlyMath.duration_for(100.0, cfg) <= CardFlyMath.duration_for(300.0, cfg))
+	_check("duration 同位置取下限", is_equal_approx(CardFlyMath.duration_for(0.0, cfg), cfg["duration_min"]))
+	_check("duration 恒定速度(2*speed→2s)", is_equal_approx(CardFlyMath.duration_for(cfg["speed"] * 2.0, cfg), 2.0))
+	_check("duration 与距离成正比", is_equal_approx(CardFlyMath.duration_for(cfg["speed"] * 5.0, cfg), 5.0))
 	_check("ease_in_out_cubic 端点", is_equal_approx(CardFlyMath.ease_in_out_cubic(0.0), 0.0) and is_equal_approx(CardFlyMath.ease_in_out_cubic(1.0), 1.0))
 	_check("smoothstep 端点", is_equal_approx(CardFlyMath.smoothstep(0.0), 0.0) and is_equal_approx(CardFlyMath.smoothstep(1.0), 1.0))
 	_check("arc p=0 ≈0", absf(CardFlyMath.arc_lift(0.0, cfg)) < 0.0001)

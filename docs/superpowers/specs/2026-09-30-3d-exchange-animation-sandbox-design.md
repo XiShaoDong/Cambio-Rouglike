@@ -8,7 +8,7 @@
 
 1. 一套**标量进度 + 纯函数合成**的飞牌架构（与 `CardAnimation` 同思路，但更轻）：Tween 只驱动飞行进度 `p`，每帧唯一写 `transform` 处是 `compose()`。
 2. 3D 沙盒：**复刻对局布局**（4 座位手牌区 + 中央抽牌堆/弃牌堆/大牌位，尺寸与间距取 `Table3dLayout`），顶部 6 个按钮分别触发 6 种 `kind`。
-3. 飞牌运动：**直线位移 + 世界 +Y 抬升弧线 + 飞行中绕卡长轴翻面**；时长按起止距离给出（沿用 2D `_fly` 的公式量级）。
+3. 飞牌运动：**直线位移 + 世界 +Y 抬升弧线 + 飞行中绕卡长轴翻面**；时长按起止距离**线性**给出以保持**恒定移动速度**（`duration = dist / speed`，越远越久、速度不变）。
 4. 全部参数集中到 `CardFlyConfig`，代码不出现散落魔法数；纯函数抽到 `CardFlyMath` 配 headless 单测。
 5. 飞牌单元 `CardFly` 自包含（自带 `CardBlock`），便于日后接入 `table3d_view`。
 
@@ -68,7 +68,7 @@ static func compose(start: Transform3D, end: Transform3D, p: float,
         roll_start_deg: float, roll_delta_deg: float, cfg: Dictionary) -> Dictionary
 ```
 
-- `duration_for`：`clampf(base + dist * per_dist, min, max)`，默认 `base=0.30, per_dist=0.002, min=0.30, max=0.90`（对齐 2D）。
+- `duration_for`：**恒定速度** `maxf(dist / speed, duration_min)`，默认 `speed=3.0`（世界单位/秒）、`duration_min=0.15`（仅防止同位置飞行的零时长）。
 - `path_t`：默认 `ease_in_out_cubic(p)`（自实现，避免依赖 `CardAnimationMath` 语义耦合）。
 - `arc_lift`：默认 `arc_height=0.35`（世界单位），`sin(p*PI)` 包络，故起止贴桌、中点最高。
 - `flip_t`：默认窗口 `[0.35, 0.65]`，窗口内 `smoothstep` 0→1、窗口外夹取，避免起止瞬间翻。
@@ -150,7 +150,7 @@ func demo_all() -> void               # 顺序跑全部 6 种（可选，供人�
 
 **A. 纯函数段（`CardFlyMath`）**
 
-- `duration_for`：短距取到 `min`、长距取到 `max`、中距随距离单调不减。
+- `duration_for`：同位置取到 `duration_min`；`dist = speed*k` 时时长 = `k` 秒；时长与距离成正比（恒定速度）。
 - `arc_lift`：`p=0/1 ≈ 0`、`p=0.5 ≈ arc_height`。
 - `flip_t`：`p<=flip_start` 为 0、`p>=flip_end` 为 1、窗口内单调。
 - `flip_angle`：端点 0 / 180。
@@ -183,10 +183,8 @@ func demo_all() -> void               # 顺序跑全部 6 种（可选，供人�
 
 | 字段 | 默认 | 说明 |
 | --- | ---: | --- |
-| `duration_base` | 0.60 | 时长基准（秒） |
-| `duration_per_dist` | 0.004 | 每单位距离增加秒数 |
-| `duration_min` | 0.60 | 时长下限 |
-| `duration_max` | 1.80 | 时长上限 |
+| `speed` | 3.0 | 恒定移动速度（世界单位/秒）——时长 = 距离 / speed |
+| `duration_min` | 0.15 | 时长下限（仅防止同位置飞行的零时长） |
 | `arc_height` | 0.35 | 弧线顶点抬升（世界单位） |
 | `flip_start` | 0.35 | 翻面窗口起点（p） |
 | `flip_end` | 0.65 | 翻面窗口终点（p） |
