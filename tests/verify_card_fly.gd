@@ -20,6 +20,7 @@ func _check(name: String, ok: bool) -> void:
 func _run() -> void:
 	_test_config()
 	_test_math()
+	await _test_controller()
 
 func _test_config() -> void:
 	var c := CardFlyConfig.new()
@@ -62,3 +63,28 @@ func _test_math() -> void:
 	var r0 := CardFlyMath.compose(s, e, 0.0, 0.0, 0.0, cfg)
 	var r180 := CardFlyMath.compose(s, e, 0.0, 180.0, 0.0, cfg)
 	_check("roll_start=180 法线反向", (r0["basis"] * Vector3(0.0, 1.0, 0.0)).dot(r180["basis"] * Vector3(0.0, 1.0, 0.0)) < 0.0)
+
+func _test_controller() -> void:
+	var fly := CardFly.new()
+	add_child(fly)
+	var s := Transform3D(Basis.IDENTITY, Vector3(0.0, 0.03, 0.0))
+	var e := Transform3D(Basis.IDENTITY, Vector3(2.0, 0.03, 1.0))
+	var done := {"v": false}
+	fly.finished.connect(func(): done["v"] = true)
+	fly.play(s, e, {"rank": "A", "suit": "♥"}, true, true)
+	_check("play 后在飞", fly.is_flying() and fly.progress() == 0.0)
+	await get_tree().create_timer(1.2).timeout
+	_check("飞完 finished 触发", done["v"])
+	_check("飞完节点已释放", not is_instance_valid(fly))
+	# 空 data 显示卡背（标签为空）
+	var back := CardFly.new()
+	add_child(back)
+	back.play(s, e, {}, false, false)
+	_check("空 data 背面无标签", back.card_block() != null and back.card_block().label_text() == "")
+	back.queue_free()
+	# 背面起飞：初始已滚转 180°（正面法线朝下）
+	var flip := CardFly.new()
+	add_child(flip)
+	flip.play(s, e, {"rank": "Q", "suit": "♦"}, false, true)
+	_check("背面起飞法线朝下", (flip.global_transform.basis * Vector3(0.0, 1.0, 0.0)).y < 0.0)
+	flip.queue_free()
