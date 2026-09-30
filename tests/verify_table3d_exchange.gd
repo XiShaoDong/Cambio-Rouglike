@@ -19,6 +19,7 @@ func _check(name: String, ok: bool) -> void:
 
 func _run() -> void:
 	await _test_exchange()
+	await _test_reveal_replay_no_restart()
 
 func _base_state() -> Dictionary:
 	return {
@@ -114,4 +115,36 @@ func _test_exchange() -> void:
 	bare.animate_exchange({"kind": "discard", "actor": 0, "big_data": {}})
 	_check("无状态时安全跳过", bare._flyers.is_empty())
 	bare.queue_free()
+	view.queue_free()
+
+## B37 回归：揭示重放不应把翻牌从头再播（翻完又显示正面 + 重新打炫光）。
+func _test_reveal_replay_no_restart() -> void:
+	var view = load("res://scenes/ui/table3d.tscn").instantiate()
+	add_child(view)
+	await get_tree().process_frame
+	view.render(_base_state())
+	await get_tree().process_frame
+
+	# 揭示完成后重放：应保持正面，不从 0 重播
+	view.reveal_slot(0, 2, {"rank": "Q", "suit": "♦"}, Color(0.9, 0.3, 0.3), 1.5)
+	await get_tree().create_timer(CardBlock.FLIP_DURATION + 0.1).timeout
+	_check("揭示完成后进度 1", is_equal_approx(view._card_blocks[0][2].reveal_progress(), 1.0))
+	view.render(_base_state())
+	await get_tree().process_frame
+	_check("重放后仍为正面（进度不归零）", is_equal_approx(view._card_blocks[0][2].reveal_progress(), 1.0))
+	_check("重放后牌面保持", view._card_blocks[0][2].label_text() == "Q♦")
+	_check("重放后炫光保持", view._card_blocks[0][2].has_glow() and view._card_blocks[0][2].glow_color() == Color(0.9, 0.3, 0.3))
+	# 揭示窗口结束后恢复背面
+	await get_tree().create_timer(1.0).timeout
+	_check("揭示结束恢复背面", view._card_blocks[0][2].label_text() == "" and not view._card_blocks[0][2].has_glow())
+
+	# 进行中重放：进度续播、不归零
+	view.reveal_slot(0, 3, {"rank": "J", "suit": "♣"}, Color(0, 0, 0, 0), 1.5)
+	await get_tree().create_timer(0.15).timeout
+	var mid_before: float = view._card_blocks[0][3].reveal_progress()
+	view.render(_base_state())
+	await get_tree().process_frame
+	var mid_after: float = view._card_blocks[0][3].reveal_progress()
+	_check("进行中重放进度不回零", mid_after > 0.0 and absf(mid_after - mid_before) < 0.35)
+	await get_tree().create_timer(1.6).timeout
 	view.queue_free()

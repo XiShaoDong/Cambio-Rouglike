@@ -207,7 +207,9 @@ func set_hover(on: bool, color := Color(0.7, 0.95, 1.0)) -> void:
 	_paint_glow()
 
 ## 揭示翻转到 card（写到底面板，几何连续换面）；color.a>0 时用该色边缘发光。
-func reveal(card: Dictionary, color := Color(0, 0, 0, 0)) -> void:
+## from_p 为起始翻转进度：0（默认）= 从背面播放完整翻转；>0 用于跨 render 重放时**续播**
+## （=1 直接呈现正面、不再翻转），避免状态广播/落地刷新把揭示重播一次（翻完又翻）。
+func reveal(card: Dictionary, color := Color(0, 0, 0, 0), from_p := 0.0) -> void:
 	_build()
 	_back_material.albedo_texture = _face_texture(card) if not card.is_empty() else _back_texture()
 	_back_material.albedo_color = Color.WHITE
@@ -217,7 +219,20 @@ func reveal(card: Dictionary, color := Color(0, 0, 0, 0)) -> void:
 		_apply_glow_layers(color)
 	else:
 		_paint_glow()
-	_reveal_to(1.0)
+	if from_p <= 0.0:
+		_reveal_to(1.0)
+	else:
+		_reveal_from(clampf(from_p, 0.0, 1.0))
+
+## 从给定进度续播到正面（from_p>=1 直接落位、不翻）。
+func _reveal_from(from_p: float) -> void:
+	_kill_flip()
+	_reveal_p = from_p
+	_apply_flip_pose()
+	if from_p < 1.0 and is_inside_tree():
+		set_process(true)
+		_flip_tween = create_tween()
+		_flip_tween.tween_property(self, "_reveal_p", 1.0, (1.0 - from_p) * FLIP_DURATION).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
 
 ## 翻回最近一次 setup(slot) 的状态（贴图/标签/高亮）。
 func restore() -> void:

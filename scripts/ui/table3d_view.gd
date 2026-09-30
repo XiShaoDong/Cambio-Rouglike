@@ -436,7 +436,7 @@ func reveal_slot(seat_id: int, slot: int, card: Dictionary, color := Color(0, 0,
 	var key := "%d_%d" % [seat_id, slot]
 	_reveal_seq += 1
 	var token := _reveal_seq
-	_reveals[key] = {"card": card, "color": color, "token": token}
+	_reveals[key] = {"card": card, "color": color, "token": token, "start_ms": Time.get_ticks_msec()}
 	_apply_reveal(seat_id, slot)
 	get_tree().create_timer(dur).timeout.connect(func():
 		if not _reveals.has(key):
@@ -449,14 +449,19 @@ func reveal_slot(seat_id: int, slot: int, card: Dictionary, color := Color(0, 0,
 			b.restore())
 
 ## 对当前（可能刚重建的）卡牌应用登记中的揭示。
+## 按揭示已过时间计算翻转进度：重放时**续播**而非从 0 重播（已完成则直接呈现正面、不再翻），
+## 避免状态广播 / 飞牌落地刷新把揭示重播一次（表现为翻完又显示正面 + 重新打炫光，见 B37）。
 func _apply_reveal(seat_id: int, slot: int) -> void:
 	var key := "%d_%d" % [seat_id, slot]
 	if not _reveals.has(key):
 		return
 	var r: Dictionary = _reveals[key]
 	var b = _find_block(seat_id, slot)
-	if b != null:
-		b.reveal(r.get("card", {}), r.get("color", Color(0, 0, 0, 0)))
+	if b == null:
+		return
+	var elapsed := (Time.get_ticks_msec() - int(r.get("start_ms", 0))) / 1000.0
+	var p := clampf(elapsed / CardBlock.FLIP_DURATION, 0.0, 1.0)
+	(b as CardBlock).reveal(r.get("card", {}), r.get("color", Color(0, 0, 0, 0)), p)
 
 ## 短暂染色提醒（不翻面）。
 func flash_slot(seat_id: int, slot: int, color: Color, dur: float) -> void:

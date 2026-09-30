@@ -445,3 +445,13 @@
 **修复**：`FLIP_DURATION := 0.5`（重新定义为**整段翻转时长**），并同步测试等待（`_test_reveal_flip` 的结束等待由 `FLIP_DURATION*0.5` 改回 `FLIP_DURATION`；跨 render 用例的保持时长 1.0→2.0s 以容纳更长翻转）。
 
 **诊断方法**：`verify_table3d_interaction`「揭示结束进度 1」「揭示跨 render 保持正面」按 `CardBlock.FLIP_DURATION` 等待。
+
+## B37：3D 揭示翻完后又显示一次正面 + 重新打炫光（换牌飞牌接入后暴露）
+
+**现象**：3D 下贴牌揭示（贴错=红色炫光）等翻牌完成后，卡牌会**再次**翻到正面并重新打上揭示色（"翻完又翻一次 + red 光晕"）；3D 换牌飞牌接入后尤其明显。
+
+**根因**：`table3d_view.render()` 每次重建卡牌后都会对 `_reveals` 里仍登记的揭示调用 `_apply_reveal` → `CardBlock.reveal()`，而 `reveal()` 每次**无条件 `_reveal_to(1.0)`（从进度 0 重播 0.5s 翻转）**，不是"保持已翻开的正面"。揭示窗口 1.5s 内任何一次 `render()` 都会把重建为背面的目标牌**重新翻一次**并重新上色。接入的飞牌落地 `_refresh()`（新增）会在揭示窗口内触发一次延迟 `render()`（如罚牌 deck→手牌约 0.8s 落地），使这次重播**可见**——此前只有紧跟揭示的状态广播 render（与揭示几乎同时，看不出）。
+
+**修复**：让重放**幂等/续播**。① `CardBlock.reveal(card, color, from_p := 0.0)` 新增可选起始进度；`from_p>0` 走 `_reveal_from(p)`：直接设 `_reveal_p` 并从该进度续播（`from_p>=1` 直接呈现正面、不再翻转）。② `table3d_view.reveal_slot` 记录 `start_ms`；`_apply_reveal` 按已过时间算 `p = clamp(elapsed / FLIP_DURATION, 0, 1)` 传入 → 重放时已完成则瞬现正面、进行中则续播。既有调用（默认 `from_p=0`）与沙盒不受影响。
+
+**诊断方法**：`verify_table3d_exchange`「重放后仍为正面（进度不归零）」「重放后牌面保持」「重放后炫光保持」「进行中重放进度不回零」。
