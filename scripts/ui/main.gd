@@ -352,9 +352,12 @@ func _ready() -> void:
 	GameState.lobby_updated.connect(func(l: Dictionary): lobby.update_lobby(l))
 	GameState.state_updated.connect(_on_state_updated)
 	GameState.private_reveal_received.connect(_show_private_reveal)
-	# 3D 下不播 2D 换牌/贴牌 fly（3D 尚无这些动画，2D 副本会浮在 3D 画面上）
+	# 2D 走 CardAnimator（原逻辑逐字不动）；3D 走 table3d 的飞牌编排。
 	GameState.card_exchange_animated.connect(func(data: Dictionary):
-		if not _table3d_active:
+		if _table3d_active:
+			if table3d != null and is_instance_valid(table3d):
+				table3d.animate_exchange(data)
+		else:
 			animator.handle_exchange(data))
 	GameState.peek_highlighted.connect(_on_peek_highlight)
 	GameState.toast_received.connect(_show_toast)
