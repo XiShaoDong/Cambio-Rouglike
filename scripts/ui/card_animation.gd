@@ -4,6 +4,9 @@ extends Node3D
 ## 纯展示层：不做规则/隐私判断。
 
 @export var card_data: Dictionary = {"rank": "A", "suit": "♥"}
+## 沙盒实验：hover 用顶点弯曲（近端上翘、远端贴平）替代刚性抬起/倾斜。
+@export var hover_bend := false
+@export var hover_bend_max := 0.3
 
 var config: CardAnimationConfig = CardAnimationConfig.new()
 var state := CardAnimationMath.IDLE
@@ -83,7 +86,10 @@ func _process(delta: float) -> void:
 func _apply() -> void:
 	if visual == null:
 		return
-	var c := CardAnimationMath.compose(_progress(), config.to_dict(), _idle_time, ray_local)
+	if hover_bend and body != null:
+		body.set_bend(hover_p * hover_bend_max)
+	var hover_c := 0.0 if hover_bend else hover_p
+	var c := CardAnimationMath.compose({"hover": hover_c, "press": press_p, "flip": flip_p, "land": land_p}, config.to_dict(), _idle_time, ray_local)
 	var rot: Vector3 = c["visual_rot_deg"]
 	var rot_basis := Basis.from_euler(Vector3(deg_to_rad(rot.x), deg_to_rad(rot.y), deg_to_rad(rot.z)))
 	# 翻牌绕卡长轴（local Z），叠加在 hover 仰角之后；flip_turns 累计避免下一次翻牌回弹
@@ -171,4 +177,5 @@ func reset() -> void:
 	_idle_time = 0.0
 	if body != null:
 		body.show_back(false)
+		body.set_bend(0.0)
 	_apply()

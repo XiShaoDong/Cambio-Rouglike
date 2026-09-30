@@ -27,6 +27,9 @@ var _visual: Node3D
 var _flip: Node3D
 var _back_node: MeshInstance3D
 var _back_material: StandardMaterial3D
+var _bend := 0.0                  # 弯曲量（远端贴桌、近端上翘的高度）
+var _base_front: Array = []       # 正面未弯曲顶点数组（用于每帧重建）
+var _base_back: Array = []        # 背面未弯曲顶点数组
 var _mesh: MeshInstance3D
 var _label: Label3D
 var _material: StandardMaterial3D
@@ -98,8 +101,9 @@ func _build() -> void:
 	plane.orientation = PlaneMesh.FACE_Y
 	plane.size = Vector2(Table3dLayout.BLOCK_SIZE.x, Table3dLayout.BLOCK_SIZE.z)
 	plane.subdivide_width = 0
-	plane.subdivide_depth = 0
+	plane.subdivide_depth = 24
 	_mesh.mesh = plane
+	_base_front = plane.surface_get_arrays(0)
 	_material = StandardMaterial3D.new()
 	_material.cull_mode = BaseMaterial3D.CULL_DISABLED  # 两面可见，避免看到背面消失
 	# PlaneMesh(FACE_Y)：u=0 在本地 -X、v=0 在本地 -Z；座位本地 +X = 持有者左侧、
@@ -116,7 +120,9 @@ func _build() -> void:
 	var bplane := PlaneMesh.new()
 	bplane.orientation = PlaneMesh.FACE_Y
 	bplane.size = Vector2(Table3dLayout.BLOCK_SIZE.x, Table3dLayout.BLOCK_SIZE.z)
+	bplane.subdivide_depth = 24
 	_back_node.mesh = bplane
+	_base_back = bplane.surface_get_arrays(0)
 	_back_node.position = Vector3(0.0, -0.002, 0.0)
 	_back_node.rotation_degrees = Vector3(0.0, 0.0, 180.0)
 	_back_material = StandardMaterial3D.new()
@@ -387,6 +393,44 @@ func back_node() -> MeshInstance3D:
 func flip_node() -> Node3D:
 	_build()
 	return _flip
+
+## 弯曲量（0=平）。近 camera 半（本地 -Z）向上弯起，远半贴平。
+func bend_amount() -> float:
+	return _bend
+
+## 设置弯曲量并重建正面/背面网格（CPU 顶点形变，无 shader）。
+func set_bend(amount: float) -> void:
+	_build()
+	if is_equal_approx(amount, _bend):
+		return
+	_bend = amount
+	if _mesh != null:
+		_mesh.mesh = _bent_mesh(_base_front)
+	if _back_node != null:
+		_back_node.mesh = _bent_mesh(_base_back)
+
+## 弯曲曲线：z>0（远端）为 0；z<0（近端）按 t² 平滑上升，t = -z / 半长。
+func _bend_curve(z: float) -> float:
+	var half := Table3dLayout.BLOCK_SIZE.z * 0.5
+	var t := clampf(-z / half, 0.0, 1.0)
+	return _bend * t * t
+
+func _bent_mesh(base: Array) -> ArrayMesh:
+	var arr := base.duplicate(true)
+	var verts: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+	for i in verts.size():
+		verts[i].y = _bend_curve(verts[i].z)
+	arr[Mesh.ARRAY_VERTEX] = verts
+	var m := ArrayMesh.new()
+	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	return m
+
+## 正面网格顶点（供测试读取弯曲形态）。
+func mesh_vertices() -> PackedVector3Array:
+	_build()
+	if _mesh == null or _mesh.mesh == null:
+		return PackedVector3Array()
+	return _mesh.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
 
 static func _cfg() -> CardAnimationConfig:
 	if _anim_cfg == null:

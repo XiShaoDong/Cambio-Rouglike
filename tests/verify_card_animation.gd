@@ -23,6 +23,7 @@ func _run() -> void:
 	_test_easing()
 	_test_height_shadow_compose()
 	_test_show_back()
+	_test_bend()
 	await _test_controller()
 	await _test_sandbox()
 
@@ -101,6 +102,25 @@ func _test_show_back() -> void:
 	b.show_back(false)
 	_check("回正面：点数恢复", b.label_text() == "A♥" and b.has_face_texture())
 
+func _test_bend() -> void:
+	var b := CardBlock.new()
+	add_child(b)
+	b.setup({"card": {"rank": "A", "suit": "♥"}})
+	b.set_bend(0.3)
+	var max_y := -1e9
+	var min_y := 1e9
+	for v in b.mesh_vertices():
+		max_y = maxf(max_y, v.y)
+		min_y = minf(min_y, v.y)
+	_check("弯曲：远端贴平(最小 y≈0)", absf(min_y) < 0.001)
+	_check("弯曲：近端上翘(最大 y≈0.3)", absf(max_y - 0.3) < 0.02)
+	b.set_bend(0.0)
+	var flat := true
+	for v in b.mesh_vertices():
+		if absf(v.y) > 0.001:
+			flat = false
+	_check("弯曲归零恢复平", flat)
+
 func _test_controller() -> void:
 	var a := CardAnimation.new()
 	a.config = CardAnimationConfig.new()
@@ -160,10 +180,10 @@ func _test_sandbox() -> void:
 		s.actors[s.hovered].exit_hover()
 	s.play(0, "hover")
 	await get_tree().create_timer(s.actors[0].config.hover_in_dur + 0.05).timeout
-	_check("沙盒 play hover 抬升", s.actors[0].visual.position.y > 0.0)
+	_check("沙盒 play hover 弯曲上翘", s.actors[0].body.bend_amount() > 0.0)
 	s.play(0, "flip")
 	await get_tree().create_timer(s.actors[0].config.press_dur + s.actors[0].config.flip_dur + s.actors[0].config.land_dur + 0.15).timeout
 	_check("沙盒 play flip 显示背面", s.actors[0].showing_back)
 	s.play(0, "reset")
 	await get_tree().process_frame
-	_check("沙盒 reset 回正面", not s.actors[0].showing_back and s.actors[0].flip_turns == 0)
+	_check("沙盒 reset 回正面", not s.actors[0].showing_back and s.actors[0].flip_turns == 0 and s.actors[0].body.bend_amount() == 0.0)

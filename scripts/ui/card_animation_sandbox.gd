@@ -42,6 +42,8 @@ func _build() -> void:
 		var actor := CardAnimation.new()
 		actor.name = "Card%d" % i
 		actor.card_data = SAMPLE_CARDS[i % SAMPLE_CARDS.size()]
+		actor.hover_bend = true
+		actor.hover_bend_max = 0.3
 		actor.position = Vector3(
 			(float(col_i) - (COLS - 1) * 0.5) * actor_gap,
 			0.03,
