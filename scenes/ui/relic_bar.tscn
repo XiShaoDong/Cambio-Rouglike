@@ -1,0 +1,9 @@
+[gd_scene format=3 uid="uid://crelicbar0001"]
+
+[ext_resource type="Script" path="res://scripts/ui/relic_bar.gd" id="1"]
+
+[node name="RelicBar" type="Control"]
+script = ExtResource("1")
+layout_mode = 3
+custom_minimum_size = Vector2(32, 0)
+mouse_filter = 2

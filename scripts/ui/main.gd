@@ -4,10 +4,13 @@ extends Control
 ## the game rules and networking remain independently testable.
 
 var dev: DevTools
+var dev_mode := false
 
 func _notification(what: int) -> void:
 	# 点击窗口关闭：拦截默认退出。若仍在房间/对局中 → 回初始大厅；已在初始大厅 → 真正退出
 	if what == NOTIFICATION_WM_CLOSE_REQUEST:
+		if _table3d_active:
+			_set_table3d(false)
 		if _in_room():
 			_leave_to_main_menu()
 		else:
@@ -21,11 +24,175 @@ func _in_room() -> bool:
 ## 从房间/对局回到初始大厅界面（点窗口关闭时调用）：
 ## 房主解散房间通知全员；客户端退出房间断开连接。不真正退出程序。
 func _leave_to_main_menu() -> void:
+	if _table3d_active:
+		_set_table3d(false)
 	if Network.is_host:
 		GameState.request_close_room()
 	else:
 		lobby._leave_room()
 	_set_status("已回到大厅。")
+
+## F10：在 2D 对局界面与 3D 只读预览之间切换。
+func _toggle_table3d() -> void:
+	_set_table3d(not _table3d_active)
+
+## 准星点击分发：只调用既有入口，不改规则。
+func _table3d_click() -> void:
+	if table3d == null or not is_instance_valid(table3d):
+		return
+	var pick: Dictionary = table3d.pick_center()
+	match str(pick.get("kind", "")):
+		"slot":
+			interaction.on_card_pressed(int(pick.get("seat", 0)), int(pick.get("slot", -1)))
+		"deck":
+			_on_deck_pressed()
+		"discard":
+			_on_discard_pressed()
+		"pending":
+			_on_pending_action()
+		"hud":
+			_on_action(str(pick.get("action", "")))
+
+## 3D 操作面板动作（与 2D 控制按钮行为一致）。
+func _on_action(action: String) -> void:
+	match action:
+		"ready":
+			game_view._ready_clicked = true
+			GameState.request_initial_ready()
+		"kongbaya":
+			_request_kongbaya()
+		"q_keep":
+			GameState.request_q_decision(false, -1, _next_action_id())
+		"q_exchange":
+			GameState.request_q_decision(true, -1, _next_action_id())
+		"joker":
+			_open_joker_transform_panel()
+
+## 3D 操作面板按钮（Ready + 条件动作；Kongbaya 由 3D 铃铛负责，不在面板里）。
+func _hud_buttons() -> Array:
+	var out: Array = []
+	if int(latest_state.get("phase", PHASE_LOBBY)) == PHASE_INITIAL_PEEK:
+		out.append({"text": ActionModel.ready_text(latest_state, game_view._ready_clicked),
+			"action": "ready",
+			"enabled": ActionModel.ready_enabled(latest_state, game_view._ready_clicked)})
+	out.append_array(ActionModel.conditional_actions(latest_state))
+	return out
+
+## 是否有 2D 模态打开（打开时释放鼠标，让模态可点）。
+func _table3d_modal_open() -> bool:
+	for panel in [settlement_page, shop_panel, joker_panel, _duel_panel, _reconnect_panel]:
+		if panel != null and is_instance_valid(panel) and (panel as CanvasItem).visible:
+			return true
+	return false
+
+## 3D 激活时同步鼠标模式与准星：模态打开 → 可见（交还 2D）；否则捕获（准星环视）。
+func _sync_table3d_pointer() -> void:
+	if not _table3d_active:
+		return
+	var modal := _table3d_modal_open()
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE if modal else Input.MOUSE_MODE_CAPTURED)
+	if _crosshair != null and is_instance_valid(_crosshair):
+		_crosshair.visible = not modal
+
+## 3D 自己面板（屏幕右下角）：生命/金钱/卡牌数（无名字）。
+func _ensure_self_panel() -> void:
+	if _self_panel != null and is_instance_valid(_self_panel):
+		return
+	_self_panel = PlayerStatPanel.new()
+	_self_panel.name = "SelfStatPanel"
+	_self_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_self_panel.z_index = 80
+	add_child(_self_panel)
+	_self_panel.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	_self_panel.offset_left = -272.0
+	_self_panel.offset_top = -84.0
+	_self_panel.offset_right = -16.0
+	_self_panel.offset_bottom = -16.0
+
+func _update_self_panel() -> void:
+	if _self_panel == null or not is_instance_valid(_self_panel):
+		return
+	var viewer := int(latest_state.get("viewer_id", 0))
+	for p in latest_state.get("players", []):
+		if int(p.id) == viewer:
+			_self_panel.set_data("", int(p.get("health", 0)), int(p.get("currency", 0)), int(p.get("count", 0)))
+			return
+
+## 3D 只读预览开关（仅对局中可用）。激活时隐藏 2D 棋盘（含 background，
+## 否则 CanvasItem 会盖住 3D）并捕获鼠标；退出时恢复并重绘 2D。
+func _set_table3d(on: bool) -> void:
+	if on and (latest_state.is_empty() or int(latest_state.get("phase", PHASE_LOBBY)) == PHASE_LOBBY):
+		return
+	_table3d_active = on
+	if on:
+		if table3d == null or not is_instance_valid(table3d):
+			table3d = load("res://scenes/ui/table3d.tscn").instantiate()
+			table3d.name = "Table3D"
+			add_child(table3d)
+			move_child(table3d, 0)
+		table3d.set_active(true)
+		if _crosshair == null or not is_instance_valid(_crosshair):
+			_crosshair = Crosshair.new()
+			_crosshair.name = "Crosshair"
+			_crosshair.z_index = 80
+			add_child(_crosshair)
+		table3d.set_hud_buttons(_hud_buttons())
+		table3d.render(latest_state, interaction.card_actionable)
+		_sync_table3d_pointer()
+		_ensure_self_panel()
+		_self_panel.visible = true
+		_update_self_panel()
+		background.visible = false
+		game_panel.visible = false
+	else:
+		if table3d != null and is_instance_valid(table3d):
+			table3d.clear_hover()
+			table3d.set_active(false)
+		if _crosshair != null and is_instance_valid(_crosshair):
+			_crosshair.visible = false
+			_crosshair.set_active(false)
+		if _self_panel != null and is_instance_valid(_self_panel):
+			_self_panel.visible = false
+		background.visible = true
+		game_panel.visible = true
+		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+		_render_game()
+
+## 3D 预览的输入走 _input（早于 GUI 路由，保证鼠标移动/退出键必定到达，
+## 不受任何 Control 的 mouse_filter 影响）。
+func _input(event: InputEvent) -> void:
+	if not _table3d_active:
+		return
+	if _table3d_modal_open():
+		return   # 交给 2D 模态
+	if event is InputEventKey and event.pressed and not event.echo \
+			and (event.keycode == KEY_F10 or event.keycode == KEY_V or event.keycode == KEY_ESCAPE):
+		_set_table3d(false)
+		get_viewport().set_input_as_handled()
+		return
+	if event is InputEventMouseMotion:
+		if table3d != null and is_instance_valid(table3d):
+			table3d.camera.look(event.relative)
+		get_viewport().set_input_as_handled()
+		return
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		_table3d_click()
+		get_viewport().set_input_as_handled()
+
+## 3D 悬停指示：每帧按准星命中更新目标高亮与准星状态（仅 3D 且无模态时）。
+func _process(_delta: float) -> void:
+	if not _table3d_active:
+		return
+	if table3d == null or not is_instance_valid(table3d):
+		return
+	if _table3d_modal_open():
+		table3d.clear_hover()
+		if _crosshair != null and is_instance_valid(_crosshair):
+			_crosshair.set_active(false)
+		return
+	var on_target: bool = table3d.update_hover()
+	if _crosshair != null and is_instance_valid(_crosshair):
+		_crosshair.set_active(on_target)
 
 func _unhandled_input(event: InputEvent) -> void:
 	# 比拼中按空格 = 停止（与 STOP 按钮等效）
@@ -51,6 +218,7 @@ const PHASE_SLAP_WINDOW := 5
 const PHASE_SLAP_EXCHANGE := 6
 const PHASE_GAME_OVER := 7
 const PHASE_SLAP_DUEL := 8
+const PHASE_SHOP := 10
 
 const PEEK_GLOW_COLOR := Color("3ef0f7ff")  # 查看牌蓝色光晕
 const PEEK_GLOW_DURATION := 1.5
@@ -61,6 +229,8 @@ const SLAP_GLOW_SIZE := 14
 const DuelBarScript := preload("res://scripts/ui/duel_bar.gd")
 const SettingsMenuScript := preload("res://scripts/ui/settings_menu.gd")
 const SettlementPageScript := preload("res://scenes/ui/settlement_page.tscn")
+const ShopPanelScript := preload("res://scenes/ui/shop_panel.tscn")
+const JokerTransformPanelScript := preload("res://scenes/ui/joker_transform_panel.tscn")
 
 var latest_lobby: Dictionary = {}
 var latest_state: Dictionary = {}
@@ -94,10 +264,15 @@ var overlay: Control
 var pending_overlay: Control
 var background: ColorRect
 var board: Control
+var table3d: Node3D = null
+var _table3d_active := false
+var _crosshair: Control = null
+var _self_panel: PlayerStatPanel = null
 var is_dev_join := false
 var start_button: Button = null
 var close_room_button: Button = null
 var leave_room_button: Button = null
+var match_limit_spin: SpinBox = null
 var _cards := CardFactory.new()
 var interaction: GameInteraction
 var lobby: LobbyView
@@ -126,6 +301,9 @@ var _was_in_match := false
 var _reconnect_panel: Control = null
 var _reconnect_expected := false
 var settlement_page: Control = null
+var shop_panel: Control = null
+var joker_panel: Control = null
+var _shop_result_shown := ""
 var _pending_winner_sfx := false
 
 ## 标记某个玩家槽位正在动画（渲染时该槽位显示虚线占位，不显示原卡）。
@@ -174,7 +352,13 @@ func _ready() -> void:
 	GameState.lobby_updated.connect(func(l: Dictionary): lobby.update_lobby(l))
 	GameState.state_updated.connect(_on_state_updated)
 	GameState.private_reveal_received.connect(_show_private_reveal)
-	GameState.card_exchange_animated.connect(func(data: Dictionary): animator.handle_exchange(data))
+	# 2D 走 CardAnimator（原逻辑逐字不动）；3D 走 table3d 的飞牌编排。
+	GameState.card_exchange_animated.connect(func(data: Dictionary):
+		if _table3d_active:
+			if table3d != null and is_instance_valid(table3d):
+				table3d.animate_exchange(data)
+		else:
+			animator.handle_exchange(data))
 	GameState.peek_highlighted.connect(_on_peek_highlight)
 	GameState.toast_received.connect(_show_toast)
 	GameState.command_rejected.connect(_on_command_rejected)
@@ -198,6 +382,8 @@ func _on_command_rejected(_code: int, message: String) -> void:
 	_show_toast("被拒绝：%s" % message)
 
 func _on_match_aborted(_code: int, message: String) -> void:
+	if _table3d_active:
+		_set_table3d(false)
 	latest_state.clear()
 	last_phase = -1
 	_was_in_match = false
@@ -408,16 +594,31 @@ func _on_state_updated(state: Dictionary) -> void:
 	if int(state.phase) != last_phase:
 		last_phase = int(state.phase)
 	lobby_panel.visible = false
-	game_panel.visible = true
+	game_panel.visible = not _table3d_active
 	if int(state.phase) == PHASE_GAME_OVER:
 		# 结算接管棋盘：先清残留动画/挂起状态再渲染，
 		# 保证卡牌以真实卡（而非在途揭示的动画占位）出现。
 		_clear_settlement_anim_state()
 	_render_game()
+	dev.refresh_panel()
+	if _table3d_active and table3d != null and is_instance_valid(table3d):
+		table3d.render(state, interaction.card_actionable)
+		table3d.set_hud_buttons(_hud_buttons())
+	if _table3d_active:
+		_update_self_panel()
 	if int(state.phase) == PHASE_GAME_OVER:
 		_open_settlement()
 	else:
 		_close_settlement()
+	if int(state.phase) == PHASE_SHOP:
+		_open_shop_panel()
+	else:
+		_close_shop_panel()
+	# Joker 变换面板只在处理 JOKER 的 TURN_DECISION 时可用，离开即关闭
+	if int(state.phase) != PHASE_TURN_DECISION or str(state.get("pending", {}).get("rank", "")) != "JOKER":
+		_on_joker_cancel()
+	_show_shop_result_toast(state)
+	_sync_table3d_pointer()
 
 ## 清空上一局可能残留的动画/挂起状态（对局结束时在途的看牌/贴牌揭示）。
 func _clear_settlement_anim_state() -> void:
@@ -445,7 +646,7 @@ func _render_game() -> void:
 
 ## 罚牌 fly：事件到达时目标槽位可能尚未渲染（追加的第 5+ 张），render 后再补飞。
 func _flush_slap_penalties() -> void:
-	if _pending_slap_penalties.is_empty():
+	if _table3d_active or _pending_slap_penalties.is_empty():
 		return
 	var remaining: Array = []
 	for item in _pending_slap_penalties:
@@ -482,7 +683,9 @@ func _open_settlement() -> void:
 	var result: Dictionary = latest_state.get("result", {})
 	if result.get("ranking", []).is_empty():
 		return
-	var model: Dictionary = SettlementModel.build(latest_state.players)
+	# 结算模型只纳入存活者：出局玩家 0 张 0 分，混入会恒排第一。
+	var alive_players: Array = latest_state.players.filter(func(p: Dictionary) -> bool: return not bool(p.get("eliminated", false)))
+	var model: Dictionary = SettlementModel.build(alive_players)
 	var page := SettlementPageScript.instantiate()
 	page.name = "SettlementPage"
 	# 直接挂 main 末尾 + z_index（仿 settings_menu 已验证模式）：main 子节点逆序 pick，
@@ -490,9 +693,13 @@ func _open_settlement() -> void:
 	# get_mouse_filter_with_override 判定为整棵子树不可点。
 	page.z_index = 100
 	add_child(page)
+	var run: Dictionary = latest_state.get("run", {})
+	var match_limit: int = int(run.get("match_limit", KongRules.DEFAULT_MATCH_LIMIT))
+	var series: Dictionary = (latest_state.get("result", {}) as Dictionary).get("series", {})
+	var rewards: Dictionary = (latest_state.get("result", {}) as Dictionary).get("rewards", {})
 	page.setup(model, Network.is_host, int(latest_state.get("match_number", 1)),
 		_play_pending_winner, _request_next_match, GameState.request_abort_match,
-		_on_settlement_flip)
+		_on_settlement_flip, true, match_limit, series, rewards)
 	settlement_page = page
 
 ## 结算联动：每轮翻牌时刻把对应棋盘卡牌从背面翻到正面（与结算页行内记分同步）。
@@ -509,6 +716,69 @@ func _close_settlement() -> void:
 		settlement_page.queue_free()
 	settlement_page = null
 
+## SHOP 阶段打开/刷新商店面板（已存在则刷新内容，反映购买/售出/完成状态）。
+func _open_shop_panel() -> void:
+	if shop_panel != null and is_instance_valid(shop_panel):
+		shop_panel.setup(latest_state, _on_shop_buy, _on_shop_skip)
+		return
+	var panel := ShopPanelScript.instantiate()
+	panel.name = "ShopPanel"
+	panel.z_index = 90
+	add_child(panel)
+	panel.setup(latest_state, _on_shop_buy, _on_shop_skip)
+	shop_panel = panel
+
+func _close_shop_panel() -> void:
+	if shop_panel != null and is_instance_valid(shop_panel):
+		shop_panel.queue_free()
+	shop_panel = null
+
+func _on_shop_buy(offer: int) -> void:
+	GameState.request_shop_buy(offer, _next_action_id())
+
+func _on_shop_skip() -> void:
+	GameState.request_shop_skip(_next_action_id())
+
+## Joker 变换面板：打开（幂等，场景实体，选点数/花色/确认/取消）。
+func _open_joker_transform_panel() -> void:
+	if joker_panel != null and is_instance_valid(joker_panel):
+		return
+	var panel := JokerTransformPanelScript.instantiate()
+	panel.name = "JokerTransformPanel"
+	panel.z_index = 95
+	add_child(panel)
+	panel.setup(_on_joker_confirm, _on_joker_cancel)
+	joker_panel = panel
+
+func _on_joker_cancel() -> void:
+	if joker_panel != null and is_instance_valid(joker_panel):
+		joker_panel.queue_free()
+	joker_panel = null
+
+func _on_joker_confirm(rank: String, suit: String) -> void:
+	GameState.request_joker_transform(rank, suit, _next_action_id())
+	_on_joker_cancel()
+
+## 商店裁决结果一次性 toast（每个 shop_result 只提示一次）。
+func _show_shop_result_toast(state: Dictionary) -> void:
+	var result: Dictionary = state.get("shop_result", {})
+	if result.is_empty():
+		return
+	var key: String = JSON.stringify(result)
+	if key == _shop_result_shown:
+		return
+	_shop_result_shown = key
+	var parts: Array = []
+	for offer_idx in result:
+		var r: Dictionary = result[offer_idx]
+		var name := ""
+		for p in state.players:
+			if int(p.id) == int(r.winner):
+				name = str(p.name)
+				break
+		parts.append("%s 以 %d 购买了 %s" % [name, int(r.amount), str(r.name)])
+	_show_toast("商店：%s" % "　".join(parts))
+
 ## 冠军时刻：若服务器已广播过 winner 音效事件，此刻播放（延迟到冠军出场）。
 func _play_pending_winner() -> void:
 	if _pending_winner_sfx:
@@ -518,6 +788,10 @@ func _play_pending_winner() -> void:
 ## 结算页「再来一局」→ 服务器开新局。
 func _request_next_match() -> void:
 	GameState.request_next_match(_next_action_id())
+
+## 开发者工具：房主直接判某玩家出局（服务器以房主身份校验）。
+func _dev_eliminate(seat: int) -> void:
+	GameState.request_dev_eliminate(seat)
 
 ## ESC 切换设置菜单：懒创建一次，反复切 visible。
 func _toggle_settings() -> void:
@@ -552,8 +826,9 @@ func _on_pending_action() -> void:
 	var actor := int(latest_state.get("viewer_id", 0))
 	var big_data: Dictionary = pending.duplicate()
 	big_data.erase("source")
-	# 隐藏棋盘大牌，播副本动画飞向弃牌堆（落位后弃牌堆显示，大牌不重建）
-	animator._animate_discard_pending(big_data, actor)
+	# 隐藏棋盘大牌，播副本动画飞向弃牌堆（落位后弃牌堆显示，大牌不重建）；3D 下无 2D fly
+	if not _table3d_active:
+		animator._animate_discard_pending(big_data, actor)
 	if KongRules.has_ability(str(pending.get("rank", ""))):
 		_pending_hidden_for_ability = true
 		# 能力牌弃牌：本地立即在弃牌堆顶部显示该牌，避免被旧状态覆盖，直到服务器确认
@@ -592,8 +867,13 @@ func _hint_for(phase: int, is_current: bool) -> String:
 		PHASE_TURN_DECISION:
 			return _decision_hint(is_current, name)
 		PHASE_Q_DECISION:
+			var qd: Dictionary = latest_state.get("q_decision", {})
 			if is_current:
-				return "Swap or not? Pick your own card to exchange, or choose not to"
+				if not bool(qd.get("own_viewed", false)):
+					return "Peeked their card. Now pick one of your own cards to peek"
+				return "Swap the two viewed cards, or keep yours?"
+			if not bool(qd.get("own_viewed", false)):
+				return "Waiting for %s to peek one of their own cards" % name
 			return "Waiting for %s to decide" % name
 		PHASE_SLAP_WINDOW:
 			return "Slap: click a card of the same rank. Wrong slap draws a penalty"
@@ -632,9 +912,9 @@ func _decision_hint(is_current: bool, name: String) -> String:
 		"peek_other":
 			return "Choose another player's card to peek"
 		"queen_target":
-			return "Peek another player's card, then decide to swap"
-		"q_exchange":
-			return "Choose your own card to exchange"
+			return "Peek another player's card, then peek one of your own cards"
+		"q_view_own":
+			return "Peek one of your own cards, then decide to swap"
 		"jack_target":
 			return "Click the opponent's card to swap"
 		"jack_own":
@@ -653,11 +933,25 @@ func _mode_instruction(fallback: String) -> String:
 	return interaction.mode_instruction(fallback)
 
 func _show_private_reveal(title: String, revealed_cards: Array, target: Dictionary = {}) -> void:
+	if _table3d_active and target.has("slot") and table3d != null and is_instance_valid(table3d):
+		var seat := int(target.get("player_id", 0))
+		var slot := int(target.get("slot", -1))
+		var color := Color(0, 0, 0, 0)
+		if target.has("correct"):
+			color = SLAP_CORRECT_GLOW if bool(target.get("correct", false)) else SLAP_WRONG_GLOW
+		else:
+			color = PEEK_GLOW_COLOR
+		for card in revealed_cards:
+			table3d.reveal_slot(seat, slot, card, color, PEEK_GLOW_DURATION)
+		return
 	reveal.show_private_reveal(title, revealed_cards, target)
 
 ## 其他玩家查看某张牌时，在被查看的牌上标蓝色光晕 1 秒（不含牌面）。
 ## 记录槽位到 _peek_glow_slots，render 重建卡牌后仍可恢复光晕。
 func _on_peek_highlight(data: Dictionary) -> void:
+	if _table3d_active and table3d != null and is_instance_valid(table3d):
+		table3d.flash_slot(int(data.get("player_id", 0)), int(data.get("slot", -1)), PEEK_GLOW_COLOR, PEEK_GLOW_DURATION)
+		return
 	var pid := int(data.get("player_id", 0))
 	var slot := int(data.get("slot", -1))
 	var key := "%d_%d" % [pid, slot]

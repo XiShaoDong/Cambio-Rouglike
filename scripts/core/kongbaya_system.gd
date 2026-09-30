@@ -27,7 +27,7 @@ func declare(sender: int, action_id := "") -> void:
 		return
 	game.kong_caller = sender
 	game.kong_called_first_turn = not bool(game.players[sender].has_acted)
-	game.final_queue = TurnSystem.build_final_queue(game.turn_order, sender)
+	game.final_queue = TurnSystem.build_final_queue(game._alive_order(), sender)
 	game.slap_open = false
 	game._add_log("%s 喊出了 Kongbaya！其他玩家各有最后一次行动。" % game.players[sender].name)
 	game._broadcast_sfx("bell")

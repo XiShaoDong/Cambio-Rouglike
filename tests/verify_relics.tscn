@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://brelics000001"]
+
+[ext_resource type="Script" path="res://tests/verify_relics.gd" id="1"]
+
+[node name="VerifyRelics" type="Node"]
+script = ExtResource("1")

@@ -1,0 +1,78 @@
+[gd_scene format=3 uid="uid://cshoppanel0001"]
+
+[ext_resource type="Script" path="res://scripts/ui/shop_panel.gd" id="1"]
+
+[node name="ShopPanel" type="Control"]
+script = ExtResource("1")
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 0
+
+[node name="Dim" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+color = Color(0, 0, 0, 0.72)
+
+[node name="Center" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+
+[node name="Panel" type="PanelContainer" parent="Center"]
+custom_minimum_size = Vector2(580, 0)
+layout_mode = 2
+
+[node name="VBox" type="VBoxContainer" parent="Center/Panel"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Title" type="Label" parent="Center/Panel/VBox"]
+layout_mode = 2
+text = "SHOP"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 26
+
+[node name="CardsLabel" type="Label" parent="Center/Panel/VBox"]
+layout_mode = 2
+text = "───  CARDS  ───"
+horizontal_alignment = 1
+theme_override_colors/font_color = Color(0.75, 0.75, 0.75, 1)
+
+[node name="CardsRow" type="HBoxContainer" parent="Center/Panel/VBox"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 16
+
+[node name="RelicsLabel" type="Label" parent="Center/Panel/VBox"]
+layout_mode = 2
+text = "───  RELICS  ───"
+horizontal_alignment = 1
+theme_override_colors/font_color = Color(0.75, 0.75, 0.75, 1)
+
+[node name="RelicsRow" type="HBoxContainer" parent="Center/Panel/VBox"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 20
+
+[node name="Bottom" type="HBoxContainer" parent="Center/Panel/VBox"]
+layout_mode = 2
+
+[node name="Currency" type="Label" parent="Center/Panel/VBox/Bottom"]
+layout_mode = 2
+text = "💰 0"
+theme_override_font_sizes/font_size = 18
+
+[node name="Spacer" type="Control" parent="Center/Panel/VBox/Bottom"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Leave" type="Button" parent="Center/Panel/VBox/Bottom"]
+layout_mode = 2
+text = "跳过购买"

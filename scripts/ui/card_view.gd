@@ -28,7 +28,6 @@ var _pending_flash: Array = []
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	pressed.connect(func(): card_clicked.emit(self))
-	back_texture.texture = load(BACK_TEXTURE)
 	_build_glow()
 	_refresh()
 	if _pending_setup:
@@ -66,13 +65,30 @@ func _refresh() -> void:
 		return
 	front.visible = is_face_up and not card_data.is_empty()
 	back.visible = not front.visible
+	back_texture.texture = _back_texture()
 	if front.visible:
 		front_texture.texture = _front_texture()
 
-## 根据 rank/suit 计算正面素材路径。
+## 当前皮肤：优先取 card_data.type（未来服务器赋值），否则用全局预览皮肤（默认 original）。
+func _current_type() -> String:
+	return str(card_data.get("type", CardAtlas.preview()))
+
+## 卡背：original 用旧素材；其余走图集（图集缺失回退旧素材）。
+func _back_texture() -> Texture2D:
+	if _current_type() != CardAtlas.ORIGINAL:
+		var atlas := CardAtlas.back(_current_type())
+		if atlas != null:
+			return atlas
+	return load(BACK_TEXTURE)
+
+## 正面：original 用旧素材；其余走图集（图集缺失回退旧素材）。
 func _front_texture() -> Texture2D:
 	var rank := str(card_data.get("rank", "?"))
 	var suit := str(card_data.get("suit", ""))
+	if _current_type() != CardAtlas.ORIGINAL:
+		var atlas := CardAtlas.face(_current_type(), suit, rank)
+		if atlas != null:
+			return atlas
 	var path := ""
 	if rank == "JOKER":
 		path = CARD_DIR + ("Joker1.png" if suit == "red" else "Joker2.png")

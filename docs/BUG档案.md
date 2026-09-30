@@ -299,6 +299,22 @@
 
 **诊断方法**：新增 `verify_kongbaya`（15/15）覆盖正常最终轮结算、重复喊叫被拒、首/非首回合 `kong_called_first_turn` 标记。
 
+## B27：出局玩家被算进分数排名（0 张 0 分恒排第一）
+
+**现象**：有玩家出局（`health==0` 观战）后，结算排名把出局玩家也算进去；因出局者手牌为空，0 张 0 分在"低分胜"规则下**恒排第一名**。
+
+**根因**（三个泄漏路径）：
+1. `ScoreSystem.calculate_ranking` 遍历传入的 `turn_order`，**不跳过出局者**——依赖调用方传入"存活序"，容易漏。
+2. `_finish_game_over_hand`（R-07 超限结算）的 `others` 用 `turn_order` 排除失败者，**未排除出局者**。
+3. 客户端 `main._open_settlement` 用 `SettlementModel.build(latest_state.players)`，快照含全部座位（含出局者空手牌），结算页因此显示出局者行且 0 分置顶。
+
+**修复**：
+1. `ScoreSystem.calculate_ranking` 遍历时跳过 `health<=0` 玩家（`if int(players[peer_id].get("health", 1)) <= 0: continue`）——根治所有服务器侧路径。
+2. `_finish_game_over_hand` 的 `others` 改走 `_alive_order()`（排除出局者）。
+3. `main._open_settlement` 对 `latest_state.players` 先 `.filter(func(p): return not p.eliminated)` 再 `SettlementModel.build`。
+
+**诊断方法**：出局后结算出现 0 分玩家置顶 → 检查排名/结算模型的输入是否含出局者；新增回归 `verify_series._test_over_hand_ranking` / `_test_settlement_model_excludes_eliminated`（36/36）。
+
 ## B23：结算页「再来一局」/「返回大厅」按钮点不到
 
 **现象**：结算动画播完，footer 出现「再来一局」「返回大厅」按钮，但点击无任何反应（按钮显示了却收不到鼠标）。
@@ -339,3 +355,113 @@
 **修复**：新增 `main._render_game_if_active()`（phase == GAME_OVER 时跳过重渲染），把 `reveal_controller`/`card_animator` 所有**动画完成回调**的 `_render_game()` 替换为它；`_on_state_updated` 进入 GAME_OVER 时先 `_clear_settlement_anim_state()`（清 `_anim_slots`/`_pending_*`/贴牌锁）再渲染；`apply_theme` 同步用守卫。
 
 **诊断方法**：结算时触发一个在途 peek 揭示 → 跑完整结算动画 → 断言所有卡牌正面朝上（`verify_settlement._test_settlement_peek_card`）。
+
+## B28：3D 环视无法移动（捕获态收不到 _unhandled_input 的 motion + 重复取景复位视角）
+
+**现象**：F10 进 3D 后移动鼠标视角完全不动，但 F10/ESC 键正常能切进切出（渲染、快照都正常）。
+
+**根因**：两个叠加 —— ① 鼠标 `MOUSE_MODE_CAPTURED` 下 `_unhandled_input` **收不到** `InputEventMouseMotion`（被 GUI 路径先消费），而键不受影响；② `Table3dCamera.frame_for_seat` 每次 `render`（状态广播）都重置 `yaw/pitch`。注意先别被"`Input.mouse_mode == CAPTURED` 判断失败"误导：实测进入 3D 时 `mouse_mode` 已是 2(CAPTURED)。
+
+**修复**：环视改走 **`main._input`**（早于 GUI 路由，保证事件必达，不受任何 Control 的 `mouse_filter` 影响）；`frame_for_seat` 同座位重复取景**不再复位**视角；方向改为 `yaw - rel.x`（鼠标右移=右转）、灵敏度 `MOUSE_SENSITIVITY`（度/像素）。
+
+**诊断方法**：`verify_table3d_mouse`（事件可达 / STOP 不吞 motion / 相机为当前 / 取景离开原点 / `look()` 改变朝向 / yaw 夹取）。排错时先看 `_input` 是否被更早的 `return` 拦掉，再确认视角是否被重复取景复位。
+
+## B29：3D 卡背只显示一部分（BoxMesh 十字 UV）
+
+**现象**：3D 卡面只显示卡背图的一部分（像被裁掉）。
+
+**根因**：Godot `BoxMesh` 的 **UV 是「十字展开」而非每面 0–1**：实测顶面四角 `V` 恒为 0，只采样贴图最上面一条线。**不是模型太小，也不是素材问题**（`back07.png` 352×512，`Image.get_used_rect()` = 整张无透明留白，比例 0.6875≈卡面 0.7）。
+
+**修复**：卡面改用 **`PlaneMesh(orientation=FACE_Y)`**（UV 完整 0–1）+ `cull_mode=CULL_DISABLED`；`Deck`（抽牌堆）也改用 `CardBlock`。点数标签用 billboard `Label3D` 悬于卡上方。
+
+**诊断方法**：打印 `BoxMesh.surface_get_arrays(0)[Mesh.ARRAY_TEX_UV]` 看各面 UV（十字展开）；`PlaneMesh FACE_Y` 四角应为 (0,0)/(1,0)/(0,1)/(1,1)。
+
+## B30：隐藏的 pending 卡仍被准星命中
+
+**现象**：3D 中准星停在牌堆位置时命中 `pending`（而不是 `deck`）；无 pending 时牌堆点不到。
+
+**根因**：`Node3D.visible=false` **不会**禁用 `CollisionObject3D`(Area3D) 的碰撞形状；隐藏的 `Pending` 与 `Deck` 同 XZ、`y` 略高，射线最近命中恒为 Pending。
+
+**修复**：`CardBlock.set_pick_enabled(on)`（直接设 `CollisionShape3D.disabled`）；`Table3dView.render` 中 `pending`/`discard` 为空即禁用拾取。
+
+**诊断方法**：`verify_table3d_interaction` 断言「默认准星指向牌堆」；隐藏 pending 后拾取不应命中它。
+
+## B31：3D 默认视角准星指向桌外 → 什么都点不到
+
+**现象**：3D 下点击完全没反应（看似"点不了任何东西"）。
+
+**根因**：`EYE_HEIGHT=3.5` + 默认俯角 20° 时，**屏幕中心射线落在桌外空旷处**（实测 `pick_center()` 返回 `{}`）；需俯到 60° 才命中自己的手牌。crosshair 是固定屏幕中心，所以默认取景下没有可点目标。
+
+**修复**：新增 `Table3dCamera.aim_pitch_deg(eye, horiz)`，`frame_for_seat` 默认俯角**对准桌心**（准星起始落在牌堆）；`Table3dLayout.PICK_HEIGHT=0.3` 加高拾取盒，薄卡斜角也易命中。
+
+**诊断方法**：实测 `view.pick_center()`；`verify_table3d_interaction` 断言默认准星指向牌堆。以后调整 `EYE_HEIGHT/CAMERA_BACK` 会经 `aim_pitch_deg` 自动重新对准。
+
+## B32：悬停对象被 render 释放 → 带类型 Object 形参报错并中断 clear_hover
+
+**现象**：运行时错误 `Table3dView.update_hover: Invalid type in function '_apply_hover' in base 'Node3D (Table3dView)'. The Object-derived class of argument 1 (previously freed) is not a subclass of the expected argument class.`
+
+**根因**：`_hover_collider` 指向的 `Area3D` 会在下一次 `render` 重建手牌时被释放；`_apply_hover(collider: Object, …)` 的**带类型形参在「传参处」就做类型检查**，函数体内的 `is_instance_valid` 根本来不及执行 → 报错并**中断 `clear_hover()`**（`_hover_collider` 未被清空，后续每帧继续报错）。
+
+**修复**：`_apply_hover` 形参**不标注类型**（传参处不做类型检查，`is_instance_valid` 兜底）；`update_hover`/`clear_hover` 先用 `is_instance_valid` 过滤出有效对象再调用。
+
+**诊断方法**：`verify_table3d_interaction` 新增「悬停对象释放后 clear_hover 安全」——把 `_hover_collider` 设为一个随即 `queue_free` 的节点，再 `clear_hover()`，断言 `_hover_collider == null`（旧代码会因报错中断导致断言失败）。
+
+## B33：3D 座位/手牌与 2D 左右、前后相反（座位角度均分 + 座位节点旋转镜像）
+
+**现象**：2D 棋盘左下是 A、右下是 J，切到 3D 后左边是 J、右边是 A；且自己手牌的槽位既向左又向后（靠近自己的一侧反而排在前四张的后两格），新加的牌向左手侧/上方走，与 2D 观感相反。
+
+**根因**：两处叠加 —— ① `Table3dLayout.seat_angles` 把 viewer 之后的座位按圆**均分**递增角度（下一个对手 → `+X` = 屏幕右），而 2D `_render_players` 是「`others[0]`→左箱、`others[1]`→右箱、`others[2]`→上箱」，故左右相反；② `table3d_view._render_seat` 直接把 `slot_grid_pos` 的列/行当作本地 `+X/+Z`，而座位节点朝向为 `a+180°`（本地 `+Z`→桌心、本地 `+X`→持有者左侧），于是每个座位的手牌被**整体旋转 180°**：列向左、行朝向自己（与 2D 的行序相反）。
+
+**修复**：纯 3D 展示层，不动 2D/服务器/协议。`seat_angles` 改为**按 2D 箱位对齐** `[0, 270, 90, 180]`（viewer 近侧 / 左 / 右 / 远，不再均分）；`slot_grid_pos` 改为**主牌 2×2 行优先（与 2D 同：0/1 上排、2/3 下排，故开局揭示的 2/3 落在下排）+ 罚牌向右追新列、每列先上（远）后下（近）**（`slot<4` → `(slot%2, slot/2)`；`slot>=4` → `(2+(slot-4)/2, (slot-4)%2)`）；`_render_seat` 取本地 `-列`×X、`(1-行)`×Z，从而列向持有者右手侧、行 0 远离/行 1 靠近，新槽位向右手侧追加（第三列 = 4 上 / 5 下）。座位节点旋转与头像位置不变。
+
+**诊断方法**：`verify_table3d_layout` 断言 `seat_angles(4)==[0,270,90,180]`、主牌 `slot_grid_pos(0..3)==(0,0)/(1,0)/(0,1)/(1,1)`、罚牌 `slot_grid_pos(4)==(2,0)`/`(5)==(2,1)`（第三列先上后下）；`verify_table3d_interaction` 的 slot0 拾取改为**从正上方垂直下看**（避免侧向射线被同排其它卡遮挡）。
+
+## B34：hover 卡牌边缘反复触发 hover/unhover（抖动）
+
+**现象**：卡牌 hover 抬起/倾斜后，准星停在卡边缘会**反复 hover→unhover 抖动**；越靠近卡边缘越明显。
+
+**根因**：hover 动画移动的是**卡牌本体**，而拾取 `Area3D` 是它的子节点 → 卡一抬起/倾斜，拾取盒随之移出准星射线 → 判定"未命中"→ 卡落回 → 又命中 → 抖动。倾斜时准星在边缘（`ray_local≈±1`）尤其容易把卡推出射线。
+
+**修复**：**拾取判定固定在基准位、不随动画移动**。① 沙盒：`CardAnimation` 在自身（不动的根）上挂一个静态 `PickArea`，`CardBlock` 自带拾取禁用；② 3D 桌面：`CardBlock` 新增 `_visual` 视觉 pivot，`Mesh`/`Glow*`/`Label` 移入其下，**拾取 `Area3D` 留在根**，hover 只动 `_visual`；`table3d_view` 另记 `_hover_slot` 跨 `render()` 重建即时重放（避免每次快照弹一下）。
+
+**诊断方法**：`verify_card_animation`「控制器基准拾取盒(不随动画)」「抬升时拾取盒不移动」；`verify_table3d_interaction`「own hover 抬起」「抬起时拾取盒不移动」。
+
+## B35：翻牌途中离开卡牌 → 永久卡在 hover 抬起态
+
+**现象**：卡牌揭示/翻牌动画进行中把准星移开，卡**一直保持抬起**不落回；再次 hover 才"重置"。
+
+**根因**：`exit_hover()` 在 `PRESS/FLIP/LAND` 期间提前 `return`（不在翻牌中途强行落回），只把 `hovering=false`；但 `_on_land_done()` 只改 `state` 而**不回正 `hover_p`** → `hover_p` 停在 1，卡保持抬起。
+
+**修复**：`_on_land_done()` 按当前 `hovering` 决定：仍悬停 → `HOVER` 并重新抬到 1；已离开 → `IDLE` 且把 `hover_p` 缓动回 0。`enter/exit_hover` 在 `PRESS/FLIP/LAND` 期间只记录 `hovering`。
+
+**诊断方法**：`verify_card_animation`「翻牌途中离开 → 落定 IDLE / hover 归零」「可重新 hover 抬起」。
+
+## B36：揭示翻牌比旧版快了一倍
+
+**现象**：把揭示从 `scale.x` 压扁换成 3D 翻转后，翻牌动作明显变快。
+
+**根因**：旧实现 `_flip_to` 是**两段**各 `FLIP_DURATION(0.25)`（合计 0.5s：压到 0 换面、再展开）；新实现 `_reveal_to` 只跑**一段** `FLIP_DURATION`（0.25s）→ 只有旧版一半时长。
+
+**修复**：`FLIP_DURATION := 0.5`（重新定义为**整段翻转时长**），并同步测试等待（`_test_reveal_flip` 的结束等待由 `FLIP_DURATION*0.5` 改回 `FLIP_DURATION`；跨 render 用例的保持时长 1.0→2.0s 以容纳更长翻转）。
+
+**诊断方法**：`verify_table3d_interaction`「揭示结束进度 1」「揭示跨 render 保持正面」按 `CardBlock.FLIP_DURATION` 等待。
+
+## B37：3D 揭示翻完后又显示一次正面 + 重新打炫光（换牌飞牌接入后暴露）
+
+**现象**：3D 下贴牌揭示（贴错=红色炫光）等翻牌完成后，卡牌会**再次**翻到正面并重新打上揭示色（"翻完又翻一次 + red 光晕"）；3D 换牌飞牌接入后尤其明显。
+
+**根因**：`table3d_view.render()` 每次重建卡牌后都会对 `_reveals` 里仍登记的揭示调用 `_apply_reveal` → `CardBlock.reveal()`，而 `reveal()` 每次**无条件 `_reveal_to(1.0)`（从进度 0 重播 0.5s 翻转）**，不是"保持已翻开的正面"。揭示窗口 1.5s 内任何一次 `render()` 都会把重建为背面的目标牌**重新翻一次**并重新上色。接入的飞牌落地 `_refresh()`（新增）会在揭示窗口内触发一次延迟 `render()`（如罚牌 deck→手牌约 0.8s 落地），使这次重播**可见**——此前只有紧跟揭示的状态广播 render（与揭示几乎同时，看不出）。
+
+**修复**：让重放**幂等/续播**。① `CardBlock.reveal(card, color, from_p := 0.0)` 新增可选起始进度；`from_p>0` 走 `_reveal_from(p)`：直接设 `_reveal_p` 并从该进度续播（`from_p>=1` 直接呈现正面、不再翻转）。② `table3d_view.reveal_slot` 记录 `start_ms`；`_apply_reveal` 按已过时间算 `p = clamp(elapsed / FLIP_DURATION, 0, 1)` 传入 → 重放时已完成则瞬现正面、进行中则续播。既有调用（默认 `from_p=0`）与沙盒不受影响。
+
+**诊断方法**：`verify_table3d_exchange`「重放后仍为正面（进度不归零）」「重放后牌面保持」「重放后炫光保持」「进行中重放进度不回零」。
+
+## B38：选中/悬停卡牌时，贴牌揭示炫光（红/绿）不显示（设计缺陷）
+
+**现象**：鼠标选中/hover 一张牌时默认边缘光晕是**浅蓝**；此时若该牌发生贴牌揭示（贴错=红、贴对=绿），**炫光不显示**（仍是浅蓝），要移动光标（离开/重新 hover）才可能看到。
+
+**根因**：`CardBlock._paint_glow()` 的优先级是 `flash > protected > actionable > hover`，**没有"揭示色"这一档**；`reveal(card, color)` 只是**直接** `_apply_glow_layers(color)` 设一次色，而 `set_hover`/`set_actionable`/`render` 重建后的重绘都会重新调用 `_paint_glow()`，把颜色覆盖回 actionable（金）/ hover（浅蓝）→ 揭示色被吞。
+
+**修复**：把揭示色提升为**一等状态** `_reveal_color`：`reveal()` 设 `_reveal_color` 后统一走 `_paint_glow()`；`_paint_glow()` 优先级改为 **`flash > reveal > protected > actionable > hover`**；`setup()` 与 `restore()` 清空 `_reveal_color`。这样揭示炫光（绿/红/蓝）不会被选中/hover/重绘覆盖。
+
+**诊断方法**：`verify_table3d_exchange`「揭示炫光覆盖 hover 浅蓝」「hover 重绘不覆盖揭示炫光」「actionable 重绘不覆盖揭示炫光」「恢复后揭示炫光清除、回到 hover 浅蓝」。

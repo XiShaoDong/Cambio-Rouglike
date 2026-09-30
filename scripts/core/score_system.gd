@@ -6,14 +6,20 @@ extends RefCounted
 
 ## 计算所有玩家排名（按分数从低到高）。
 ## players: GameState 的 players 字典；cards: 卡牌定义字典；turn_order: 玩家顺序。
-static func calculate_ranking(players: Dictionary, cards: Dictionary, turn_order: Array) -> Array:
+## joker_bonus: {seat: true} 持有 Joker 遗物者的座位集合——其手中的 JOKER 卡分值 +2。
+static func calculate_ranking(players: Dictionary, cards: Dictionary, turn_order: Array, joker_bonus: Dictionary = {}) -> Array:
 	var ranking: Array = []
 	for peer_id in turn_order:
+		if int(players[peer_id].get("health", 1)) <= 0:
+			continue  # 出局（观战）玩家不参与排名，避免 0 张 0 分恒排第一
 		var values: Array[int] = []
 		for card_id in players[peer_id].cards:
 			if str(card_id).is_empty():
 				continue
-			values.append(int(cards[card_id].value))
+			var v: int = int(cards[card_id].value)
+			if joker_bonus.has(peer_id) and str(cards[card_id].rank) == "JOKER":
+				v += 2
+			values.append(v)
 		values.sort()
 		var total := 0
 		for value in values:

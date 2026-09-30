@@ -35,6 +35,9 @@ func attempt(sender: int, target_player: int, slot: int, action_id := "") -> voi
 	if not game._valid_slot(target_player, slot):
 		game._reject(sender, game.RejectCode.INVALID_TARGET, action_id)
 		return
+	if target_player != sender and game._is_protected(target_player, slot):
+		game._reject(sender, game.RejectCode.PROTECTED, action_id)
+		return
 	var target_card: String = game.players[target_player].cards[slot]
 	# 贴牌尝试：先判对错（debug 模式不判正确性），把被贴的牌翻给所有玩家看并带对错标记
 	var correct: bool = game.debug_duel or game.cards[target_card].rank == game.slap_rank

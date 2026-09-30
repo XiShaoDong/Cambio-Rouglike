@@ -36,6 +36,7 @@ static func snapshot_for(state: Node, viewer_id: int) -> Dictionary:
 		"slap_open": bool(state.slap_open),
 		"slap_duel": _slap_duel_snapshot(state) if phase == GameState.Phase.SLAP_DUEL else {},
 		"slap_exchange_actor": int(state.slap_exchange.get("actor", 0)),
+		"q_decision": _q_decision_snapshot(state) if phase == GameState.Phase.Q_DECISION else {},
 		"suspended": _suspended(state),
 		"offline_players": _offline_players(state),
 		"kong_caller": state.kong_caller,
@@ -44,6 +45,8 @@ static func snapshot_for(state: Node, viewer_id: int) -> Dictionary:
 		"event_log": state.event_log.duplicate(),
 		"result": state.last_result.duplicate(),
 		"run": state.run_state.duplicate(),
+		"shop": _shop_snapshot(state) if int(state.phase) == GameState.Phase.SHOP else {},
+		"shop_result": state.shop_result.duplicate() if not state.shop_result.is_empty() else {},
 	}
 	if (phase == GameState.Phase.TURN_DECISION or phase == GameState.Phase.Q_DECISION) and not state.pending_draw.is_empty():
 		if viewer_id == current_seat:
@@ -97,14 +100,38 @@ static func _player_snapshot(state: Node, seat: int, reveal_all: bool, viewer_id
 				slot["card_id"] = card_id
 				if reveal_all or (seat == viewer_id and peek_slots.has(index)):
 					slot["card"] = public_card(state, card_id)
+					slot["card"]["value"] = state._relic_card_value(seat, card_id)
+		slot["protected"] = int(player.get("protected_slot", -1)) == index
 		slots.append(slot)
 	return {"id": seat, "name": player.name, "count": player.cards.size(), "health": player.health,
+		# 淘汰延后一局生效：出局当局仍视为正常参与者（本局正常结算），下一局起才标观战
+		"eliminated": int(player.get("health", 0)) <= 0 and int(state.match_number) > int(player.get("eliminated_match", -1)),
+		"currency": int(player.currency),
 		"ready": state.initial_confirmed.has(seat), "slots": slots}
 
 ## 卡牌公共表示（不含身份敏感信息之外的内容，仅用于展示/能力提示）。
 static func public_card(state: Node, card_id: String) -> Dictionary:
 	var card: Dictionary = state.cards[card_id]
 	return {"id": card.id, "rank": card.rank, "suit": card.suit, "value": card.value, "label": KongRules.display_name(card)}
+
+## Q 决策公开进度：操作者/目标槽位（与 peek_highlight 一致）+ 是否已查看自己的一张牌（不含牌面）。
+static func _q_decision_snapshot(state: Node) -> Dictionary:
+	var q: Dictionary = state.q_context
+	return {"actor": int(q.get("actor", -1)), "target": int(q.get("target", -1)),
+		"target_slot": int(q.get("target_slot", -1)), "own_viewed": bool(q.get("own_viewed", false))}
+
+## 商店快照：offers 含 id/name/price 与 sold_by（固定价购买公开），done 为已完成玩家名单。
+static func _shop_snapshot(state: Node) -> Dictionary:
+	var sold: Dictionary = state.shop.get("sold", {})
+	var offers: Array = []
+	for offer in state.shop.get("offers", []):
+		var oi: int = int(offer.index)
+		offers.append({"index": oi, "id": str(offer.relic_id), "name": str(offer.name), "price": int(offer.price),
+			"sold_by": int(sold.get(oi, -1))})
+	var done: Array = []
+	for seat in state.shop.get("done", {}):
+		done.append(int(seat))
+	return {"offers": offers, "done": done}
 
 static func _phase_name(phase: int) -> String:
 	match phase:
@@ -117,4 +144,6 @@ static func _phase_name(phase: int) -> String:
 		GameState.Phase.SLAP_EXCHANGE: return "贴中他人：交出一张牌"
 		GameState.Phase.SLAP_DUEL: return "贴牌比拼"
 		GameState.Phase.GAME_OVER: return "结算"
+		GameState.Phase.BET: return "押注"
+		GameState.Phase.SHOP: return "商店"
 	return ""

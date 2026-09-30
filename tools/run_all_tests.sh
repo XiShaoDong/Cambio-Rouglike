@@ -78,6 +78,20 @@ run_single "duel"       res://tests/verify_duel.tscn
 run_single "reconnect"  res://tests/verify_reconnect.tscn
 run_single "kongbaya"   res://tests/verify_kongbaya.tscn
 run_single "settlement" res://tests/verify_settlement.tscn
+run_single "series"     res://tests/verify_series.tscn
+run_single "economy"    res://tests/verify_economy.tscn
+run_single "shop"       res://tests/verify_shop.tscn
+run_single "relics"     res://tests/verify_relics.tscn
+run_single "card_skin"  res://tests/verify_card_skin.tscn
+run_single "table3d_layout" res://tests/verify_table3d_layout.tscn
+run_single "table3d" res://tests/verify_table3d.tscn
+run_single "table3d_mouse" res://tests/verify_table3d_mouse.tscn
+run_single "actions" res://tests/verify_actions.tscn
+run_single "stat_panel" res://tests/verify_stat_panel.tscn
+run_single "table3d_interaction" res://tests/verify_table3d_interaction.tscn
+run_single "card_animation" res://tests/verify_card_animation.tscn
+run_single "card_fly"   res://tests/verify_card_fly.tscn
+run_single "table3d_exchange" res://tests/verify_table3d_exchange.tscn
 run_single "hint"       res://tests/verify_hint.tscn
 
 if [ "$QUICK" -eq 1 ]; then

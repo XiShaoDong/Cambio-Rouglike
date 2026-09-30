@@ -1,0 +1,758 @@
+class_name Table3dView
+extends Node3D
+## 3D 桌面渲染器（Milestone 1/2）
+## 职责：静态骨架（环境/相机/桌面/座位/中央牌堆/HUD）来自场景 scenes/ui/table3d.tscn，
+## 本类负责按快照填充动态内容（每槽 CardBlock、HUD 按钮、染色/揭示/高亮）。
+## 只读 + 拾取分发：不做规则/隐私判断（已知/未知由快照 slot 是否含 "card" 决定）。
+
+const CardBlockScript := preload("res://scripts/ui/card_block.gd")
+
+const SEAT_COUNT := 4
+const HUD_OFFSET := 0.55
+const HUD_HEIGHT := 0.5
+const AVATAR_GLOW_COLOR := Color(1.0, 0.85, 0.35, 0.30)  # 当前回合高亮
+const AVATAR_DIM_COLOR := Color(0.0, 0.0, 0.0, 0.55)     # 出局/离线变暗
+const HOVER_COLOR := Color(0.7, 0.95, 1.0, 0.35)         # 准星悬停目标高亮
+const STAT_VIEWPORT_SIZE := Vector2i(320, 120)
+const STAT_PANEL_OFFSET := Vector3(0.0, 0.75, 0.0)
+const STAT_PANEL_PIXEL_SIZE := 0.005
+
+# 回合标识：当前行动者名字面板上方的红色倒三角（黑色描边，billboard，纯展示），顶部提示「看牌」
+const TURN_MARKER_COLOR := Color(0.92, 0.15, 0.15)         # 填充：红色
+const TURN_MARKER_OUTLINE_COLOR := Color(0.02, 0.02, 0.02)  # 描边：黑色（空心环，不遮红心）
+const TURN_MARKER_SIZE := Vector2(0.45, 0.34)             # 宽 × 高
+const TURN_MARKER_OUTLINE_SCALE := 1.35                   # 描边外扩
+const TURN_MARKER_OFFSET := Vector3(0.0, 1.22, 0.0)       # 紧贴名字面板上方（避免与名字重叠）
+const TURN_MARKER_HINT := "看牌"
+const TURN_MARKER_HINT_COLOR := Color(1.0, 1.0, 1.0)     # 白色
+const TURN_MARKER_HINT_OFFSET := Vector3(0.0, 0.42, 0.0)  # 三角顶部上方
+const TURN_MARKER_HIDDEN_PHASES := [0, 7, 10]             # LOBBY / GAME_OVER / SHOP 不显示
+
+var camera = null  # Table3dCamera（场景 CameraRig）
+var _bind_done := false
+var _bound := false
+var _seat_nodes: Array = []
+var _deck_label: Label3D
+var _discard_block = null  # CardBlock（场景 Center/DiscardTop）
+var _pending_block = null  # CardBlock（场景 Center/Pending）
+var _hud = null  # Table3dHud（场景 Hud）
+var _card_blocks := {}  # {seat: {slot: CardBlock}}
+var _viewer := 0
+var _hover_slot := {}
+var _hover_ray_local := Vector2.ZERO
+var _avatar_glow_mat: StandardMaterial3D = null
+var _avatar_dim_mat: StandardMaterial3D = null
+var _hover_collider: Object = null
+var _hover_mat: StandardMaterial3D = null
+var _seat_panels: Array = []      # PlayerStatPanel per slot
+var _stat_viewports: Array = []
+var _seat_markers: Array = []     # 回合标识 Node3D per slot（供外部查询）
+var _reveals := {}                # "seat_slot" -> {card, color, token}（跨 render 保持揭示/翻牌）
+var _reveal_seq := 0
+var _bell_dome: MeshInstance3D = null
+var _bell_mat: StandardMaterial3D = null
+var _deck_node: Node3D = null
+var _discard_node: Node3D = null
+var _pending_node: Node3D = null
+var _seat_node_by_id := {}     # seat -> Node3D（render 登记）
+var _slot_cards := {}          # {seat: {slot: card}}（render 登记，供 slap_gift 自身视角取牌面）
+var _anim_slots := {}          # "seat_slot" -> true（在途动画槽位，render 跳过）
+var _flyers: Array = []        # 在途 CardFly
+var _discard_hold := false     # 飞向弃牌堆期间隐藏弃牌顶
+var _last_state: Dictionary = {}
+var _last_actionable := Callable()
+
+func _ready() -> void:
+	_bind()
+
+## 解析场景节点（静态骨架）。节点名/路径是契约，改动需同步本函数与测试。
+func _bind() -> void:
+	if _bind_done:
+		return
+	_bind_done = true
+	camera = get_node_or_null("CameraRig")
+	_seat_nodes.clear()
+	for i in SEAT_COUNT:
+		_seat_nodes.append(get_node_or_null("Seats/Seat%d" % i))
+	_deck_label = get_node_or_null("Center/DeckCount")
+	_discard_block = get_node_or_null("Center/DiscardTop")
+	_pending_block = get_node_or_null("Center/Pending")
+	_hud = get_node_or_null("Hud")
+	var deck_block := get_node_or_null("Center/Deck")
+	if deck_block != null and deck_block.has_method("set_pick"):
+		deck_block.set_pick({"kind": "deck"})
+	_deck_node = deck_block
+	_discard_node = _discard_block
+	_pending_node = _pending_block
+	var bell := get_node_or_null("Center/KongBell")
+	if bell != null:
+		_bell_dome = bell.get_node_or_null("Dome")
+		if _bell_dome != null:
+			_bell_mat = _bell_dome.material_override
+		var bell_pick := bell.get_node_or_null("PickArea")
+		if bell_pick != null:
+			bell_pick.collision_layer = Table3dLayout.PICK_MASK
+			bell_pick.collision_mask = 0
+			bell_pick.set_meta("pick", {"kind": "hud", "action": "kongbaya"})
+	if camera == null or _deck_label == null or _discard_block == null \
+			or _pending_block == null or _hud == null:
+		push_error("[Table3dView] 场景缺少必需节点：CameraRig/Center/DeckCount/DiscardTop/Pending/Hud")
+		return
+	for i in _seat_nodes.size():
+		var seat = _seat_nodes[i]
+		if seat == null:
+			push_error("[Table3dView] 场景缺少 Seats/SeatN 节点")
+			return
+		var avatar = seat.get_node_or_null("Avatar")
+		var sub := SubViewport.new()
+		sub.name = "StatViewport%d" % i
+		sub.size = STAT_VIEWPORT_SIZE
+		sub.transparent_bg = true
+		sub.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+		add_child(sub)
+		var panel := PlayerStatPanel.new()
+		panel.name = "Panel"
+		sub.add_child(panel)
+		panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		var sprite := Sprite3D.new()
+		sprite.name = "StatPanel"
+		sprite.texture = sub.get_texture()
+		sprite.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		sprite.no_depth_test = true
+		sprite.pixel_size = STAT_PANEL_PIXEL_SIZE
+		sprite.position = STAT_PANEL_OFFSET
+		if avatar != null:
+			avatar.add_child(sprite)
+		var marker := _make_turn_marker(TURN_MARKER_SIZE)
+		marker.position = TURN_MARKER_OFFSET
+		marker.visible = false
+		if avatar != null:
+			avatar.add_child(marker)
+		_seat_panels.append(panel)
+		_stat_viewports.append(sub)
+		_seat_markers.append(marker)
+	_bound = true
+
+## 显示/隐藏预览（不处理点击与动画）。
+func set_active(on: bool) -> void:
+	visible = on
+	if not on:
+		_clear_exchange_anim()
+
+## 按快照全量重建（无增量、无插值）。state 为 HiddenInfo 投影出的公开快照。
+func render(state: Dictionary, actionable := Callable()) -> void:
+	_bind()
+	if not _bound:
+		return
+	if state.is_empty():
+		return
+	var players: Array = state.get("players", [])
+	if players.is_empty():
+		return
+	var viewer := int(state.get("viewer_id", 0))
+	_viewer = viewer
+	_last_state = state
+	_last_actionable = actionable
+	_seat_node_by_id.clear()
+	_slot_cards.clear()
+	var angles := Table3dLayout.seat_angles(players.size())
+	var others: Array = []
+	for p in players:
+		if int(p.id) != viewer:
+			others.append(int(p.id))
+	others.sort()
+	var seat_angle := {viewer: float(angles[0])}
+	for i in others.size():
+		seat_angle[int(others[i])] = float(angles[i + 1])
+	# 相机取景
+	if camera != null:
+		camera.frame_for_seat(float(seat_angle.get(viewer, 0.0)))
+	# 座位
+	_card_blocks.clear()
+	for i in SEAT_COUNT:
+		_seat_nodes[i].visible = false
+	var slot_i := 0
+	for p in players:
+		if slot_i >= SEAT_COUNT:
+			break
+		var node: Node3D = _seat_nodes[slot_i]
+		var seat := int(p.id)
+		var a := float(seat_angle.get(seat, 0.0))
+		_seat_node_by_id[seat] = node
+		_slot_cards[seat] = {}
+		node.visible = true
+		node.position = _seat_world(a)
+		node.rotation_degrees = Vector3(0.0, a + 180.0, 0.0)
+		_render_seat(node, p)
+		_apply_avatar(node, p, viewer, state)
+		if slot_i < _seat_panels.size():
+			_seat_panels[slot_i].set_data(str(p.get("name", "")), int(p.get("health", 0)), int(p.get("currency", 0)), int(p.get("count", 0)))
+		if actionable.is_valid():
+			for slot_index in (p.get("slots", []) as Array).size():
+				if _card_blocks.has(seat) and _card_blocks[seat].has(slot_index):
+					_card_blocks[seat][slot_index].set_actionable(bool(actionable.call(seat, slot_index)))
+		slot_i += 1
+	# 重建后重新应用在途揭示（否则状态广播会把翻牌冲回背面）
+	for key in _reveals.keys():
+		var parts: PackedStringArray = str(key).split("_")
+		if parts.size() == 2:
+			_apply_reveal(int(parts[0]), int(parts[1]))
+	# 中央
+	_deck_label.text = str(int(state.get("draw_count", 0)))
+	var discard: Dictionary = state.get("discard", {})
+	if _discard_hold:
+		_discard_block.visible = false
+		_discard_block.set_pick_enabled(false)
+	else:
+		_discard_block.visible = true
+		_discard_block.setup({"card": discard} if not discard.is_empty() else {})
+		_discard_block.set_pick({"kind": "discard"})
+		_discard_block.set_pick_enabled(not discard.is_empty())
+	var pending: Dictionary = state.get("pending", {})
+	_pending_block.visible = not pending.is_empty()
+	_pending_block.set_pick({"kind": "pending"})
+	_pending_block.set_pick_enabled(not pending.is_empty())
+	if not pending.is_empty():
+		_pending_block.setup({"card": pending} if pending.has("rank") else {})
+	# HUD 放在 viewer 座位内侧、朝向 viewer
+	var v_angle := float(seat_angle.get(viewer, 0.0))
+	var v_dir := Vector3(sin(deg_to_rad(v_angle)), 0.0, cos(deg_to_rad(v_angle)))
+	_hud.position = v_dir * (Table3dLayout.SEAT_RADIUS - HUD_OFFSET) + Vector3(0.0, HUD_HEIGHT, 0.0)
+	_hud.rotation_degrees = Vector3(0.0, v_angle + 180.0, 0.0)
+	_reapply_hover_pose()
+	_update_bell(state)
+
+## 重建后重放在途 hover（immediate，避免广播导致弹跳）。
+func _reapply_hover_pose() -> void:
+	if _hover_slot.is_empty():
+		return
+	var b = _find_block(int(_hover_slot.get("seat", -1)), int(_hover_slot.get("slot", -1)))
+	if b != null and b.hover_anim_enabled:
+		b.set_hover_pose(true, _hover_ray_local, true)
+
+func _ray_local_for_block(b, hit_pos: Vector3) -> Vector2:
+	var p: Vector3 = b.global_transform.affine_inverse() * hit_pos
+	return Vector2(
+		clampf(p.x / (Table3dLayout.BLOCK_SIZE.x * 0.5), -1.0, 1.0),
+		clampf(p.z / (Table3dLayout.BLOCK_SIZE.z * 0.5), -1.0, 1.0))
+
+func _leave_hover_slot() -> void:
+	if _hover_slot.is_empty():
+		return
+	var b = _find_block(int(_hover_slot.get("seat", -1)), int(_hover_slot.get("slot", -1)))
+	if b != null:
+		b.set_hover_pose(false, Vector2.ZERO)
+	_hover_slot = {}
+
+## 铃铛可用性：金色亮 / 暗。
+func _update_bell(state: Dictionary) -> void:
+	if _bell_mat == null:
+		return
+	var avail := ActionModel.kongbaya_available(state)
+	_bell_mat.emission_enabled = avail
+	_bell_mat.albedo_color = Color(0.96, 0.84, 0.48) if avail else Color(0.42, 0.38, 0.28)
+
+## 座位世界坐标（与相机基准同一角度约定）。
+func _seat_world(angle_deg: float) -> Vector3:
+	var a := deg_to_rad(angle_deg)
+	return Vector3(sin(a), 0.0, cos(a)) * Table3dLayout.SEAT_RADIUS
+
+## 重建单个座位的方块与标签。
+func _render_seat(node: Node3D, p: Dictionary) -> void:
+	var hand: Node3D = node.get_node("HandAnchor")
+	for child in hand.get_children():
+		hand.remove_child(child)
+		child.queue_free()
+	var slots: Array = p.get("slots", [])
+	for i in slots.size():
+		var slot: Dictionary = slots[i]
+		# 登记槽位牌面（含被动画隐藏的槽，供 slap_gift 自身视角取牌面）
+		_slot_cards[int(p.id)][i] = slot.get("card", {})
+		# 在途动画槽位跳过（等价 2D mark_anim_slot）
+		if _has_anim_slot(int(p.id), i):
+			continue
+		# 空槽（贴牌成功/交出后卡片被清掉）不渲染 → 卡牌消失（与 2D 空槽透明占位一致）
+		if str(slot.get("card_id", "")).is_empty() and not slot.has("card"):
+			continue
+		var block = CardBlockScript.new()
+		# 卡牌平铺桌面（对齐 2D 观感）：见 _slot_local。
+		block.position = _slot_local(i).origin
+		hand.add_child(block)
+		block.setup(slot)
+		block.set_pick({"kind": "slot", "seat": int(p.id), "slot": i})
+		block.hover_anim_enabled = int(p.id) == _viewer
+		if not _card_blocks.has(int(p.id)):
+			_card_blocks[int(p.id)] = {}
+		_card_blocks[int(p.id)][i] = block
+
+## 角色（场景 Avatar/Head+Body）：放到「眼睛」位置（径向外移 CAMERA_BACK、头心抬到
+## EYE_HEIGHT，相机即在头心）；隐藏自己脑袋（身体在其正下方）；出局/离线变暗、当前回合金色高亮。
+func _apply_avatar(seat_node: Node3D, p: Dictionary, viewer: int, state: Dictionary) -> void:
+	var avatar := seat_node.get_node_or_null("Avatar")
+	if avatar == null:
+		return
+	var eye := 1.5
+	var back := 0.0
+	if camera != null:
+		var eye_v = camera.get("EYE_HEIGHT")
+		if eye_v != null:
+			eye = float(eye_v)
+		var back_v = camera.get("CAMERA_BACK")
+		if back_v != null:
+			back = float(back_v)
+	avatar.position = Vector3(0.0, eye, -back)
+	var head := avatar.get_node_or_null("Head")
+	var body := avatar.get_node_or_null("Body")
+	var seat := int(p.id)
+	# 自己那席整个角色隐藏（脑袋+身体都不出现在自己视角）
+	avatar.visible = seat != viewer
+	if head != null:
+		head.visible = true
+	var overlay: StandardMaterial3D = null
+	var offline: Array = state.get("offline_players", [])
+	if bool(p.get("eliminated", false)) or offline.has(seat):
+		overlay = _avatar_dim()
+	elif seat == int(state.get("current_player", -1)):
+		overlay = _avatar_glow()
+	if head != null:
+		head.material_overlay = overlay
+	if body != null:
+		body.material_overlay = overlay
+	# 回合标识：仅当前行动者、且自己那席因角色隐藏而不显示
+	var marker := avatar.get_node_or_null("TurnMarker")
+	if marker != null:
+		marker.visible = avatar.visible and _is_current_turn(state, seat)
+
+func _avatar_glow() -> StandardMaterial3D:
+	if _avatar_glow_mat == null:
+		_avatar_glow_mat = _make_overlay(AVATAR_GLOW_COLOR)
+	return _avatar_glow_mat
+
+func _avatar_dim() -> StandardMaterial3D:
+	if _avatar_dim_mat == null:
+		_avatar_dim_mat = _make_overlay(AVATAR_DIM_COLOR)
+	return _avatar_dim_mat
+
+func _make_overlay(color: Color) -> StandardMaterial3D:
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = color
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	return mat
+
+## 是否当前行动者的回合（LOBBY/GAME_OVER/SHOP 不显示）。
+func _is_current_turn(state: Dictionary, seat: int) -> bool:
+	if seat != int(state.get("current_player", -1)):
+		return false
+	return not TURN_MARKER_HIDDEN_PHASES.has(int(state.get("phase", -1)))
+
+## 倒三角网格（XY 平面，apex 朝下），配合 billboard 始终面向相机。
+static func _triangle_mesh(size: Vector2) -> ArrayMesh:
+	var w := size.x
+	var h := size.y
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = PackedVector3Array([
+		Vector3(-w * 0.5, h * 0.5, 0.0),
+		Vector3(w * 0.5, h * 0.5, 0.0),
+		Vector3(0.0, -h * 0.5, 0.0),
+	])
+	arrays[Mesh.ARRAY_TEX_UV] = PackedVector2Array([
+		Vector2(0.0, 0.0), Vector2(1.0, 0.0), Vector2(0.5, 1.0),
+	])
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
+
+## 倒三角空心边环（外三角 - 内三角），用于「黑边不遮红心」。
+static func _triangle_ring_mesh(size: Vector2, scale: float) -> ArrayMesh:
+	var hw := size.x * 0.5
+	var hh := size.y * 0.5
+	var ow := hw * scale
+	var oh := hh * scale
+	var inner := [Vector3(-hw, hh, 0.0), Vector3(hw, hh, 0.0), Vector3(0.0, -hh, 0.0)]
+	var outer := [Vector3(-ow, oh, 0.0), Vector3(ow, oh, 0.0), Vector3(0.0, -oh, 0.0)]
+	var verts := PackedVector3Array()
+	for k in 3:
+		var n := (k + 1) % 3
+		verts.push_back(outer[k]); verts.push_back(outer[n]); verts.push_back(inner[n])
+		verts.push_back(outer[k]); verts.push_back(inner[n]); verts.push_back(inner[k])
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
+
+## 回合标识：加粗描边的黑色倒三角 + 顶部「看牌」提示（各自 billboard）。
+func _make_turn_marker(size: Vector2) -> Node3D:
+	var root := Node3D.new()
+	root.name = "TurnMarker"
+	var outline := MeshInstance3D.new()
+	outline.name = "Outline"
+	outline.mesh = _triangle_ring_mesh(size, TURN_MARKER_OUTLINE_SCALE)
+	outline.material_override = _marker_material(TURN_MARKER_OUTLINE_COLOR)
+	root.add_child(outline)
+	var fill := MeshInstance3D.new()
+	fill.name = "Fill"
+	fill.mesh = _triangle_mesh(size)
+	fill.material_override = _marker_material(TURN_MARKER_COLOR)
+	root.add_child(fill)
+	var hint := Label3D.new()
+	hint.name = "LookHint"
+	hint.text = TURN_MARKER_HINT
+	hint.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	hint.no_depth_test = true
+	hint.pixel_size = 0.002
+	hint.font_size = 96
+	hint.modulate = TURN_MARKER_HINT_COLOR
+	hint.position = TURN_MARKER_HINT_OFFSET
+	root.add_child(hint)
+	return root
+
+func _marker_material(color: Color) -> StandardMaterial3D:
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = color
+	mat.emission_enabled = true
+	mat.emission = color
+	mat.emission_energy_multiplier = 1.0
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	mat.no_depth_test = true
+	return mat
+
+## 屏幕中心射线拾取（准星）。
+func pick_center() -> Dictionary:
+	if camera == null:
+		return {}
+	var center := get_viewport().get_visible_rect().size * 0.5
+	return Table3dPicker.pick(camera.camera_node(), get_world_3d(), center)
+
+## 瞬时揭示某槽位（水平翻到正面，dur 秒后翻回）。槽位不存在则忽略；
+## 记录在 `_reveals`，`render` 重建卡牌后会重新应用（否则状态广播会把翻牌冲掉）。
+func reveal_slot(seat_id: int, slot: int, card: Dictionary, color := Color(0, 0, 0, 0), dur := 1.5) -> void:
+	var key := "%d_%d" % [seat_id, slot]
+	_reveal_seq += 1
+	var token := _reveal_seq
+	_reveals[key] = {"card": card, "color": color, "token": token, "start_ms": Time.get_ticks_msec()}
+	_apply_reveal(seat_id, slot)
+	get_tree().create_timer(dur).timeout.connect(func():
+		if not _reveals.has(key):
+			return
+		if int(_reveals[key].get("token", -1)) != token:
+			return   # 已被更新的揭示取代
+		_reveals.erase(key)
+		var b = _find_block(seat_id, slot)
+		if b != null:
+			b.restore())
+
+## 对当前（可能刚重建的）卡牌应用登记中的揭示。
+## 按揭示已过时间计算翻转进度：重放时**续播**而非从 0 重播（已完成则直接呈现正面、不再翻），
+## 避免状态广播 / 飞牌落地刷新把揭示重播一次（表现为翻完又显示正面 + 重新打炫光，见 B37）。
+func _apply_reveal(seat_id: int, slot: int) -> void:
+	var key := "%d_%d" % [seat_id, slot]
+	if not _reveals.has(key):
+		return
+	var r: Dictionary = _reveals[key]
+	var b = _find_block(seat_id, slot)
+	if b == null:
+		return
+	var elapsed := (Time.get_ticks_msec() - int(r.get("start_ms", 0))) / 1000.0
+	var p := clampf(elapsed / CardBlock.FLIP_DURATION, 0.0, 1.0)
+	(b as CardBlock).reveal(r.get("card", {}), r.get("color", Color(0, 0, 0, 0)), p)
+
+## 短暂染色提醒（不翻面）。
+func flash_slot(seat_id: int, slot: int, color: Color, dur: float) -> void:
+	var block = _find_block(seat_id, slot)
+	if block != null:
+		block.flash(color, dur)
+
+## 设置 3D 操作面板按钮（[{text, action, enabled}]）。
+func set_hud_buttons(buttons: Array) -> void:
+	_bind()
+	if _bound:
+		_hud.set_buttons(buttons)
+
+func _find_block(seat_id: int, slot: int):
+	if not _card_blocks.has(seat_id) or not _card_blocks[seat_id].has(slot):
+		return null
+	var block = _card_blocks[seat_id][slot]
+	return block if is_instance_valid(block) else null
+
+## 每帧准星悬停：命中可点对象时高亮它，返回是否命中。命中目标未变则不重复操作。
+func update_hover() -> bool:
+	if camera == null:
+		return false
+	var center := get_viewport().get_visible_rect().size * 0.5
+	var hit := Table3dPicker.pick_hit(camera.camera_node(), get_world_3d(), center)
+	var collider = hit.get("collider")
+	# 上一次悬停对象可能已被 render 重建释放 → 先判有效（避免传已释放对象触发类型错误）
+	var prev = _hover_collider if (_hover_collider != null and is_instance_valid(_hover_collider)) else null
+	if collider != prev:
+		_apply_hover(prev, false)
+		_hover_collider = collider
+		_apply_hover(collider, true)
+	_update_hover_pose(hit)
+	return collider != null
+
+## 仅 viewer 自己手牌槽驱动抬起/倾斜；其他 kind/座位不动 pose。
+func _update_hover_pose(hit: Dictionary) -> void:
+	var meta: Dictionary = hit.get("pick", {})
+	var is_slot := str(meta.get("kind", "")) == "slot"
+	if not is_slot:
+		_leave_hover_slot()
+		return
+	var seat := int(meta.get("seat", -1))
+	var slot := int(meta.get("slot", -1))
+	var b = _find_block(seat, slot)
+	if b == null or not b.hover_anim_enabled:
+		_leave_hover_slot()
+		return
+	var rl := _ray_local_for_block(b, hit.get("position", Vector3.ZERO))
+	_hover_ray_local = rl
+	var same := not _hover_slot.is_empty() and int(_hover_slot.get("seat", -1)) == seat and int(_hover_slot.get("slot", -1)) == slot
+	if same:
+		b.set_hover_pose(true, rl)
+	else:
+		_leave_hover_slot()
+		_hover_slot = {"seat": seat, "slot": slot}
+		b.set_hover_pose(true, rl, false)
+
+## 清除悬停高亮。
+func clear_hover() -> void:
+	var prev = _hover_collider if (_hover_collider != null and is_instance_valid(_hover_collider)) else null
+	_apply_hover(prev, false)
+	_hover_collider = null
+	_leave_hover_slot()
+
+## 高亮/取消：作用于该拾取对象父节点下所有 MeshInstance3D。
+## 形参不标注类型：可能是已释放对象（传参处不做类型检查，函数内 is_instance_valid 兜底）。
+func _apply_hover(collider, on: bool) -> void:
+	if collider == null or not is_instance_valid(collider):
+		return
+	var parent = (collider as Node).get_parent()
+	if parent == null or not is_instance_valid(parent):
+		return
+	# 卡牌类（CardBlock）走边缘发光，与状态高亮同一套；其余（HUD 按钮等）用叠加薄色。
+	if parent.has_method("set_hover"):
+		parent.call("set_hover", on, HOVER_COLOR)
+		return
+	var meshes: Array = []
+	_collect_meshes(parent, meshes)
+	for m in meshes:
+		m.material_overlay = _hover_material() if on else null
+
+func _collect_meshes(node: Node, out: Array) -> void:
+	if node is MeshInstance3D:
+		out.append(node)
+	for child in node.get_children():
+		_collect_meshes(child, out)
+
+func _hover_material() -> StandardMaterial3D:
+	if _hover_mat == null:
+		var mat := StandardMaterial3D.new()
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.albedo_color = HOVER_COLOR
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+		_hover_mat = mat
+	return _hover_mat
+
+## ===== 3D 换牌飞牌（card_exchange_animated 接入）=====
+
+## 播放一条交换动画事件。3D 分支入口；2D 逻辑不受影响。
+func animate_exchange(data: Dictionary) -> void:
+	_bind()
+	if not _bound or _last_state.is_empty():
+		return
+	match str(data.get("kind", "")):
+		"replace":
+			_anim_replace(data)
+		"swap":
+			_anim_swap(data)
+		"discard":
+			_anim_discard(data)
+		"slap_penalty":
+			_anim_slap_penalty(data)
+		"slap_resolved":
+			_anim_slap_resolved(data)
+		"slap_gift":
+			_anim_slap_gift(data)
+
+## 槽位世界变换（未渲染时按布局计算）。
+func slot_xform(seat_id: int, slot: int) -> Transform3D:
+	var b = _find_block(seat_id, slot)
+	if b != null and is_instance_valid(b):
+		return (b as Node3D).global_transform
+	var node: Node3D = _seat_node_by_id.get(seat_id)
+	if node == null or not is_instance_valid(node):
+		return Transform3D.IDENTITY
+	return node.global_transform * _slot_local(slot)
+
+## 座位本地槽位变换（与 _render_seat 定位一致：列 -X、行 (1-行) +Z）。
+func _slot_local(slot: int) -> Transform3D:
+	var grid := Table3dLayout.slot_grid_pos(slot)
+	return Transform3D(Basis.IDENTITY, Vector3(
+		-grid.x * (Table3dLayout.BLOCK_SIZE.x + Table3dLayout.BLOCK_GAP.x),
+		0.0,
+		(1.0 - grid.y) * (Table3dLayout.BLOCK_SIZE.z + Table3dLayout.BLOCK_GAP.z)))
+
+## 中央节点世界变换（"deck" | "discard" | "pending"）。
+func center_xform(kind: String) -> Transform3D:
+	var node: Node3D = null
+	match kind:
+		"deck":
+			node = _deck_node
+		"discard":
+			node = _discard_node
+		"pending":
+			node = _pending_node
+	if node == null or not is_instance_valid(node):
+		return Transform3D.IDENTITY
+	return node.global_transform
+
+## 槽位当前显示面是否正面（未知牌为 false）。
+func slot_face_up(seat_id: int, slot: int) -> bool:
+	var b = _find_block(seat_id, slot)
+	return b != null and is_instance_valid(b) and (b as CardBlock).has_face_texture()
+
+## 槽位牌面数据（render 登记；空/未知返回 {}）。
+func slot_card(seat_id: int, slot: int) -> Dictionary:
+	if _slot_cards.has(seat_id) and _slot_cards[seat_id].has(slot):
+		return _slot_cards[seat_id][slot]
+	return {}
+
+func _mark_anim_slot(seat: int, slot: int) -> void:
+	_anim_slots["%d_%d" % [seat, slot]] = true
+
+func _unmark_anim_slot(seat: int, slot: int) -> void:
+	_anim_slots.erase("%d_%d" % [seat, slot])
+
+func _has_anim_slot(seat: int, slot: int) -> bool:
+	return _anim_slots.has("%d_%d" % [seat, slot])
+
+## 生成一张飞牌；on_land 在落地（finished）时先于重渲染调用。
+func _spawn_fly(from: Transform3D, to: Transform3D, data: Dictionary,
+		start_up: bool, end_up: bool, on_land := Callable()) -> CardFly:
+	var f := CardFly.new()
+	add_child(f)
+	f.finished.connect(func():
+		_flyers = _live_flyers()
+		if on_land.is_valid():
+			on_land.call()
+		_refresh())
+	f.play(from, to, data, start_up, end_up)
+	_flyers.append(f)
+	return f
+
+func _live_flyers() -> Array:
+	var out: Array = []
+	for f in _flyers:
+		if is_instance_valid(f) and (f as CardFly).is_flying():
+			out.append(f)
+	return out
+
+## 用最近一次 state 重渲染（落地恢复显示）。
+func _refresh() -> void:
+	if _last_state.is_empty():
+		return
+	render(_last_state, _last_actionable)
+
+## 切出 3D 时清空在途飞牌与标记（防残留隐藏槽）。
+func _clear_exchange_anim() -> void:
+	for f in _flyers:
+		if is_instance_valid(f):
+			f.queue_free()
+	_flyers.clear()
+	_anim_slots.clear()
+	_discard_hold = false
+
+func _anim_replace(data: Dictionary) -> void:
+	var actor := int(data.get("actor", 0))
+	var slot := int(data.get("slot", -1))
+	if slot < 0:
+		return
+	var slot_up := slot_face_up(actor, slot)
+	var from_x := slot_xform(actor, slot)
+	_pending_block.visible = false
+	_mark_anim_slot(actor, slot)
+	_discard_hold = true
+	# 旧牌 → 弃牌顶
+	_spawn_fly(from_x, center_xform("discard"), data.get("old_data", {}), slot_up, true, func():
+		_discard_hold = false)
+	# 大牌 → 槽位（背面/正面按 viewer 是否行动者）
+	_spawn_fly(center_xform("pending"), from_x, data.get("big_data", {}), _viewer == actor, slot_up, func():
+		_unmark_anim_slot(actor, slot))
+
+func _anim_swap(data: Dictionary) -> void:
+	var a := int(data.get("a", 0))
+	var a_slot := int(data.get("a_slot", -1))
+	var b := int(data.get("b", 0))
+	var b_slot := int(data.get("b_slot", -1))
+	if a_slot < 0 or b_slot < 0:
+		return
+	var a_up := slot_face_up(a, a_slot)
+	var b_up := slot_face_up(b, b_slot)
+	var xa := slot_xform(a, a_slot)
+	var xb := slot_xform(b, b_slot)
+	_mark_anim_slot(a, a_slot)
+	_mark_anim_slot(b, b_slot)
+	var counter := {"n": 2}
+	var done := func():
+		counter["n"] = int(counter["n"]) - 1
+		if int(counter["n"]) <= 0:
+			_unmark_anim_slot(a, a_slot)
+			_unmark_anim_slot(b, b_slot)
+	_spawn_fly(xa, xb, data.get("a_data", {}), a_up, b_up, done)
+	_spawn_fly(xb, xa, data.get("b_data", {}), b_up, a_up, done)
+
+func _anim_discard(data: Dictionary) -> void:
+	var actor := int(data.get("actor", 0))
+	_pending_block.visible = false
+	_discard_hold = true
+	_spawn_fly(center_xform("pending"), center_xform("discard"), data.get("big_data", {}),
+		_viewer == actor, true, func():
+			_discard_hold = false)
+
+func _anim_slap_penalty(data: Dictionary) -> void:
+	var peer := int(data.get("peer", 0))
+	var slot := int(data.get("slot", -1))
+	if slot < 0:
+		return
+	var to_x := slot_xform(peer, slot)
+	_mark_anim_slot(peer, slot)
+	# 罚牌不含牌面 → 背面飞入
+	_spawn_fly(center_xform("deck"), to_x, {}, false, false, func():
+		_unmark_anim_slot(peer, slot))
+
+func _anim_slap_resolved(data: Dictionary) -> void:
+	var target := int(data.get("target", 0))
+	var slot := int(data.get("target_slot", -1))
+	if slot < 0:
+		return
+	var from_x := slot_xform(target, slot)
+	_mark_anim_slot(target, slot)
+	_discard_hold = true
+	# 被贴的牌已公开 → 正面飞去弃牌堆
+	_spawn_fly(from_x, center_xform("discard"), data.get("card", {}), true, true, func():
+		_unmark_anim_slot(target, slot)
+		_discard_hold = false)
+
+func _anim_slap_gift(data: Dictionary) -> void:
+	var actor := int(data.get("actor", 0))
+	var own_slot := int(data.get("own_slot", -1))
+	var target := int(data.get("target", 0))
+	var target_slot := int(data.get("target_slot", -1))
+	if own_slot < 0 or target_slot < 0:
+		return
+	var face_up := _viewer == actor
+	var card: Dictionary = slot_card(actor, own_slot) if face_up else {}
+	var from_x := slot_xform(actor, own_slot)
+	var to_x := slot_xform(target, target_slot)
+	_mark_anim_slot(actor, own_slot)
+	_mark_anim_slot(target, target_slot)
+	_spawn_fly(from_x, to_x, card, face_up, face_up, func():
+		_unmark_anim_slot(actor, own_slot)
+		_unmark_anim_slot(target, target_slot))

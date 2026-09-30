@@ -17,7 +17,7 @@ signal registered_token_received(token: String)
 signal resume_hand_received(hand: Array, pending: Dictionary)
 signal sfx_played(kind: String)
 
-enum Phase { LOBBY, INITIAL_PEEK, TURN_DRAW, TURN_DECISION, Q_DECISION, SLAP_WINDOW, SLAP_EXCHANGE, GAME_OVER, SLAP_DUEL }
+enum Phase { LOBBY, INITIAL_PEEK, TURN_DRAW, TURN_DECISION, Q_DECISION, SLAP_WINDOW, SLAP_EXCHANGE, GAME_OVER, SLAP_DUEL, BET, SHOP }
 
 const PROTOCOL_VERSION := 1
 const MAX_ACTION_HISTORY := 64
@@ -44,6 +44,10 @@ enum RejectCode {
 	ALREADY_STOPPED,
 	MATCH_SUSPENDED,
 	INVALID_TOKEN,
+	SPECTATOR,
+	INVALID_AMOUNT,
+	INVALID_OFFER,
+	PROTECTED,
 }
 
 var phase: Phase = Phase.LOBBY
@@ -70,6 +74,8 @@ var last_result: Dictionary = {}
 var event_log: Array[String] = []
 var run_state: Dictionary = KongRules.new_default_run()
 var match_number := 1
+var shop: Dictionary = {}        # {offers:[{index,relic_id,name,price}], sold:{offer:seat}, done:{seat:true}}（固定价购买）
+var shop_result: Dictionary = {} # 最近一次商店裁决 {offer_index:{relic_id,name,winner,amount}}；公开
 var match_id := ""
 var state_revision := 0
 var action_history: Dictionary = {}
@@ -83,6 +89,7 @@ var slap: SlapSystem
 var kongbaya: KongbayaSystem
 var slap_collect_timer := Timer.new()
 var slap_duel_timer := Timer.new()
+var series_timer := Timer.new()
 
 func _ready() -> void:
 	peek = PeekSystem.new(self)
@@ -96,6 +103,9 @@ func _ready() -> void:
 	add_child(slap_duel_timer)
 	slap_collect_timer.timeout.connect(slap.collection_timeout)
 	slap_duel_timer.timeout.connect(slap.duel_timeout)
+	series_timer.one_shot = true
+	add_child(series_timer)
+	series_timer.timeout.connect(_on_series_auto_advance)
 	Network.host_started.connect(_on_host_started)
 	Network.joined_server.connect(_on_joined_server)
 	Network.peer_left.connect(_on_peer_left)
@@ -153,8 +163,11 @@ func _reset_match() -> void:
 	slap_duel.clear()
 	slap_collect_timer.stop()
 	slap_duel_timer.stop()
+	series_timer.stop()
 	last_result.clear()
 	event_log.clear()
+	shop = {}
+	shop_result = {}
 	run_state = KongRules.new_default_run()
 	match_number = 1
 	match_id = ""
@@ -188,6 +201,10 @@ func _reject_code_message(code: int) -> String:
 		RejectCode.ALREADY_STOPPED: return "你已经在比拼中按过 STOP。"
 		RejectCode.MATCH_SUSPENDED: return "对局已暂停（有玩家离线），等待重连或房主处理。"
 		RejectCode.INVALID_TOKEN: return "重连凭据无效或座位已被移除。"
+		RejectCode.SPECTATOR: return "你已出局，只能观战。"
+		RejectCode.INVALID_AMOUNT: return "押注金额不合法（入场 %d，+%d 递增，上限 %d）。" % [KongRules.MIN_BET, KongRules.BET_STEP, KongRules.MAX_BET]
+		RejectCode.INVALID_OFFER: return "该遗物不在本店货架中。"
+		RejectCode.PROTECTED: return "该格受防守护盾保护，不能指定。"
 	return "操作被拒绝。"
 
 ## 对局是否处于条件暂停（当前行动者离线 / 开局记忆阶段有人离线）。
@@ -195,8 +212,8 @@ func _reject_code_message(code: int) -> String:
 func _is_suspended() -> bool:
 	if players.is_empty():
 		return false
-	if phase == Phase.INITIAL_PEEK:
-		for seat in turn_order:
+	if phase == Phase.INITIAL_PEEK or phase == Phase.BET or phase == Phase.SHOP:
+		for seat in _alive_order():
 			if bool(players[seat].get("offline", false)):
 				return true
 		return false
@@ -245,7 +262,11 @@ func _add_player(peer_id: int, display_name: String) -> void:
 		"cards": [],
 		"has_acted": false,
 		"offline": false,
-		"health": int(run_state.get("health", 3)),
+		"health": int(run_state.get("health", KongRules.START_HEALTH)),
+		"eliminated_match": -1,
+		"currency": KongRules.START_CURRENCY,
+		"wins": 0,
+		"protected_slot": -1,
 	}
 	turn_order.append(seat)
 	# 注册时把 token 定向发给该玩家，用于断线后重连认领座位
@@ -274,6 +295,64 @@ func _peer_to_seat(peer_id: int) -> int:
 		if int(players[seat].get("peer_id", 0)) == peer_id:
 			return int(seat)
 	return -1
+
+## 玩家是否存活（health=灵魂币>0；本里程碑沿用现有 health 扣血机制，economy 里程碑再替换）。
+func _is_alive(seat: int) -> bool:
+	return players.has(seat) and int(players[seat].get("health", 0)) > 0
+
+## 存活座位按 turn_order 顺序。
+func _alive_order() -> Array[int]:
+	var arr: Array[int] = []
+	for seat in turn_order:
+		if _is_alive(int(seat)):
+			arr.append(int(seat))
+	return arr
+
+func _alive_count() -> int:
+	return _alive_order().size()
+
+## 局开始遗物效果：防守护盾随机保护持有者一格并消耗（一局后失效）。
+func _apply_match_start_relics() -> void:
+	for seat in _alive_order():
+		players[seat].protected_slot = -1
+		if _is_relic_owner(seat, Relics.GUARD_SHIELD_ID):
+			var count: int = players[seat].cards.size()
+			players[seat].protected_slot = randi() % maxi(1, count)
+			run_state["relics"].erase(Relics.GUARD_SHIELD_ID)
+			run_state.get("relic_owners", {}).erase(Relics.GUARD_SHIELD_ID)
+			_add_log("%s 的防守护盾随机保护了第 %d 格。" % [players[seat].name, players[seat].protected_slot])
+
+## seat 的 slot 是否受防守护盾保护。
+func _is_protected(seat: int, slot: int) -> bool:
+	return players.has(seat) and int(players[seat].get("protected_slot", -1)) == slot
+
+## 是否持有某遗物（relics 为共享字典，持有者记录在 run_state.relic_owners）。
+func _is_relic_owner(seat: int, relic_id: String) -> bool:
+	if not run_state.get("relics", {}).has(relic_id):
+		return false
+	return int(run_state.get("relic_owners", {}).get(relic_id, -1)) == seat
+
+## 结算/揭示统一分值：持有 Joker 遗物者的 JOKER 卡 +2（已变换后不再是 JOKER，不适用）。
+func _relic_card_value(seat: int, card_id: String) -> int:
+	var v: int = int(cards[card_id].value)
+	if str(cards[card_id].rank) == "JOKER" and _is_relic_owner(seat, Relics.JOKER_TRANSFORM_ID) and _is_alive(seat):
+		v += 2
+	return v
+
+## Joker 遗物对每个持有者的结算加分映射（供 ScoreSystem.calculate_ranking）。
+func _joker_bonus_map() -> Dictionary:
+	var joker_bonus: Dictionary = {}
+	for seat in _alive_order():
+		if _is_relic_owner(int(seat), Relics.JOKER_TRANSFORM_ID):
+			joker_bonus[int(seat)] = true
+	return joker_bonus
+
+## 已出局（观战）玩家操作拦截：返回 true 表示已拒绝。
+func _guard_spectator(sender: int, action_id: String) -> bool:
+	if not _is_alive(sender):
+		_reject(sender, RejectCode.SPECTATOR, action_id)
+		return true
+	return false
 
 @rpc("any_peer", "reliable")
 func request_register_player(display_name: String, protocol_version: int = KongGameState.PROTOCOL_VERSION) -> void:
@@ -345,18 +424,18 @@ func _send_resume_hand(seat: int) -> void:
 	else:
 		receive_resume_hand.rpc_id(peer, hand, pending)
 
-func request_start_match() -> void:
+func request_start_match(match_limit := 0) -> void:
 	if multiplayer.is_server():
-		_server_start_match(_peer_to_seat(1))
+		_server_start_match(_peer_to_seat(1), match_limit)
 	else:
-		server_start_match.rpc_id(1)
+		server_start_match.rpc_id(1, match_limit)
 
 @rpc("any_peer", "reliable")
-func server_start_match() -> void:
+func server_start_match(match_limit: int) -> void:
 	if multiplayer.is_server():
-		_server_start_match(_peer_to_seat(multiplayer.get_remote_sender_id()))
+		_server_start_match(_peer_to_seat(multiplayer.get_remote_sender_id()), match_limit)
 
-func _server_start_match(sender: int) -> void:
+func _server_start_match(sender: int, match_limit := 0) -> void:
 	if phase != Phase.LOBBY:
 		_reject(sender, RejectCode.ROOM_NOT_OPEN)
 		return
@@ -366,6 +445,8 @@ func _server_start_match(sender: int) -> void:
 	if players.size() < KongRules.MIN_PLAYERS:
 		_reject(sender, RejectCode.NOT_ENOUGH_PLAYERS)
 		return
+	var limit: int = match_limit if match_limit >= KongRules.MIN_MATCH_LIMIT else KongRules.DEFAULT_MATCH_LIMIT
+	run_state["match_limit"] = clampi(limit, KongRules.MIN_MATCH_LIMIT, KongRules.MAX_MATCH_LIMIT)
 	_deal_new_match()
 
 func _deal_new_match() -> void:
@@ -386,12 +467,15 @@ func _deal_new_match() -> void:
 	slap_duel.clear()
 	slap_collect_timer.stop()
 	slap_duel_timer.stop()
+	series_timer.stop()
 	event_log.clear()
 	for seat in turn_order:
 		players[seat].cards.clear()
 		players[seat].has_acted = false
+	for seat in _alive_order():
 		for _slot in KongRules.HAND_SIZE:
 			players[seat].cards.append(_draw_from_deck())
+	_apply_match_start_relics()
 	phase = Phase.INITIAL_PEEK
 	initial_confirmed.clear()
 	last_result.clear()
@@ -414,12 +498,19 @@ func _server_next_match(sender: int, action_id := "") -> void:
 	if phase != Phase.GAME_OVER:
 		_reject(sender, RejectCode.INVALID_PHASE, action_id)
 		return
+	if _series_finished():
+		_reject(sender, RejectCode.INVALID_PHASE, action_id)
+		return
 	if sender != 0:
 		_reject(sender, RejectCode.NOT_HOST, action_id)
 		return
 	if players.size() < KongRules.MIN_PLAYERS:
 		_reject(sender, RejectCode.NOT_ENOUGH_PLAYERS, action_id)
 		return
+	_deal_next_match()
+
+## 进入下一局（商店裁决 / 再来一局共用）。match_number 递增并开新局。
+func _deal_next_match() -> void:
 	match_number += 1
 	_deal_new_match()
 
@@ -470,16 +561,19 @@ func _server_initial_ready(sender: int) -> void:
 		return
 	if _guard_suspended(sender, ""):
 		return
+	if _guard_spectator(sender, ""):
+		return
 	if not players.has(sender):
 		return
 	if initial_confirmed.has(sender):
 		_reject(sender, RejectCode.DUPLICATE_OR_EXPIRED_ACTION)
 		return
 	initial_confirmed[sender] = true
-	if initial_confirmed.size() < players.size():
+	if initial_confirmed.size() < _alive_count():
 		_broadcast_state()
 		return
-	current_player_id = turn_order[0]
+	# 记忆确认后直接开始正式回合（押注阶段已取消，R-12）
+	current_player_id = _alive_order()[0]
 	phase = Phase.TURN_DRAW
 	_add_log("轮到 %s 行动。" % players[current_player_id].name)
 	_broadcast_state()
@@ -500,6 +594,8 @@ func _server_take(sender: int, source: String, action_id := "") -> void:
 		_reject(sender, RejectCode.INVALID_PHASE, action_id)
 		return
 	if _guard_suspended(sender, action_id):
+		return
+	if _guard_spectator(sender, action_id):
 		return
 	if sender != current_player_id:
 		_reject(sender, RejectCode.NOT_CURRENT_PLAYER, action_id)
@@ -527,6 +623,50 @@ func _server_take(sender: int, source: String, action_id := "") -> void:
 	_add_log("%s 取了一张牌。" % players[sender].name)
 	_broadcast_state()
 
+func request_joker_transform(rank: String, suit: String, action_id := "") -> void:
+	if multiplayer.is_server():
+		_server_joker_transform(_peer_to_seat(1), rank, suit, action_id)
+	else:
+		server_joker_transform.rpc_id(1, rank, suit, action_id)
+
+@rpc("any_peer", "reliable")
+func server_joker_transform(rank: String, suit: String, action_id: String) -> void:
+	if multiplayer.is_server():
+		_server_joker_transform(_peer_to_seat(multiplayer.get_remote_sender_id()), rank, suit, action_id)
+
+## Joker 变换：持有 Joker 遗物者在抽牌阶段抽到 Joker（抽牌堆或弃牌堆顶），可选变换为任意牌。
+func _server_joker_transform(sender: int, rank: String, suit: String, action_id := "") -> void:
+	if phase != Phase.TURN_DECISION:
+		_reject(sender, RejectCode.INVALID_PHASE, action_id)
+		return
+	if _guard_suspended(sender, action_id):
+		return
+	if _guard_spectator(sender, action_id):
+		return
+	if sender != current_player_id:
+		_reject(sender, RejectCode.NOT_CURRENT_PLAYER, action_id)
+		return
+	if pending_draw.is_empty() or not _check_action_id(sender, action_id):
+		_reject(sender, RejectCode.DUPLICATE_OR_EXPIRED_ACTION, action_id)
+		return
+	if not _is_relic_owner(sender, Relics.JOKER_TRANSFORM_ID):
+		_reject(sender, RejectCode.ABILITY_FORBIDDEN, action_id)
+		return
+	var cid: String = str(pending_draw.card_id)
+	if str(cards[cid].rank) != "JOKER":
+		_reject(sender, RejectCode.ABILITY_FORBIDDEN, action_id)
+		return
+	var ranks := ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"]
+	var suits := ["♠", "♥", "♣", "♦"]
+	if not rank in ranks or not suit in suits:
+		_reject(sender, RejectCode.INVALID_SOURCE, action_id)
+		return
+	cards[cid].rank = rank
+	cards[cid].suit = suit
+	cards[cid].value = KongRules.card_value(rank)
+	_add_log("%s 把 Joker 变换为 %s%s。" % [players[sender].name, rank, suit])
+	_broadcast_state()
+
 func request_replace(slot: int, action_id := "") -> void:
 	if multiplayer.is_server():
 		_server_replace(_peer_to_seat(1), slot, action_id)
@@ -543,6 +683,8 @@ func _server_replace(sender: int, slot: int, action_id := "") -> void:
 		_reject(sender, RejectCode.INVALID_PHASE, action_id)
 		return
 	if _guard_suspended(sender, action_id):
+		return
+	if _guard_spectator(sender, action_id):
 		return
 	if sender != current_player_id:
 		_reject(sender, RejectCode.NOT_CURRENT_PLAYER, action_id)
@@ -581,6 +723,8 @@ func _server_discard_draw(sender: int, action_id := "") -> void:
 		return
 	if _guard_suspended(sender, action_id):
 		return
+	if _guard_spectator(sender, action_id):
+		return
 	if sender != current_player_id:
 		_reject(sender, RejectCode.NOT_CURRENT_PLAYER, action_id)
 		return
@@ -610,6 +754,8 @@ func _server_use_ability(sender: int, data: Dictionary, action_id := "") -> void
 		_reject(sender, RejectCode.INVALID_PHASE, action_id)
 		return
 	if _guard_suspended(sender, action_id):
+		return
+	if _guard_spectator(sender, action_id):
 		return
 	if sender != current_player_id:
 		_reject(sender, RejectCode.NOT_CURRENT_PLAYER, action_id)
@@ -643,8 +789,14 @@ func _server_q_decision(sender: int, exchange: bool, own_slot: int, action_id :=
 		return
 	if _guard_suspended(sender, action_id):
 		return
+	if _guard_spectator(sender, action_id):
+		return
 	if sender != int(q_context.get("actor", 0)):
 		_reject(sender, RejectCode.NOT_CURRENT_PLAYER, action_id)
+		return
+	if not bool(q_context.get("own_viewed", false)):
+		# Q 流程两步：必须先 q_view_own 查看自己的一张牌，才能做交换/不交换决策
+		_reject(sender, RejectCode.INVALID_PHASE, action_id)
 		return
 	if not _check_action_id(sender, action_id):
 		_reject(sender, RejectCode.DUPLICATE_OR_EXPIRED_ACTION, action_id)
@@ -652,17 +804,59 @@ func _server_q_decision(sender: int, exchange: bool, own_slot: int, action_id :=
 	if exchange:
 		var target := int(q_context.target)
 		var target_slot := int(q_context.target_slot)
-		if not _valid_slot(sender, own_slot) or not _valid_slot(target, target_slot):
+		var own_viewed_slot := int(q_context.get("own_slot", -1))
+		if not _valid_slot(sender, own_viewed_slot) or not _valid_slot(target, target_slot):
 			_reject(sender, RejectCode.INVALID_SLOT, action_id)
 			return
-		swap.swap(sender, own_slot, target, target_slot, "%s 用 Q 交换了一张牌。" % players[sender].name)
+		if _is_protected(target, target_slot):
+			_reject(sender, RejectCode.PROTECTED, action_id)
+			return
+		swap.swap(sender, own_viewed_slot, target, target_slot, "%s 用 Q 交换了一张牌。" % players[sender].name)
 		var a_data: Dictionary = _card_public(players[target].cards[target_slot])
-		var b_data: Dictionary = _card_public(players[sender].cards[own_slot])
-		_broadcast_exchange({"kind": "swap", "a": sender, "a_slot": own_slot, "b": target, "b_slot": target_slot, "a_data": a_data, "b_data": b_data})
+		var b_data: Dictionary = _card_public(players[sender].cards[own_viewed_slot])
+		_broadcast_exchange({"kind": "swap", "a": sender, "a_slot": own_viewed_slot, "b": target, "b_slot": target_slot, "a_data": a_data, "b_data": b_data})
 	else:
 		_add_log("%s 用 Q 放弃了交换。" % players[sender].name)
 	q_context.clear()
 	_discard_pending_and_open_slap("advance")
+
+func request_q_view_own(own_slot: int, action_id := "") -> void:
+	if multiplayer.is_server():
+		_server_q_view_own(_peer_to_seat(1), own_slot, action_id)
+	else:
+		server_q_view_own.rpc_id(1, own_slot, action_id)
+
+@rpc("any_peer", "reliable")
+func server_q_view_own(own_slot: int, action_id: String) -> void:
+	if multiplayer.is_server():
+		_server_q_view_own(_peer_to_seat(multiplayer.get_remote_sender_id()), own_slot, action_id)
+
+func _server_q_view_own(sender: int, own_slot: int, action_id := "") -> void:
+	if phase != Phase.Q_DECISION:
+		_reject(sender, RejectCode.INVALID_PHASE, action_id)
+		return
+	if _guard_suspended(sender, action_id):
+		return
+	if _guard_spectator(sender, action_id):
+		return
+	if sender != int(q_context.get("actor", 0)):
+		_reject(sender, RejectCode.NOT_CURRENT_PLAYER, action_id)
+		return
+	if bool(q_context.get("own_viewed", false)):
+		_reject(sender, RejectCode.INVALID_PHASE, action_id)
+		return
+	if not _check_action_id(sender, action_id):
+		_reject(sender, RejectCode.DUPLICATE_OR_EXPIRED_ACTION, action_id)
+		return
+	if not _valid_slot(sender, own_slot):
+		_reject(sender, RejectCode.INVALID_SLOT, action_id)
+		return
+	q_context["own_slot"] = own_slot
+	q_context["own_viewed"] = true
+	_send_reveal(sender, "Q：查看自己的牌", [_card_public(players[sender].cards[own_slot])], {"player_id": sender, "slot": own_slot})
+	_broadcast_peek_highlight(sender, {"player_id": sender, "slot": own_slot})
+	_add_log("%s 查看了自己的一张牌。" % players[sender].name)
+	_broadcast_state()
 
 func request_slap(target_player: int, slot: int, action_id := "") -> void:
 	if multiplayer.is_server():
@@ -677,6 +871,8 @@ func server_slap(target_player: int, slot: int, action_id: String) -> void:
 
 func _server_slap(sender: int, target_player: int, slot: int, action_id := "") -> void:
 	if _guard_suspended(sender, action_id):
+		return
+	if _guard_spectator(sender, action_id):
 		return
 	slap.attempt(sender, target_player, slot, action_id)
 
@@ -694,6 +890,8 @@ func server_slap_exchange(own_slot: int, action_id: String) -> void:
 func _server_slap_exchange(sender: int, own_slot: int, action_id := "") -> void:
 	if _guard_suspended(sender, action_id):
 		return
+	if _guard_spectator(sender, action_id):
+		return
 	slap.exchange(sender, own_slot, action_id)
 
 func request_slap_duel_stop(action_id := "") -> void:
@@ -710,6 +908,8 @@ func server_slap_duel_stop(action_id: String) -> void:
 func _server_slap_duel_stop(sender: int, action_id := "") -> void:
 	if _guard_suspended(sender, action_id):
 		return
+	if _guard_spectator(sender, action_id):
+		return
 	slap.duel_stop(sender, action_id)
 
 func request_kongbaya(action_id := "") -> void:
@@ -725,6 +925,8 @@ func server_kongbaya(action_id: String) -> void:
 
 func _server_kongbaya(sender: int, action_id := "") -> void:
 	if _guard_suspended(sender, action_id):
+		return
+	if _guard_spectator(sender, action_id):
 		return
 	kongbaya.declare(sender, action_id)
 
@@ -761,6 +963,45 @@ func _kick_offline_seat(target_seat: int) -> void:
 		# 当前行动者被踢：把当前指针退到上一行动者，再 advance 到下一个在线者
 		if turn_order.is_empty():
 			_finish_game("所有玩家已离开对局。")
+			return
+		var idx := turn_order.find(current_player_id)
+		var prev_idx := (idx - 1) % turn_order.size() if idx >= 0 else 0
+		current_player_id = turn_order[prev_idx]
+		_advance_turn()
+	else:
+		_broadcast_state()
+
+## 开发者工具：房主直接判某玩家出局（T 键开发者模式面板）。服务器以"房主身份"为闸。
+## 出局走统一淘汰逻辑：_alive_order 跳过、观战守卫拦截其操作、排名排除。
+func request_dev_eliminate(target_seat: int) -> void:
+	if multiplayer.is_server():
+		_server_dev_eliminate(_peer_to_seat(1), target_seat)
+	else:
+		server_dev_eliminate.rpc_id(1, target_seat)
+
+@rpc("any_peer", "reliable")
+func server_dev_eliminate(target_seat: int) -> void:
+	if multiplayer.is_server():
+		_server_dev_eliminate(_peer_to_seat(multiplayer.get_remote_sender_id()), target_seat)
+
+func _server_dev_eliminate(sender: int, target_seat: int) -> void:
+	if phase == Phase.LOBBY:
+		_reject(sender, RejectCode.INVALID_PHASE)
+		return
+	if sender != 0:
+		_reject(sender, RejectCode.NOT_HOST)
+		return
+	if not players.has(target_seat) or not _is_alive(target_seat):
+		return
+	players[target_seat].health = 0
+	_add_log("（开发者）%s 已被房主直接判负出局。" % players[target_seat].name)
+	if int(target_seat) == current_player_id:
+		# 出局的是当前行动者：清残留待处理，回退到上一座位再推进（仿 _kick_offline_seat，
+		# 保证 _advance_turn 从存活序中取到有效下家，而非因当前者不在存活序误判 FINISH）。
+		pending_draw.clear()
+		q_context.clear()
+		if turn_order.is_empty():
+			_finish_game("所有玩家已出局。")
 			return
 		var idx := turn_order.find(current_player_id)
 		var prev_idx := (idx - 1) % turn_order.size() if idx >= 0 else 0
@@ -830,7 +1071,7 @@ func _advance_turn(final_mode := false) -> void:
 		decision = {"type": TurnSystem.Decision.FINAL if not final_queue.is_empty() else TurnSystem.Decision.FINISH,
 			"next_player": int(final_queue[0]) if not final_queue.is_empty() else 0}
 	else:
-		decision = TurnSystem.decide(turn_order, current_player_id, kong_caller, [])
+		decision = TurnSystem.decide(_alive_order(), current_player_id, kong_caller, [])
 	match decision.type:
 		TurnSystem.Decision.FINISH:
 			_finish_game()
@@ -848,6 +1089,66 @@ func _advance_turn(final_mode := false) -> void:
 			_add_log("轮到 %s 行动。" % players[current_player_id].name)
 			_broadcast_state()
 
+## 系列赛是否已结束：赛满局数 或 存活数<=1。
+func _series_finished() -> bool:
+	return match_number >= int(run_state.get("match_limit", KongRules.DEFAULT_MATCH_LIMIT)) or _alive_count() <= 1
+
+## 名次奖励结算（R-12）：按名次发钱，给垫底（及 extra_last）扣 1 生命。
+## ranking：ScoreSystem 排序结果（索引 0 = 最低分）；extra_last：额外按垫底处理者（超限/首回合 Kong）。
+## 返回 {seat: {"money": int, "life_lost": int}}，并已写回 currency/health。
+func _settle_rewards(ranking: Array, extra_last: Array = []) -> Dictionary:
+	var rewards: Dictionary = {}
+	var n := ranking.size()
+	var all_tied := n > 1 and _same_score(ranking[0], ranking[n - 1])
+	if all_tied:
+		for e in ranking:
+			rewards[int(e.id)] = {"money": KongRules.RANK_REWARD_MIDDLE, "life_lost": 0}
+	else:
+		var i := 0
+		while i < n:
+			var j := i
+			while j + 1 < n and _same_score(ranking[j + 1], ranking[i]):
+				j += 1
+			var total := 0
+			# 垫底组（含并列垫底）整体奖励为 0：只有当组不触及末位时才累加名次奖励。
+			if j < n - 1:
+				for k in range(i, j + 1):
+					total += _rank_reward_at(k, n)
+			var share := int(floor(float(total) / float(j - i + 1)))
+			for k in range(i, j + 1):
+				rewards[int(ranking[k].id)] = {"money": share, "life_lost": 0}
+			i = j + 1
+		# 只有一名玩家参与排名时不算垫底，不扣生命（见 R-12：孤儿玩家不受罚）
+		if n > 1:
+			for e in ranking:
+				if _same_score(e, ranking[n - 1]):
+					rewards[int(e.id)].life_lost = 1
+	for seat in extra_last:
+		var s := int(seat)
+		if rewards.has(s):
+			rewards[s].money = 0
+			rewards[s].life_lost = 1
+		else:
+			rewards[s] = {"money": 0, "life_lost": 1}
+	for seat in rewards:
+		var r: Dictionary = rewards[seat]
+		players[seat].currency = maxi(0, int(players[seat].currency) + int(r.money))
+		if int(r.life_lost) > 0:
+			players[seat].health = maxi(0, int(players[seat].health) - int(r.life_lost))
+			if int(players[seat].health) <= 0:
+				# 淘汰仅从下一局起生效：记录出局局号，本局仍按正常结算展示。
+				players[seat].eliminated_match = match_number
+	return rewards
+
+func _rank_reward_at(index: int, n: int) -> int:
+	if n <= 1:
+		return 0
+	if index == 0:
+		return KongRules.RANK_REWARD_FIRST
+	if index == n - 1:
+		return 0
+	return KongRules.RANK_REWARD_MIDDLE
+
 func _finish_game(reason := "") -> void:
 	slap_open = false
 	slap_collect.clear()
@@ -860,25 +1161,148 @@ func _finish_game(reason := "") -> void:
 		_broadcast_state()
 		return
 	var ranking := _calculate_ranking()
+	var all_tied := ranking.size() > 1 and _same_score(ranking[0], ranking[ranking.size() - 1])
 	var winners: Array[int] = []
-	var losers: Array[int] = []
-	if not ranking.is_empty():
+	if not ranking.is_empty() and not all_tied:
 		for entry in ranking:
-			if _same_score(entry, ranking[0]): winners.append(int(entry.id))
-			if _same_score(entry, ranking[ranking.size() - 1]): losers.append(int(entry.id))
-	if winners.size() == players.size():
-		losers.clear()
-	if kong_called_first_turn and kong_caller not in winners:
-		losers = [kong_caller]
-	for peer_id in losers:
-		players[peer_id].health = max(0, int(players[peer_id].health) - 1)
-	last_result = {"ranking": ranking, "winners": winners, "penalized": losers, "first_turn_kong": kong_called_first_turn}
+			if _same_score(entry, ranking[0]):
+				winners.append(int(entry.id))
+	var extra_last: Array = []
+	if kong_called_first_turn and kong_caller >= 0:
+		extra_last.append(kong_caller)
+	var rewards: Dictionary = _settle_rewards(ranking, extra_last)
+	var penalized: Array = []
+	for seat in rewards:
+		if int(rewards[seat].life_lost) > 0:
+			penalized.append(int(seat))
+	last_result = {"ranking": ranking, "winners": winners, "penalized": penalized,
+		"first_turn_kong": kong_called_first_turn, "rewards": rewards}
 	_add_log("对局结束，所有手牌已翻开。")
+	for entry in winners:
+		players[entry].wins = int(players[entry].get("wins", 0)) + 1
+	if _series_finished():
+		last_result["series"] = {"finished": true, "ranking": SeriesRanking.final_ranking(players, turn_order)}
 	_broadcast_sfx("winner")
 	_broadcast_state()
+	if not last_result.get("ranking", []).is_empty() and not _series_finished():
+		_start_series_timer()
+
+func _start_series_timer() -> void:
+	series_timer.start(KongRules.SERIES_AUTO_ADVANCE_MS / 1000.0)
+
+## 进入商店阶段：随机展示至多 3 件遗物，等待全员出价或跳过。
+func _start_shop() -> void:
+	if _series_finished():
+		return
+	shop = {"offers": _pick_shop_offers(), "sold": {}, "done": {}}
+	shop_result = {}
+	phase = Phase.SHOP
+	_add_log("进入商店：每人限购 1 件（固定价 %d）。" % Relics.RELIC_PRICE)
+	_broadcast_state()
+
+func _pick_shop_offers() -> Array:
+	var pool: Array = Relics.pool().duplicate()
+	pool.shuffle()
+	var offers: Array = []
+	var count := mini(3, pool.size())
+	for i in count:
+		var relic: Dictionary = pool[i]
+		offers.append({"index": i, "relic_id": str(relic.id), "name": str(relic.name), "price": int(relic.get("price", Relics.RELIC_PRICE))})
+	return offers
+
+func request_shop_buy(offer: int, action_id := "") -> void:
+	if multiplayer.is_server():
+		_server_shop_buy(_peer_to_seat(1), offer, action_id)
+	else:
+		server_shop_buy.rpc_id(1, offer, action_id)
+
+@rpc("any_peer", "reliable")
+func server_shop_buy(offer: int, action_id: String) -> void:
+	if multiplayer.is_server():
+		_server_shop_buy(_peer_to_seat(multiplayer.get_remote_sender_id()), offer, action_id)
+
+## 固定价购买：货币≥售价即扣款、遗物入库并记持有者、该件标记售出；每人限购 1 件。
+func _server_shop_buy(sender: int, offer: int, action_id := "") -> void:
+	if phase != Phase.SHOP:
+		_reject(sender, RejectCode.INVALID_PHASE, action_id)
+		return
+	if _guard_suspended(sender, action_id):
+		return
+	if _guard_spectator(sender, action_id):
+		return
+	if not players.has(sender) or _shop_submitted(sender):
+		_reject(sender, RejectCode.DUPLICATE_OR_EXPIRED_ACTION, action_id)
+		return
+	var offers: Array = shop.get("offers", [])
+	if offer < 0 or offer >= offers.size() or shop.get("sold", {}).has(offer):
+		_reject(sender, RejectCode.INVALID_OFFER, action_id)
+		return
+	var price: int = int(offers[offer].price)
+	if price > int(players[sender].currency):
+		_reject(sender, RejectCode.INVALID_AMOUNT, action_id)
+		return
+	players[sender].currency = int(players[sender].currency) - price
+	var relic_id: String = str(offers[offer].relic_id)
+	run_state["relics"][relic_id] = Relics.def_by_id(relic_id)
+	run_state["relic_owners"][relic_id] = sender
+	shop.sold[offer] = sender
+	shop.done[sender] = true
+	shop_result[str(offer)] = {"relic_id": relic_id, "name": str(offers[offer].name), "winner": sender, "amount": price}
+	_add_log("%s 以 %d 购买了 %s。" % [players[sender].name, price, offers[offer].name])
+	if _shop_all_done():
+		_deal_next_match()
+	else:
+		_broadcast_state()
+
+func request_shop_skip(action_id := "") -> void:
+	if multiplayer.is_server():
+		_server_shop_skip(_peer_to_seat(1), action_id)
+	else:
+		server_shop_skip.rpc_id(1, action_id)
+
+@rpc("any_peer", "reliable")
+func server_shop_skip(action_id: String) -> void:
+	if multiplayer.is_server():
+		_server_shop_skip(_peer_to_seat(multiplayer.get_remote_sender_id()), action_id)
+
+## 跳过购买（离开商店）：标记完成；全员完成 → 开下一局。
+func _server_shop_skip(sender: int, action_id := "") -> void:
+	if phase != Phase.SHOP:
+		_reject(sender, RejectCode.INVALID_PHASE, action_id)
+		return
+	if _guard_suspended(sender, action_id):
+		return
+	if _guard_spectator(sender, action_id):
+		return
+	if not players.has(sender) or _shop_submitted(sender):
+		_reject(sender, RejectCode.DUPLICATE_OR_EXPIRED_ACTION, action_id)
+		return
+	shop.done[sender] = true
+	_add_log("%s 跳过购买。" % players[sender].name)
+	if _shop_all_done():
+		_deal_next_match()
+	else:
+		_broadcast_state()
+
+func _shop_submitted(seat: int) -> bool:
+	return shop.get("done", {}).has(seat)
+
+func _shop_all_done() -> bool:
+	for seat in _alive_order():
+		if not _shop_submitted(int(seat)):
+			return false
+	return true
+
+## 局间自动衔接：到点且仍处结算、未把末时进入商店（非把末结算展示后）。
+func _on_series_auto_advance() -> void:
+	if phase != Phase.GAME_OVER or _series_finished():
+		return
+	if _alive_count() < KongRules.MIN_PLAYERS:
+		return
+	_start_shop()
 
 func _calculate_ranking() -> Array:
-	return ScoreSystem.calculate_ranking(players, cards, turn_order)
+	return ScoreSystem.calculate_ranking(players, cards, _alive_order(), _joker_bonus_map())
 
 func _is_lower_score(a: Dictionary, b: Dictionary) -> bool:
 	return ScoreSystem._is_lower_score(a, b)
@@ -910,7 +1334,7 @@ func _check_over_hand(seat: int) -> bool:
 		return true
 	return false
 
-## 手牌超限立即结算（R-07）：超限玩家判定失败并扣 1 点生命，
+## 手牌超限立即结算（R-07）：超限玩家按「最后一名」失去押注（all-in 则出局），
 ## 其余玩家按各自手牌点数结算排名（最低分者胜），失败玩家不参与排名。
 func _finish_game_over_hand(failed_seat: int) -> void:
 	slap_open = false
@@ -919,26 +1343,31 @@ func _finish_game_over_hand(failed_seat: int) -> void:
 	slap_collect_timer.stop()
 	slap_duel_timer.stop()
 	phase = Phase.GAME_OVER
-	if players.has(failed_seat):
-		players[failed_seat].health = max(0, int(players[failed_seat].health) - 1)
 	var others: Array[int] = []
-	for seat in turn_order:
+	for seat in _alive_order():
 		if int(seat) != failed_seat:
 			others.append(int(seat))
-	var ranking := ScoreSystem.calculate_ranking(players, cards, others)
+	var joker_bonus: Dictionary = {}
+	for seat in others:
+		if _is_relic_owner(seat, Relics.JOKER_TRANSFORM_ID):
+			joker_bonus[seat] = true
+	var ranking := ScoreSystem.calculate_ranking(players, cards, others, joker_bonus)
+	var rewards: Dictionary = _settle_rewards(ranking, [failed_seat])
 	var winners: Array[int] = []
 	if not ranking.is_empty():
 		for entry in ranking:
 			if _same_score(entry, ranking[0]):
 				winners.append(int(entry.id))
+	var penalized: Array = [failed_seat]
 	var failed_name: String = players.get(failed_seat, {}).get("name", "玩家")
 	_add_log("%s 手牌超过 %d 张，判定失败。" % [failed_name, KongRules.MAX_HAND_CARDS])
 	last_result = {
 		"reason": "%s 手牌超过 %d 张，判定失败。" % [failed_name, KongRules.MAX_HAND_CARDS],
 		"ranking": ranking,
 		"winners": winners,
-		"penalized": [failed_seat],
+		"penalized": penalized,
 		"failed_hand": failed_seat,
+		"rewards": rewards,
 	}
 	_broadcast_sfx("winner")
 	_broadcast_state()

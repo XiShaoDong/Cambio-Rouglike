@@ -15,9 +15,10 @@ const PHASE_GAME_OVER := 7
 
 ## 卡牌图片 352x512 比例，所有卡牌尺寸遵循该比例（图片 KEEP_ASPECT_CENTERED 正好填满）。
 const CARD_ASPECT := 0.6875
-const CARD_SELF_SIZE := Vector2(62, 90)
-const CARD_PILE_SIZE := Vector2(74, 107)
-const CARD_BIG_SIZE := Vector2(110, 160)
+const CARD_SELF_SIZE := Vector2(64, 90)
+const CARD_PILE_SIZE := Vector2(76, 107)
+const CARD_BIG_SIZE := Vector2(110, 154)
+const RelicBarScript := preload("res://scenes/ui/relic_bar.tscn")
 
 var main: Node
 var _ready_clicked := false
@@ -98,21 +99,29 @@ func render(state: Dictionary) -> void:
 	var phase := int(state.phase)
 	var viewer := int(state.viewer_id)
 	var is_current := viewer == int(state.current_player)
-	var total_players: int = state.players.size()
-	if phase == PHASE_INITIAL_PEEK:
-		var ready_count: int = int(state.get("ready_count", 0))
-		main.ready_button.visible = true
-		main.ready_button.disabled = ready_count >= total_players or _ready_clicked
-		if _ready_clicked:
-			main.ready_button.text = "已准备（%d/%d）" % [ready_count, total_players]
-		else:
-			main.ready_button.text = "Ready（%d/%d）" % [ready_count, total_players]
-	else:
+	var viewer_eliminated := false
+	for player in state.players:
+		if int(player.id) == viewer and bool(player.get("eliminated", false)):
+			viewer_eliminated = true
+			break
+	if viewer_eliminated:
 		main.ready_button.visible = false
-		_ready_clicked = false
-	main.center_hint.text = main._hint_for(phase, is_current)
-	main.round_label.text = "第 %d 局" % int(state.get("match_number", 1))
-	main.bell_button.disabled = not (phase == PHASE_TURN_DRAW and is_current)
+		main.bell_button.disabled = true
+		main.deck_button.disabled = true
+		main._highlight(main.deck_button, false)
+		main.center_hint.text = "你已出局，正在观战。"
+	else:
+		if phase == PHASE_INITIAL_PEEK:
+			main.ready_button.visible = true
+			main.ready_button.disabled = not ActionModel.ready_enabled(state, _ready_clicked)
+			main.ready_button.text = ActionModel.ready_text(state, _ready_clicked)
+		else:
+			main.ready_button.visible = false
+			_ready_clicked = false
+		main.center_hint.text = main._hint_for(phase, is_current)
+	var limit: int = int((state.get("run", {}) as Dictionary).get("match_limit", KongRules.DEFAULT_MATCH_LIMIT))
+	main.round_label.text = "第 %d / %d 局" % [int(state.get("match_number", 1)), limit]
+	main.bell_button.disabled = not ActionModel.kongbaya_available(state)
 	main.bell_button.tooltip_text = "轮到你抽牌时，按下铃铛宣布 KONGBAYA！其他人各有一次最后行动。"
 	_update_pending_card(phase, is_current)
 	main._clear(main.controls_box)
@@ -245,14 +254,15 @@ func _render_controls(phase: int, is_current: bool) -> void:
 	if bool(main.latest_state.get("suspended", false)):
 		_render_suspended_controls()
 		return
-	if phase == PHASE_Q_DECISION and is_current:
-		var keep: Button = main._button("Q：不交换")
-		keep.pressed.connect(func(): GameState.request_q_decision(false, -1, main._next_action_id()))
-		main._hint_actions.add_child(keep)
-		var exchange: Button = main._button("Q：交换（再点自己一张牌）")
-		exchange.pressed.connect(func(): main.interaction.action_mode = "q_exchange"; main._render_game())
-		main._hint_actions.add_child(exchange)
-	elif phase == PHASE_GAME_OVER:
+	for entry in ActionModel.conditional_actions(main.latest_state):
+		var action := str(entry.get("action", ""))
+		if action == ActionModel.Q_KEEP:
+			main.interaction.action_mode = ""
+		var btn: Button = main._button(str(entry.get("text", "")))
+		btn.disabled = not bool(entry.get("enabled", true))
+		btn.pressed.connect(main._on_action.bind(action))
+		main._hint_actions.add_child(btn)
+	if phase == PHASE_GAME_OVER:
 		var result: Dictionary = main.latest_state.result
 		if not result.get("ranking", []).is_empty():
 			return  # 结算页接管排名展示，右下角不重复
@@ -369,9 +379,13 @@ func _render_player_section(area: Control, player: Dictionary, viewer: int, is_t
 	var ready_mark := ""
 	if int(main.latest_state.phase) == PHASE_INITIAL_PEEK:
 		ready_mark = "  [✓已准备]" if bool(player.get("ready", false)) else "  [等待]"
-	name_label.text = "%s%s%s" % [player.name, suffix, ready_mark]
+	var eliminated := bool(player.get("eliminated", false))
+	var elim_suffix := "  [已淘汰·观战]" if eliminated else ""
+	name_label.text = "%s%s%s%s" % [player.name, suffix, ready_mark, elim_suffix]
 	name_label.add_theme_font_size_override("font_size", font_size)
 	name_label.add_theme_color_override("font_color", UITheme.color("player_self_text") if is_me else UITheme.color("player_other_text"))
+	if eliminated:
+		name_label.add_theme_color_override("font_color", UITheme.color("text_secondary"))
 	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var name_style := StyleBoxFlat.new()
 	name_style.bg_color = UITheme.color("player_self_bg") if is_me else UITheme.color("player_other_bg")
@@ -382,6 +396,51 @@ func _render_player_section(area: Control, player: Dictionary, viewer: int, is_t
 		name_label.text = "▲ " + name_label.text
 	if is_me:
 		name_label.text = "▼ " + name_label.text
+	_render_relic_bar(area, player, hand)
+	_render_stat_hud(area, player, hand)
+
+## 玩家区域左侧遗物物品栏：复用单实例，刷新内容并定位到手牌左侧、垂直居中。
+func _render_relic_bar(area: Control, player: Dictionary, hand: GridContainer) -> void:
+	var bar := area.get_node_or_null("RelicBar")
+	if bar == null:
+		bar = RelicBarScript.instantiate()
+		bar.name = "RelicBar"
+		bar.mouse_filter = Control.MOUSE_FILTER_PASS
+		area.add_child(bar)
+		# 首帧游戏面板刚显示时容器尚未布局，get_global_rect 取到旧值会导致遗物栏错位；
+		# 监听 HandGrid 重排，布局落定后重新定位。
+		hand.resized.connect(_position_relic_bar.bind(area))
+	bar.setup(main.latest_state, int(player.id))
+	_position_relic_bar(area)
+
+## 依据 HandGrid 已布局的全局矩形，把遗物栏定位到手牌左侧、垂直居中。
+func _position_relic_bar(area: Control) -> void:
+	var bar := area.get_node_or_null("RelicBar")
+	var hand: GridContainer = area.get_node_or_null("VBox/HandCenter/HandGrid")
+	if bar == null or hand == null:
+		return
+	var hand_rect: Rect2 = hand.get_global_rect()
+	bar.global_position = hand_rect.position + Vector2(-bar.size.x - 8, (hand_rect.size.y - bar.size.y) / 2.0)
+
+## 玩家区域右侧金钱/生命 HUD：复用单实例，定位到手牌右侧、垂直居中（RelicBar 镜像）。
+func _render_stat_hud(area: Control, player: Dictionary, hand: GridContainer) -> void:
+	var hud := area.get_node_or_null("StatHud")
+	if hud == null:
+		hud = StatHud.new()
+		hud.name = "StatHud"
+		hud.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		area.add_child(hud)
+		hand.resized.connect(_position_stat_hud.bind(area))
+	hud.setup(main.latest_state, int(player.id))
+	_position_stat_hud(area)
+
+func _position_stat_hud(area: Control) -> void:
+	var hud := area.get_node_or_null("StatHud")
+	var hand: GridContainer = area.get_node_or_null("VBox/HandCenter/HandGrid")
+	if hud == null or hand == null:
+		return
+	var rect: Rect2 = hand.get_global_rect()
+	hud.global_position = rect.position + Vector2(rect.size.x + 8, (rect.size.y - hud.size.y) / 2.0)
 
 ## 渲染单个卡牌槽位到指定容器（主网格或 ExtraLayer），并登记到 _card_slots 供动画定位。
 ## use_fixed 时用 fixed_pos（全局坐标）绝对定位（罚牌附加行：按槽号固定，加新牌不移位）。
@@ -415,6 +474,28 @@ func _render_card_slot(container: Control, player: Dictionary, slot_index: int, 
 	card_button.pressed.connect(main._on_card_pressed.bind(pid, slot_index))
 	main._highlight(card_button, main._card_actionable(pid, slot_index))
 	container.add_child(card_button)
+	# 防守护盾标记：受保护槽位常驻紫色描边光晕 + ◈ 紫色角标（不干扰点击）
+	if bool(slot.get("protected", false)) and card_button is CardView:
+		var shield_border := Panel.new()
+		shield_border.name = "ShieldBorder"
+		shield_border.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		shield_border.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var st := StyleBoxFlat.new()
+		st.bg_color = Color(0, 0, 0, 0)
+		st.set_corner_radius_all(6)
+		st.border_color = UITheme.color("relic_shield")
+		st.set_border_width_all(3)
+		shield_border.add_theme_stylebox_override("panel", st)
+		card_button.add_child(shield_border)
+		var shield := Label.new()
+		shield.text = "◈"
+		shield.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		shield.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		shield.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		shield.add_theme_font_size_override("font_size", 22)
+		shield.add_theme_color_override("font_color", UITheme.color("relic_shield"))
+		shield.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		card_button.add_child(shield)
 	if use_fixed:
 		card_button.global_position = fixed_pos
 	if not main._card_slots.has(pid):

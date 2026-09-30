@@ -22,6 +22,23 @@ const SLAP_DUEL_TARGET_MAX := 0.85
 
 const SPECIAL_RANKS := ["7", "8", "9", "10", "J", "Q"]
 
+const START_CURRENCY := 100
+const START_HEALTH := 2
+## 名次奖励（R-12）：第一 / 中间 / 垫底。
+const RANK_REWARD_FIRST := 40
+const RANK_REWARD_MIDDLE := 10
+const MIN_BET := 20
+const MAX_BET := 100
+const BET_STEP := 5
+const SAFE_RETURN := 1.5   # 非最后玩家返还倍数
+const WINNER_RETURN := 2.0 # 第一名返还倍数
+const DEFAULT_MATCH_LIMIT := 5
+const MIN_MATCH_LIMIT := 2
+const MAX_MATCH_LIMIT := 10
+
+## 局间自动衔接：结算展示多久后服务器自动开下一局（毫秒）。商店里程碑将替换为等全员。
+const SERIES_AUTO_ADVANCE_MS := 10000
+
 static func card_value(rank: String) -> int:
 	match rank:
 		"A": return 1
@@ -42,9 +59,11 @@ static func new_default_run() -> Dictionary:
 	# The MVP leaves modifiers disabled. Future relics/mutators belong in this
 	# serializable run state, rather than in match-flow conditionals.
 	return {
-		"health": 3,
+		"health": START_HEALTH,
 		"relic_slots": 2,
 		"relics": {},
+		"relic_owners": {},
 		"mutator_ids": [],
 		"enable_relics": false,
+		"match_limit": DEFAULT_MATCH_LIMIT,
 	}

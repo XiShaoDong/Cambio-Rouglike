@@ -1,11 +1,12 @@
 class_name DevTools
 extends RefCounted
 ## 开发工具（main.gd 拆分 · 第五优先级）
-## 职责：F12 布局调试、T 主题切换。正式构建可直接移除。
+## 职责：T 开发者模式（房主面板：直接判玩家出局 / 抢牌调试）、F12 布局调试。
+## 主题切换走 ESC 设置菜单；正式构建可直接移除。
 
 var main: Node
 var _layout_debug := false
-var _theme_index := 0
+var _panel: Control = null
 
 func _init(owner_node: Node) -> void:
 	main = owner_node
@@ -18,28 +19,105 @@ func handle_input(event: InputEvent) -> bool:
 			_apply_layout_debug()
 			return true
 		elif event.keycode == KEY_T:
-			_theme_index = (_theme_index + 1) % UITheme.TOKENS.size()
-			var names: Array = UITheme.TOKENS.keys()
-			UITheme.switch_theme(str(names[_theme_index]))
-			_rebuild_theme()
+			main.dev_mode = not main.dev_mode
+			main._show_toast("开发者模式 %s" % ("ON" if main.dev_mode else "OFF"))
+			refresh_panel()
 			return true
-		elif event.keycode == KEY_O:
-			GameState.debug_duel = not GameState.debug_duel
-			main._show_toast("调试贴牌 %s：不判正确性，双贴即比拼" % ("ON" if GameState.debug_duel else "OFF"))
+		elif event.keycode == KEY_F10 or event.keycode == KEY_V:
+			main._toggle_table3d()
 			return true
 	return false
+
+## 开发者面板刷新：dev 模式 + 房主 + 对局中时显示（右上角），否则移除。
+## 由 main._on_state_updated 每帧快照渲染后调用。
+func refresh_panel() -> void:
+	if _panel != null and is_instance_valid(_panel):
+		_panel.queue_free()
+		_panel = null
+	if not main.dev_mode or not Network.is_host or main.latest_state.is_empty():
+		return
+	if int(main.latest_state.get("phase", 0)) == GameState.Phase.LOBBY:
+		return
+	var panel := PanelContainer.new()
+	panel.name = "DevPanel"
+	var style := StyleBoxFlat.new()
+	style.bg_color = UITheme.color("bg_elevated")
+	style.set_corner_radius_all(8)
+	style.set_content_margin_all(8)
+	style.border_color = UITheme.color("accent")
+	style.set_border_width_all(1)
+	panel.add_theme_stylebox_override("panel", style)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 4)
+	panel.add_child(box)
+	var title := Label.new()
+	title.text = "开发者工具（房主）"
+	title.add_theme_color_override("font_color", UITheme.color("accent"))
+	box.add_child(title)
+	var slap_btn := Button.new()
+	slap_btn.text = "抢牌调试（不限时不限牌）：%s" % ("ON" if GameState.debug_duel else "OFF")
+	slap_btn.pressed.connect(_toggle_slap_debug)
+	box.add_child(slap_btn)
+	_build_skin_row(box)
+	var preview_btn := Button.new()
+	preview_btn.text = "3D 预览（F10 / V）"
+	preview_btn.pressed.connect(main._toggle_table3d)
+	box.add_child(preview_btn)
+	for player in main.latest_state.players:
+		var seat := int(player.id)
+		var alive := not bool(player.get("eliminated", false))
+		var btn := Button.new()
+		btn.text = "出局 %s%s" % [str(player.name), "" if alive else "（已出局）"]
+		btn.disabled = not alive
+		btn.pressed.connect(main._dev_eliminate.bind(seat))
+		box.add_child(btn)
+	main.add_child(panel)
+	panel.z_index = 60
+	panel.position = Vector2(main.size.x - 232, 12)
+	_panel = panel
+
+## 抢牌调试开关：debug_duel（不判正确性→贴错无罚牌；收集窗 400ms→30s 不限时）。
+func _toggle_slap_debug() -> void:
+	GameState.debug_duel = not GameState.debug_duel
+	main._show_toast("抢牌调试 %s：不判正确性，双贴即比拼" % ("ON" if GameState.debug_duel else "OFF"))
+	refresh_panel()
+
+## 卡牌皮肤：全局单选（原始/普通/石头/纸牌/玻璃），仅影响客户端渲染，默认 original。
+func _build_skin_row(box: VBoxContainer) -> void:
+	var label := Label.new()
+	label.text = "卡牌皮肤"
+	label.add_theme_color_override("font_color", UITheme.color("text_secondary"))
+	box.add_child(label)
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation", 4)
+	grid.add_theme_constant_override("v_separation", 4)
+	box.add_child(grid)
+	for type in CardAtlas.SKINS:
+		var btn := Button.new()
+		btn.text = _skin_label(type)
+		btn.disabled = CardAtlas.preview() == type
+		btn.pressed.connect(_set_skin.bind(type))
+		grid.add_child(btn)
+
+func _set_skin(type: String) -> void:
+	CardAtlas.set_preview_type(type)
+	main._show_toast("卡牌皮肤：%s" % _skin_label(type))
+	main._render_game_if_active()
+	refresh_panel()
+
+func _skin_label(type: String) -> String:
+	match type:
+		"stone": return "石头"
+		"paper": return "纸牌"
+		"glass": return "玻璃"
+		"normal": return "普通"
+		_: return "原始"
 
 func _apply_layout_debug() -> void:
 	var colors := [Color(1, 0, 0, 0.45), Color(0, 1, 0, 0.45), Color(0, 0, 1, 0.45), Color(1, 1, 0, 0.45), Color(1, 0, 1, 0.45)]
 	var index := 0
 	_tint_children(main, colors, index)
-
-func _rebuild_theme() -> void:
-	main.background.color = UITheme.color("bg_table")
-	if not main.latest_state.is_empty():
-		main._render_game()
-	else:
-		main._set_status("主题已切换：%s" % UITheme.current)
 
 func _tint_children(node: Node, colors: Array, depth: int) -> void:
 	if node is Control:

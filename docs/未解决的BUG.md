@@ -32,9 +32,9 @@ var correct: bool = game.debug_duel or game.cards[target_card].rank == game.slap
 
 ```gdscript
 if correct:
-    cv.set_glow(main.SLAP_CORRECT_GLOW, main.SLAP_GLOW_SIZE)  # 绿色
-    _held_slap[...] = {...}   # 登记 hold，不翻回
-    return
+	cv.set_glow(main.SLAP_CORRECT_GLOW, main.SLAP_GLOW_SIZE)  # 绿色
+	_held_slap[...] = {...}   # 登记 hold，不翻回
+	return
 cv.set_glow(main.SLAP_WRONG_GLOW, ...)  # 红色，稍后翻回
 ```
 
