@@ -51,8 +51,8 @@ var _reveal_p := 0.0
 var _front_is_back := true
 var _back_is_back := true
 
-## 翻牌半程时长（水平翻转：scale.x 1→0 换面 →0→1），与 2D `flip_to_face` 同策略。
-const FLIP_DURATION := 0.25
+## 揭示 3D 翻转总时长（抬起+倾斜+绕长轴 180° 的整段）。调大 = 更慢。
+const FLIP_DURATION := 0.5
 
 func _ready() -> void:
 	_build()

@@ -245,7 +245,7 @@ func _test_view() -> void:
 	view.render({"viewer_id": 0, "current_player": 1, "players": players,
 		"draw_count": 30, "discard": {}, "pending": {}, "phase": 2})
 	await get_tree().process_frame
-	view.reveal_slot(0, 0, {"rank": "K", "suit": "♣"}, Color(0.2, 0.9, 0.4), 1.0)
+	view.reveal_slot(0, 0, {"rank": "K", "suit": "♣"}, Color(0.2, 0.9, 0.4), 2.0)
 	await get_tree().create_timer(CardBlock.FLIP_DURATION + 0.05).timeout
 	view.render({"viewer_id": 0, "current_player": 1, "players": players,
 		"draw_count": 30, "discard": {}, "pending": {}, "phase": 2})
@@ -303,7 +303,7 @@ func _test_reveal_flip() -> void:
 	await get_tree().create_timer(CardBlock.FLIP_DURATION * 0.5).timeout
 	_check("揭示中途进度 ~0.5", absf(b.reveal_progress() - 0.5) < 0.2)
 	_check("揭示中途 flip 节点已变换", not b.flip_node().transform.is_equal_approx(Transform3D.IDENTITY))
-	await get_tree().create_timer(CardBlock.FLIP_DURATION * 0.5 + 0.08).timeout
+	await get_tree().create_timer(CardBlock.FLIP_DURATION + 0.08).timeout
 	_check("揭示结束进度 1", is_equal_approx(b.reveal_progress(), 1.0))
 	_check("揭示不用 scale.x", b.scale.is_equal_approx(Vector3.ONE))
 	_check("揭示末态显示牌面", b.has_face_texture() and b.label_text() == "Q♦")
