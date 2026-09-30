@@ -21,6 +21,7 @@ func _run() -> void:
 	_test_config()
 	_test_math()
 	await _test_controller()
+	await _test_sandbox()
 
 func _test_config() -> void:
 	var c := CardFlyConfig.new()
@@ -88,3 +89,15 @@ func _test_controller() -> void:
 	flip.play(s, e, {"rank": "Q", "suit": "♦"}, false, true)
 	_check("背面起飞法线朝下", (flip.global_transform.basis * Vector3(0.0, 1.0, 0.0)).y < 0.0)
 	flip.queue_free()
+
+func _test_sandbox() -> void:
+	var sandbox = load("res://scenes/ui/card_fly_sandbox.tscn").instantiate()
+	add_child(sandbox)
+	await get_tree().process_frame
+	_check("沙盒实例化", sandbox != null and sandbox.get_node_or_null("CameraRig") != null)
+	for kind in CardFlySandbox.KIND_ORDER:
+		sandbox.play(kind)
+		_check("play %s 有飞牌" % kind, sandbox.flying_count() > 0)
+		await get_tree().create_timer(1.2).timeout
+		_check("play %s 结束无残留" % kind, sandbox.flying_count() == 0)
+	sandbox.queue_free()
