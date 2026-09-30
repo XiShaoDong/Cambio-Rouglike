@@ -124,7 +124,7 @@ UI 层已拆分（main.gd 是组合根）：
 | `action_model.gd` | **纯函数**：2D/3D 共用动作与可用性判定（`conditional_actions` / `kongbaya_available` / `ready_text` / `ready_enabled`） |
 | `table3d_layout.gd` | **纯函数**：3D 布局数学（座位角度/槽位网格/分类色/拾取层与盒高/高亮色） |
 | `table3d_view.gd` | 3D 视图：`_bind()` 按固定路径解析场景骨架；按快照填每槽 `CardBlock`、头顶状态面板、铃铛发光、角色可见性与状态 overlay；`pick_center`/`update_hover`/`reveal_slot`/`flash_slot` |
-| `card_block.gd` | 3D 单卡方块：`PlaneMesh(FACE_Y)` 面 + 卡背/真实牌面贴图 + **边缘发光**（多层外扩平面：hover/protected/actionable/flash/reveal）+ **水平翻牌**（`setup`/`reveal`/`restore` 走 `scale.x` 1→0→1，`FLIP_DURATION`）+ 拾取 `Area3D` + `set_pick/set_pick_enabled/set_actionable/set_hover/reveal/restore/flash` |
+| `card_block.gd` | 3D 单卡方块：`PlaneMesh(FACE_Y)` 面 + 卡背/真实牌面贴图 + **边缘发光**（多层外扩平面：hover/protected/actionable/flash/reveal）+ **真实 3D 揭示翻转**（揭示（看牌/贴牌）双面几何、抬起+倾斜，不镜像；`setup`/`reveal`/`restore` 走 `_reveal_p`，`FLIP_DURATION`）+ 拾取 `Area3D` + `set_pick/set_pick_enabled/set_actionable/set_hover/reveal/restore/flash` |
 | `table3d_camera.gd` | 3D 相机 rig：`frame_for_seat`（含 `aim_pitch_deg` 对准桌心）+ `look`（yaw/pitch 夹取）；`PitchPivot/Camera3D` 由场景提供 |
 | `table3d_picker.gd` | 屏幕中心射线拾取（`pick_hit` 返回 `{pick, collider}` / `pick` 只取 meta） |
 | `table3d_hud.gd` | 3D 操作面板按钮组（Ready / Q / 变换 Joker；Kongbaya 由 3D 铃铛负责） |
@@ -250,7 +250,7 @@ UI 层已拆分（main.gd 是组合根）：
 ... --headless --path . res://tests/verify_proxy.tscn -- -role client -scenario baseline -mode reconnect
 ```
 
-> **开发约定**：按用户的指示**不启动 GUI**，用上述 unit test 验证后总结。每次改动后跑 `verify_protocol` + `verify_swap` + `verify_duel` + `verify_reconnect` + `verify_kongbaya` + `verify_economy` + `verify_shop` + `verify_relics` + `verify_card_skin` + **3D/UI：`verify_table3d_layout` + `verify_table3d` + `verify_table3d_mouse` + `verify_table3d_interaction` + `verify_actions` + `verify_stat_panel` + `verify_card_animation`** + 双实例 `verify_net`。3D hover 由 `verify_table3d_interaction` 覆盖。
+> **开发约定**：按用户的指示**不启动 GUI**，用上述 unit test 验证后总结。每次改动后跑 `verify_protocol` + `verify_swap` + `verify_duel` + `verify_reconnect` + `verify_kongbaya` + `verify_economy` + `verify_shop` + `verify_relics` + `verify_card_skin` + **3D/UI：`verify_table3d_layout` + `verify_table3d` + `verify_table3d_mouse` + `verify_table3d_interaction` + `verify_actions` + `verify_stat_panel` + `verify_card_animation`** + 双实例 `verify_net`。3D hover 由 `verify_table3d_interaction` 覆盖。揭示翻转由 `verify_table3d_interaction` 覆盖。
 
 ## 9. 给后续 Agent 的工作方式
 
