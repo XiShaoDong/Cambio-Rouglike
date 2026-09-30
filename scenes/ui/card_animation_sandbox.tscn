@@ -1,7 +1,7 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene format=3 uid="uid://ddgck3h7wckh7"]
 
-[ext_resource type="Script" path="res://scripts/ui/card_animation_sandbox.gd" id="1_sandbox"]
-[ext_resource type="Script" path="res://scripts/ui/table3d_camera.gd" id="2_cam"]
+[ext_resource type="Script" uid="uid://dxnpwf1g8viot" path="res://scripts/ui/card_animation_sandbox.gd" id="1_sandbox"]
+[ext_resource type="Script" uid="uid://c0v4tvslqpr3e" path="res://scripts/ui/table3d_camera.gd" id="2_cam"]
 
 [sub_resource type="Environment" id="Environment_1"]
 background_mode = 1
@@ -16,24 +16,24 @@ albedo_color = Color(0.16, 0.18, 0.22, 1)
 [sub_resource type="BoxMesh" id="TableMesh"]
 size = Vector3(7, 0.08, 7)
 
-[node name="CardAnimationSandbox" type="Node3D"]
+[node name="CardAnimationSandbox" type="Node3D" unique_id=308566479]
 script = ExtResource("1_sandbox")
+hover_bend_start = 0.2
 
-[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1423448005]
 environment = SubResource("Environment_1")
 
-[node name="CameraRig" type="Node3D" parent="."]
+[node name="CameraRig" type="Node3D" parent="." unique_id=1143400773]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.5, 3.9)
 script = ExtResource("2_cam")
 EYE_HEIGHT = 3.5
-CAMERA_BACK = 1.5
 MOUSE_SENSITIVITY = 0.35
 
-[node name="PitchPivot" type="Node3D" parent="CameraRig"]
+[node name="PitchPivot" type="Node3D" parent="CameraRig" unique_id=312813167]
 
-[node name="Camera3D" type="Camera3D" parent="CameraRig/PitchPivot"]
+[node name="Camera3D" type="Camera3D" parent="CameraRig/PitchPivot" unique_id=1181938857]
 
-[node name="Table" type="MeshInstance3D" parent="."]
+[node name="Table" type="MeshInstance3D" parent="." unique_id=972271457]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.04, 0)
 material_override = SubResource("TableMat")
 mesh = SubResource("TableMesh")

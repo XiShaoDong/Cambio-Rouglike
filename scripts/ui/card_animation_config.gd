@@ -10,7 +10,7 @@ var idle_rot_x := 0.3
 var hover_lift := 0.12
 var hover_clearance := 0.03
 var hover_scale := 1.06
-var hover_pitch := 14.0
+var hover_pitch := -7.0
 var max_tilt := 2.0
 var hover_in_dur := 0.5
 var hover_out_dur := 0.20
@@ -43,11 +43,11 @@ func to_dict() -> Dictionary:
 		d[k] = get(k)
 	return d
 
-## 字段值是否全部有限且非负；返回非法字段名数组。
+## 字段值是否全部有限（允许负值，角度等参数可正可负）；返回非法字段名数组。
 func validate() -> Array:
 	var bad: Array = []
 	for k in KEYS:
 		var v := float(get(k))
-		if not is_finite(v) or v < 0.0:
+		if not is_finite(v):
 			bad.append(k)
 	return bad

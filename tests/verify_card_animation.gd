@@ -34,7 +34,7 @@ func _test_config() -> void:
 	_check("config 默认 hover_lift", is_equal_approx(c.hover_lift, 0.12))
 	_check("config 默认 hover_clearance", is_equal_approx(c.hover_clearance, 0.03))
 	var bad := CardAnimationConfig.new()
-	bad.hover_lift = -1.0
+	bad.hover_lift = INF
 	_check("config 非法值被抓", bad.validate().has("hover_lift"))
 
 func _test_state_machine() -> void:
