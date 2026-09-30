@@ -39,6 +39,7 @@ var _showing_back := true
 var _glow_nodes: Array = []      # [{node: MeshInstance3D, mat: StandardMaterial3D, alpha: float}]
 var _glow_base := Color(0, 0, 0, 0)
 var _flash_color := Color(0, 0, 0, 0)
+var _reveal_color := Color(0, 0, 0, 0)   # 揭示炫光色（绿/红/蓝），优先于 actionable/hover
 var _hovered := false
 var _hover_color := Color(0.7, 0.95, 1.0)
 var _flip_tween: Tween = null
@@ -153,6 +154,7 @@ func setup(slot: Dictionary) -> void:
 	_build()
 	_kill_flip()
 	_reveal_p = 0.0
+	_reveal_color = Color(0, 0, 0, 0)
 	if _flip != null:
 		_flip.transform = Transform3D.IDENTITY
 	if _hover_tween != null and _hover_tween.is_valid():
@@ -215,10 +217,8 @@ func reveal(card: Dictionary, color := Color(0, 0, 0, 0), from_p := 0.0) -> void
 	_back_material.albedo_color = Color.WHITE
 	_back_is_back = card.is_empty()
 	_label.text = card_text(card)
-	if color.a > 0.0:
-		_apply_glow_layers(color)
-	else:
-		_paint_glow()
+	_reveal_color = color
+	_paint_glow()
 	if from_p <= 0.0:
 		_reveal_to(1.0)
 	else:
@@ -237,6 +237,7 @@ func _reveal_from(from_p: float) -> void:
 ## 翻回最近一次 setup(slot) 的状态（贴图/标签/高亮）。
 func restore() -> void:
 	_build()
+	_reveal_color = Color(0, 0, 0, 0)
 	var card: Dictionary = _last_slot.get("card", {})
 	_label.text = "" if card.is_empty() else card_text(card)
 	_paint_glow()
@@ -318,10 +319,13 @@ func show_back(back: bool) -> void:
 	else:
 		_apply_slot(_last_slot)
 
-## 按优先级决定边缘发光颜色：flash > protected > actionable > hover。
+## 按优先级决定边缘发光颜色：flash > reveal（揭示绿/红/蓝）> protected > actionable > hover。
+## reveal 高于 actionable/hover：贴牌对错炫光不应被选中/hover 的浅蓝覆盖（否则需移动光标才显示）。
 func _paint_glow() -> void:
 	if _flash_color.a > 0.0:
 		_apply_glow_layers(_flash_color)
+	elif _reveal_color.a > 0.0:
+		_apply_glow_layers(_reveal_color)
 	elif bool(_last_slot.get("protected", false)):
 		_apply_glow_layers(PROTECTED_COLOR)
 	elif _actionable:

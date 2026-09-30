@@ -455,3 +455,13 @@
 **修复**：让重放**幂等/续播**。① `CardBlock.reveal(card, color, from_p := 0.0)` 新增可选起始进度；`from_p>0` 走 `_reveal_from(p)`：直接设 `_reveal_p` 并从该进度续播（`from_p>=1` 直接呈现正面、不再翻转）。② `table3d_view.reveal_slot` 记录 `start_ms`；`_apply_reveal` 按已过时间算 `p = clamp(elapsed / FLIP_DURATION, 0, 1)` 传入 → 重放时已完成则瞬现正面、进行中则续播。既有调用（默认 `from_p=0`）与沙盒不受影响。
 
 **诊断方法**：`verify_table3d_exchange`「重放后仍为正面（进度不归零）」「重放后牌面保持」「重放后炫光保持」「进行中重放进度不回零」。
+
+## B38：选中/悬停卡牌时，贴牌揭示炫光（红/绿）不显示（设计缺陷）
+
+**现象**：鼠标选中/hover 一张牌时默认边缘光晕是**浅蓝**；此时若该牌发生贴牌揭示（贴错=红、贴对=绿），**炫光不显示**（仍是浅蓝），要移动光标（离开/重新 hover）才可能看到。
+
+**根因**：`CardBlock._paint_glow()` 的优先级是 `flash > protected > actionable > hover`，**没有"揭示色"这一档**；`reveal(card, color)` 只是**直接** `_apply_glow_layers(color)` 设一次色，而 `set_hover`/`set_actionable`/`render` 重建后的重绘都会重新调用 `_paint_glow()`，把颜色覆盖回 actionable（金）/ hover（浅蓝）→ 揭示色被吞。
+
+**修复**：把揭示色提升为**一等状态** `_reveal_color`：`reveal()` 设 `_reveal_color` 后统一走 `_paint_glow()`；`_paint_glow()` 优先级改为 **`flash > reveal > protected > actionable > hover`**；`setup()` 与 `restore()` 清空 `_reveal_color`。这样揭示炫光（绿/红/蓝）不会被选中/hover/重绘覆盖。
+
+**诊断方法**：`verify_table3d_exchange`「揭示炫光覆盖 hover 浅蓝」「hover 重绘不覆盖揭示炫光」「actionable 重绘不覆盖揭示炫光」「恢复后揭示炫光清除、回到 hover 浅蓝」。
