@@ -51,6 +51,7 @@
 - **3D 桌面只读预览（Milestone 1，分支 `feature/3d-table`）**：对局中按 `F10`（**macOS 上 F1-F12 默认是媒体键，F10 会被系统截走收不到；备用键 `V` 同样切换**）在 2D 界面与 3D 桌面间切换；3D 用方块 + `Label3D` 渲染公开快照（座位手牌、抽牌堆数量、弃牌顶、中央 pending、名字/张数/货币/生命），鼠标环视（pitch ±60°、yaw 基准 ±90°、灵敏度 0.5 度/像素，鼠标右移=向右转）。纯客户端展示层：`scripts/ui/table3d_layout.gd`（纯函数布局）/`card_block.gd`/`table3d_camera.gd`/`table3d_view.gd` + `scenes/ui/table3d.tscn`。**不改**规则/协议/快照/现有测试。测试 `verify_table3d_layout`（19/19）、`verify_table3d`（36/36）、`verify_table3d_mouse`（7/7）。环视输入走 `main._input`（避免 GUI 吞事件）。不做点击交互与动画（Milestone 2+）。
 - **3D 桌面对局（Milestone 2，分支 `feature/3d-table`）**：3D 预览内用**屏幕中心准星**点击（默认俯角对准桌心，准星起始落在牌堆；悬停可点目标时准星变金 + 目标 3D 高亮 `table3d_view.update_hover`）（`Area3D` 拾取层 2 + `Table3dPicker` 射线）→ 分发到既有 `GameInteraction.on_card_pressed` / `request_take` / `_on_pending_action`；3D 操作面板（`Table3dHud`：Ready / Kongbaya / Q 决策 / 变换 Joker）；可操作/悬停/护盾/揭示均走**卡牌边缘发光**（多层半透明外扩平面，不整牌染色，与 2D 同策略）；**揭示走水平翻转**（`scale.x` 1→0 换面→0→1，与 2D `flip_to_face` 同策略；`reveal_slot` 记录在 `_reveals`，**`render` 重建卡牌后重新应用**，否则状态广播会冲掉翻牌；`flash_slot` 传色）。2D 模态（结算/商店/Joker/比拼/重连）打开时自动释放鼠标、关闭后恢复准星环视。**角色**：每席 `Avatar`(椭圆头 `SphereMesh` + 方体身 `BoxMesh`，身体在头心正下方)；**角色放在眼位**——径向外移 `CAMERA_BACK`、头心抬到 `EYE_HEIGHT`（场景实例 `EYE_HEIGHT=3.5`、`CAMERA_BACK=1.5`、`MOUSE_SENSITIVITY=0.35`，可在检视面板调），`table3d_view._apply_avatar` 按相机参数摆位，故相机即在 viewer 头心；**viewer 自己那席整个角色隐藏（头+身体都不出现）**；出局/离线加暗 overlay、当前回合金色 overlay。**回合标识**：当前行动者（且非自己那席）名字面板上方挂**红色倒三角 `TurnMarker`**（程序化 `ArrayMesh` 3 顶点 + **黑色空心边环**（18 顶点，不遮红心）；顶部「看牌」`Label3D`（白色）；均 billboard + `no_depth_test` + emission；无动画；紧贴名字面板上方；LOBBY/GAME_OVER/SHOP 不显示）。角色不挂拾取层，不影响准星。**动作判定统一走 `ActionModel`；玩家状态 UI 自己=屏幕右下、他人=头顶 SubViewport 面板；Kongbaya=3D 金铃铛；pending 贴堆**。规则/协议/快照零改动。测试 `verify_table3d_interaction`（48/48）。不做飞牌过渡与 3D 菜单/3D 商店结算/遗物栏（揭示翻转已有）；**3D 下不播 2D 换牌/贴牌 fly**（`card_exchange_animated`/罚牌在 3D 直接跳过，避免 2D 副本浮在 3D 画面上）。
 - **3D 静态骨架已入场景（场景+代码混合，分支 `feature/3d-table`）**：环境/相机 rig/**桌面(7×7 方桌 + `TableEdge` 深色边框)**/4 座位(HandAnchor + **Avatar(Body+Head)** + 头顶 `StatPanel` Sprite3D)/Center(Deck·DeckCount·DiscardTop·Pending·KongBell 金铃铛)/Hud 全部在 `scenes/ui/table3d.tscn`（可在编辑器拖拽调位置）。**卡牌平铺桌面**：`Table3dLayout.BLOCK_SIZE = (0.7, 0.04, 1.0)`（X 宽×Y 厚×Z 深），**座位角度按 2D 箱位对齐**（`seat_angles` = `[0,270,90,180]`：viewer 近侧、其余依次对应 2D 左/右/上箱，**不再沿圆均分**），**槽位主牌 2×2 行优先（0/1 上、2/3 下，与 2D 同；开局揭示的 2/3 即下排），罚牌向右追新列、每列先上（远）后下（近）**（`slot_grid_pos`：`slot<4`→`(slot%2,slot/2)`、`slot>=4`→`(2+(slot-4)/2,(slot-4)%2)`；`table3d_view._render_seat` 取本地 `-列`×X 与 `(1-行)`×Z，故新槽位向持有者右手侧追加），`HandAnchor` 贴近桌面（y≈0.03），`DiscardTop`/`Pending`/`Deck` 亦平铺；**未知牌用现有卡背贴图** `assets/Cards/back07.png`，**已知牌用真实牌面**（`original` 皮肤读旧素材 `assets/Cards/{suit}_{rank}.png`，其余皮肤走 `CardAtlas.face`；贴图缺失回退分类色）；**卡面用 `PlaneMesh(FACE_Y)`** —— 注意 `BoxMesh` 的 UV 是十字展开会裁掉贴图，不能用。点数标签 billboard 悬于卡上方。**相机**：`Table3dCamera` 的 `EYE_HEIGHT/CAMERA_BACK/MOUSE_SENSITIVITY` 为 `@export`（场景实例 3.5/1.5/0.35，可在检视面板调）；`frame_for_seat` 默认俯角 `aim_pitch_deg()` **对准桌心**（准星起始落在牌堆，否则点不到东西）。**节点名/路径是契约**，`Table3dView._bind()` 按固定路径解析、缺节点 `push_error` 不静默；`Table3dCamera` 不自建 `PitchPivot/Camera3D`（由场景提供）。**代码仍负责**：每槽 `CardBlock`（动态）、HUD 按钮内容、染色/揭示/高亮、座位位置与朝向、相机取景、HUD 跟随 viewer、角色可见性/状态 overlay、`_card_blocks`、`pick_center`。**布局数学仍在 `table3d_layout.gd`**。约定：该 `.tscn` 由开发者拥有视觉调整，Agent 改其结构前先 `git diff`/重读；动态对象（卡/按钮）不得搬进场景。
+- **3D 换牌动画沙盒（分支 `feature/card-animation`，纯客户端展示层，规则/协议/快照零改动）**：独立 3D 沙盒原型 `scripts/ui/card_fly_sandbox.gd` + `scenes/ui/card_fly_sandbox.tscn`（复刻对局布局：4 座位手牌区 + 中央 `Deck`/`DiscardTop`/`Pending`），顶部 6 按钮分别演示 `card_exchange_animated` 的 6 种 kind（replace/swap/discard/slap_penalty/slap_resolved/slap_gift）。四层架构：`card_fly_math.gd`（纯函数：距离→时长 / 路径缓动 / `sin(p*PI)` 弧线 / 翻面窗口 / `compose` 变换合成）+ `card_fly_config.gd`（参数 + 校验）+ `card_fly.gd`（单张飞牌控制器：Tween 只驱动标量 `p`，每帧 `compose` 唯一写 transform；复用 `CardBlock` 双面几何绕卡长轴翻面，**不改 `card_block.gd`**；结束发 `finished` 并 `queue_free`）。**尚未接入** `main.gd`/`table3d_view`（接入方式见设计 §7）。测试 `verify_card_fly`；设计/计划见 `docs/superpowers/specs|plans/2026-09-30-3d-exchange-animation-sandbox*`。
 - **卡牌贴图分辨率坑（防复发）**：图集 1× 源图 `opersze-cards-full.png` 每卡仅 **55×77 像素**，在游戏里是**放大**显示（手牌 ≈1.16×、大牌 2×，HiDPI/窗口缩放再 ×2）→ 糊；旧素材 352×512 是缩小显示故清晰。**运行时必须用 4× 高清版**（每卡 220×308，显示尺寸小于格子 → 缩小采样、清晰）。`TextureRect` 一直是 `KEEP_ASPECT_CENTERED`（等比、无变形），故糊的原因是像素不足而非拉伸变形。
 - **卡牌视图重建约定**：`game_view._clear_area` 一律先 `remove_child` 立即移出网格、再 `queue_free` 延迟释放（**不要直接 `free()`**——卡牌点击触发重建时被点击的卡正被信号锁定，free 会报 "Object is locked"）。
 - **罚牌附加卡布局**：前 4 张主网格固定 2 列永不位移；第 5+ 张在 `ExtraLayer` 按**槽号固定绝对定位**（统一向上增长、行列固定，加新罚牌已存在卡不移动）。
@@ -139,6 +140,9 @@ UI 层已拆分（main.gd 是组合根）：
 | `scenes/ui/table3d.tscn` | 3D 对局静态骨架（环境/相机/方桌+边框/4 座位+角色/中央牌堆+金铃铛/Hud）；**归开发者所有**，节点名路径是契约 |
 | `card_animation_config.gd` / `card_animation_math.gd` / `card_animation.gd` / `card_animation_sandbox.gd` | 卡牌交互动效沙盒：参数集中配置 + 纯函数（状态机/缓动/高度/阴影/compose）+ 控制器（标量进度驱动）+ 沙盒（5 卡/准星/左键翻牌） |
 | `card_block.gd`（hover pose）/ `table3d_view.gd`（_hover_slot） | 3D 桌面 hover 抬起/倾斜：仅 viewer 自己手牌；`_visual` 视觉 pivot 保证拾取盒不随动画移动；`_hover_slot` 跨 `render()` 重建即时重放 |
+| `card_fly_math.gd` | **纯函数**：3D 换牌飞牌时长/缓动/弧线/翻面/变换合成 |
+| `card_fly.gd` | 3D 单张飞牌控制器（标量 `p` + 每帧 compose 写 transform + `finished`） |
+| `card_fly_sandbox.gd` + `scenes/ui/card_fly_sandbox.tscn` | 3D 换牌动画沙盒（复刻对局布局 + 6 kind 按钮；纯展示，未接入对局） |
 
 ## 5. 状态机（`GameState.Phase` 数值不可随意变更，需同步 UI 与测试）
 
@@ -231,6 +235,8 @@ UI 层已拆分（main.gd 是组合根）：
 ... --headless --path . res://tests/verify_hint.tscn
 # 卡牌交互动效沙盒（68/68：配置/状态机/缓动/高度/阴影/compose/控制器/沙盒；feature/hover-curve 上含弯曲为 73/73）
 ... --headless --path . res://tests/verify_card_animation.tscn
+# 3D 换牌动画沙盒（39/39：配置/纯数学/控制器/沙盒；复刻布局 + 6 种 kind 演示）
+... --headless --path . res://tests/verify_card_fly.tscn
 # 双实例网络回归（host + client 各跑，均 exit 0）
 ... --headless --path . res://tests/verify_net.tscn -- -role host
 ... --headless --path . res://tests/verify_net.tscn -- -role client
@@ -259,7 +265,7 @@ UI 层已拆分（main.gd 是组合根）：
 ... --headless --path . res://tests/verify_proxy.tscn -- -role client -scenario baseline -mode reconnect
 ```
 
-> **开发约定**：按用户的指示**不启动 GUI**，用上述 unit test 验证后总结。每次改动后跑 `verify_protocol` + `verify_swap` + `verify_duel` + `verify_reconnect` + `verify_kongbaya` + `verify_economy` + `verify_shop` + `verify_relics` + `verify_card_skin` + **3D/UI：`verify_table3d_layout` + `verify_table3d` + `verify_table3d_mouse` + `verify_table3d_interaction` + `verify_actions` + `verify_stat_panel` + `verify_card_animation`** + 双实例 `verify_net`。3D hover 由 `verify_table3d_interaction` 覆盖。揭示翻转由 `verify_table3d_interaction` 覆盖。
+> **开发约定**：按用户的指示**不启动 GUI**，用上述 unit test 验证后总结。每次改动后跑 `verify_protocol` + `verify_swap` + `verify_duel` + `verify_reconnect` + `verify_kongbaya` + `verify_economy` + `verify_shop` + `verify_relics` + `verify_card_skin` + **3D/UI：`verify_table3d_layout` + `verify_table3d` + `verify_table3d_mouse` + `verify_table3d_interaction` + `verify_actions` + `verify_stat_panel` + `verify_card_animation` + `verify_card_fly`** + 双实例 `verify_net`。3D hover 由 `verify_table3d_interaction` 覆盖。揭示翻转由 `verify_table3d_interaction` 覆盖。3D 换牌飞牌沙盒由 `verify_card_fly` 覆盖。
 
 ## 9. 给后续 Agent 的工作方式
 
