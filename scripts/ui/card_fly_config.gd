@@ -3,10 +3,10 @@ extends RefCounted
 ## 3D 换牌飞牌参数（集中配置；代码不出现散落魔法数）。
 ## 控制器与纯数学均按 to_dict() 访问。
 
-var duration_base := 0.30
-var duration_per_dist := 0.002
-var duration_min := 0.30
-var duration_max := 0.90
+var duration_base := 0.60
+var duration_per_dist := 0.004
+var duration_min := 0.60
+var duration_max := 1.80
 var arc_height := 0.35
 var flip_start := 0.35
 var flip_end := 0.65

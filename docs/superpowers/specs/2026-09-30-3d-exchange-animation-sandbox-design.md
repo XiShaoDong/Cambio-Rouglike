@@ -183,10 +183,10 @@ func demo_all() -> void               # 顺序跑全部 6 种（可选，供人�
 
 | 字段 | 默认 | 说明 |
 | --- | ---: | --- |
-| `duration_base` | 0.30 | 时长基准（秒） |
-| `duration_per_dist` | 0.002 | 每单位距离增加秒数 |
-| `duration_min` | 0.30 | 时长下限 |
-| `duration_max` | 0.90 | 时长上限 |
+| `duration_base` | 0.60 | 时长基准（秒） |
+| `duration_per_dist` | 0.004 | 每单位距离增加秒数 |
+| `duration_min` | 0.60 | 时长下限 |
+| `duration_max` | 1.80 | 时长上限 |
 | `arc_height` | 0.35 | 弧线顶点抬升（世界单位） |
 | `flip_start` | 0.35 | 翻面窗口起点（p） |
 | `flip_end` | 0.65 | 翻面窗口终点（p） |

@@ -74,7 +74,7 @@ func _test_controller() -> void:
 	fly.finished.connect(func(): done["v"] = true)
 	fly.play(s, e, {"rank": "A", "suit": "♥"}, true, true)
 	_check("play 后在飞", fly.is_flying() and fly.progress() == 0.0)
-	await get_tree().create_timer(1.2).timeout
+	await get_tree().create_timer(2.2).timeout
 	_check("飞完 finished 触发", done["v"])
 	_check("飞完节点已释放", not is_instance_valid(fly))
 	# 空 data 显示卡背（标签为空）
@@ -98,6 +98,6 @@ func _test_sandbox() -> void:
 	for kind in CardFlySandbox.KIND_ORDER:
 		sandbox.play(kind)
 		_check("play %s 有飞牌" % kind, sandbox.flying_count() > 0)
-		await get_tree().create_timer(1.2).timeout
+		await get_tree().create_timer(2.2).timeout
 		_check("play %s 结束无残留" % kind, sandbox.flying_count() == 0)
 	sandbox.queue_free()
