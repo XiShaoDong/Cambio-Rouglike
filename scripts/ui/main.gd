@@ -403,7 +403,7 @@ const PHASE_SHOP := 10
 
 const BOARD_DIST := 3.0        # 看板沿"相机→桌心"连线距相机的距离（可调）
 const HINT_RISE := 0.5         # 提示板相对大板的世界 Y 抬升（gap，已缩小 1/2）
-const BOARD_LIFT := 1.0 / 3.0  # 面板高度在连线点基础上再抬高的比例（+1/3）
+const BOARD_LIFT := 2.0        # 面板高度抬升比例（= 1/3 × 6；y *= 1 + BOARD_LIFT）
 
 const PEEK_GLOW_COLOR := Color("3ef0f7ff")  # 查看牌蓝色光晕
 const PEEK_GLOW_DURATION := 1.5

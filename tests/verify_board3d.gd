@@ -198,7 +198,7 @@ func _test_main_routing() -> void:
 	var base: Vector3 = cam.global_position + (Vector3.ZERO - cam.global_position).normalized() * bdist
 	var bp: Vector3 = main.board3d.global_position
 	_check("模态板 XZ 在相机→桌心连线上", absf(bp.x - base.x) < 0.05 and absf(bp.z - base.z) < 0.05)
-	_check("模态板高度抬高 1/3", bp.y > base.y + 0.1)
+	_check("模态板高度已抬升", bp.y > base.y + 0.1)
 	_check("面板完全竖直（+Y=世界 up）",
 		main.board3d.global_transform.basis.y.normalized().dot(Vector3.UP) > 0.99)
 	_check("提示板在大板上方", main.hint3d.global_position.y > bp.y + 0.1)
