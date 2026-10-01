@@ -21,6 +21,7 @@ func _run() -> void:
 	await _test_board_input()
 	await _test_board3d()
 	await _test_modals_dim()
+	await _test_main_routing()
 
 func _test_board_input() -> void:
 	var size := Vector2(2.6, 1.8)
@@ -117,6 +118,44 @@ func _test_modals_dim() -> void:
 	duel.setup(self, {"duration_ms": 2000, "target": 0.5, "viewer_contestant": 0}, Callable(), false)
 	_check("duel dim=false → 无 Dim 遮罩", duel.get_node_or_null("Dim") == null)
 	duel.queue_free()
+
+
+func _tournament_state() -> Dictionary:
+	return {
+		"phase": 2, "phase_name": "p", "viewer_id": 0, "current_player": 1, "current_name": "B",
+		"players": [{"id": 0, "name": "A", "slots": [], "health": 2, "currency": 100, "count": 0,
+			"ready": false, "eliminated": false}],
+		"draw_count": 40, "discard": {}, "pending": {}, "run": {}, "match_number": 1,
+		"result": {}, "event_log": [], "slap_open": false, "slap_rank": "",
+		"slap_exchange_actor": 0, "kong_caller": -1, "ready_count": 0, "offline_players": [],
+	}
+
+func _test_main_routing() -> void:
+	await get_tree().process_frame
+	Network.is_host = true
+	var main: Node = preload("res://scenes/main.tscn").instantiate()
+	get_tree().root.add_child(main)
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+	main.latest_state = _tournament_state()
+	main._set_table3d(true)
+	await get_tree().process_frame
+	_check("3D 下有 board3d 节点", main.board3d != null and is_instance_valid(main.board3d))
+
+	main._open_shop_panel()
+	await get_tree().process_frame
+	_check("模态挂到看板 SubViewport", main.shop_panel.get_parent() == main.board3d.viewport())
+	_check("board3d.has_panel()", main.board3d.has_panel())
+	_check("有面板时 banner 文本为空", main._board_banner_text() == "")
+
+	main.board3d.set_banner("等待其他玩家…")
+	_check("无面板时 banner 可见", main.board3d.visible)
+
+	main._set_table3d(false)
+	await get_tree().process_frame
+	_check("切回 2D 后模态重新挂到 main", main.shop_panel.get_parent() == main)
+	main.queue_free()
 
 
 class KeyCatcher extends Control:

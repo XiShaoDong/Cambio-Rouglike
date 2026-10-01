@@ -40,6 +40,11 @@ func _toggle_table3d() -> void:
 func _table3d_click() -> void:
 	if table3d == null or not is_instance_valid(table3d):
 		return
+	if _board_has_panel():
+		var coord: Vector2i = board3d.hit_viewport_coord(table3d.camera.camera_node())
+		if coord.x >= 0:
+			board3d.push_click(coord)
+		return
 	var pick: Dictionary = table3d.pick_center()
 	match str(pick.get("kind", "")):
 		"slot":
@@ -78,21 +83,13 @@ func _hud_buttons() -> Array:
 	out.append_array(ActionModel.conditional_actions(latest_state))
 	return out
 
-## 是否有 2D 模态打开（打开时释放鼠标，让模态可点）。
-func _table3d_modal_open() -> bool:
-	for panel in [settlement_page, shop_panel, joker_panel, _duel_panel, _reconnect_panel]:
-		if panel != null and is_instance_valid(panel) and (panel as CanvasItem).visible:
-			return true
-	return false
-
-## 3D 激活时同步鼠标模式与准星：模态打开 → 可见（交还 2D）；否则捕获（准星环视）。
+## 3D 激活时恒定捕获鼠标（看板交互走准星），准星恒显示。
 func _sync_table3d_pointer() -> void:
 	if not _table3d_active:
 		return
-	var modal := _table3d_modal_open()
-	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE if modal else Input.MOUSE_MODE_CAPTURED)
+	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	if _crosshair != null and is_instance_valid(_crosshair):
-		_crosshair.visible = not modal
+		_crosshair.visible = true
 
 ## 3D 自己面板（屏幕右下角）：生命/金钱/卡牌数（无名字）。
 func _ensure_self_panel() -> void:
@@ -118,6 +115,39 @@ func _update_self_panel() -> void:
 			_self_panel.set_data("", int(p.get("health", 0)), int(p.get("currency", 0)), int(p.get("count", 0)))
 			return
 
+## 确保看板存在（挂在 table3d 下，随 3D 世界显隐/释放）。
+func _ensure_board() -> void:
+	if board3d != null and is_instance_valid(board3d):
+		return
+	if table3d == null or not is_instance_valid(table3d):
+		return
+	board3d = Board3d.new()
+	board3d.name = "HologramBoard"
+	table3d.add_child(board3d)
+
+## 模态挂载：3D 激活挂到看板，否则沿用 2D 父节点（默认 main）。
+func _mount_modal(control: Control, parent_2d: Node = null) -> void:
+	if _table3d_active:
+		_ensure_board()
+		if board3d != null and is_instance_valid(board3d):
+			board3d.mount_panel(control)
+			return
+	(parent_2d if parent_2d != null else self).add_child(control)
+
+func _board_has_panel() -> bool:
+	return board3d != null and is_instance_valid(board3d) and board3d.has_panel()
+
+## 看板等待提示文本：无面板时用当前 hint，其余情况为空。
+func _board_banner_text() -> String:
+	if _board_has_panel():
+		return ""
+	var phase := int(latest_state.get("phase", PHASE_LOBBY))
+	if phase == PHASE_LOBBY:
+		return ""
+	var viewer := int(latest_state.get("viewer_id", 0))
+	var current := int(latest_state.get("current_player", -1))
+	return _hint_for(phase, viewer == current)
+
 ## 3D 只读预览开关（仅对局中可用）。激活时隐藏 2D 棋盘（含 background，
 ## 否则 CanvasItem 会盖住 3D）并捕获鼠标；退出时恢复并重绘 2D。
 func _set_table3d(on: bool) -> void:
@@ -136,9 +166,12 @@ func _set_table3d(on: bool) -> void:
 			_crosshair.name = "Crosshair"
 			_crosshair.z_index = 80
 			add_child(_crosshair)
+		_ensure_board()
 		table3d.set_hud_buttons(_hud_buttons())
 		table3d.render(latest_state, interaction.card_actionable)
 		_sync_table3d_pointer()
+		if board3d != null and is_instance_valid(board3d):
+			board3d.set_banner(_board_banner_text())
 		_ensure_self_panel()
 		_self_panel.visible = true
 		_update_self_panel()
@@ -153,6 +186,11 @@ func _set_table3d(on: bool) -> void:
 			_crosshair.set_active(false)
 		if _self_panel != null and is_instance_valid(_self_panel):
 			_self_panel.visible = false
+		if board3d != null and is_instance_valid(board3d):
+			for c in board3d.detach_all():
+				if c != null and is_instance_valid(c):
+					add_child(c)
+			board3d.set_banner("")
 		background.visible = true
 		game_panel.visible = true
 		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
@@ -163,13 +201,23 @@ func _set_table3d(on: bool) -> void:
 func _input(event: InputEvent) -> void:
 	if not _table3d_active:
 		return
-	if _table3d_modal_open():
-		return   # 交给 2D 模态
-	if event is InputEventKey and event.pressed and not event.echo \
-			and (event.keycode == KEY_F10 or event.keycode == KEY_V or event.keycode == KEY_ESCAPE):
-		_set_table3d(false)
-		get_viewport().set_input_as_handled()
-		return
+	var board_panel := _board_has_panel()
+	if event is InputEventKey and event.pressed and not event.echo:
+		# F10/V 任何时候都可切回 2D（含看板面板打开时；面板会被重挂回 2D）。
+		if event.keycode == KEY_F10 or event.keycode == KEY_V:
+			_set_table3d(false)
+			get_viewport().set_input_as_handled()
+			return
+		# 有看板面板时，Enter/Esc 交给面板（Joker/商店）；否则 Esc 退出 3D。
+		if board_panel and (event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER or event.keycode == KEY_ESCAPE):
+			if board3d != null and is_instance_valid(board3d):
+				board3d.push_key(event)
+			get_viewport().set_input_as_handled()
+			return
+		if not board_panel and event.keycode == KEY_ESCAPE:
+			_set_table3d(false)
+			get_viewport().set_input_as_handled()
+			return
 	if event is InputEventMouseMotion:
 		if table3d != null and is_instance_valid(table3d):
 			table3d.camera.look(event.relative)
@@ -185,10 +233,19 @@ func _process(_delta: float) -> void:
 		return
 	if table3d == null or not is_instance_valid(table3d):
 		return
-	if _table3d_modal_open():
+	if board3d != null and is_instance_valid(board3d):
+		board3d.set_facing(table3d.camera.camera_node())
+	if _board_has_panel():
 		table3d.clear_hover()
-		if _crosshair != null and is_instance_valid(_crosshair):
-			_crosshair.set_active(false)
+		var coord: Vector2i = board3d.hit_viewport_coord(table3d.camera.camera_node())
+		if coord.x >= 0:
+			board3d.push_motion(coord)
+			if _crosshair != null and is_instance_valid(_crosshair):
+				_crosshair.set_active(true)
+		else:
+			board3d.push_motion_out()
+			if _crosshair != null and is_instance_valid(_crosshair):
+				_crosshair.set_active(false)
 		return
 	var on_target: bool = table3d.update_hover()
 	if _crosshair != null and is_instance_valid(_crosshair):
@@ -264,6 +321,7 @@ var overlay: Control
 var pending_overlay: Control
 var background: ColorRect
 var board: Control
+var board3d: Board3d = null
 var table3d: Node3D = null
 var _table3d_active := false
 var _crosshair: Control = null
@@ -467,7 +525,7 @@ func _show_reconnect_panel(title: String) -> void:
 	var btn_later: Button = _button("稍后")
 	btn_later.pressed.connect(_hide_reconnect_panel)
 	row.add_child(btn_later)
-	overlay.add_child(panel)
+	_mount_modal(panel, overlay)
 	_reconnect_panel = panel
 
 func _hide_reconnect_panel() -> void:
@@ -619,6 +677,8 @@ func _on_state_updated(state: Dictionary) -> void:
 		_on_joker_cancel()
 	_show_shop_result_toast(state)
 	_sync_table3d_pointer()
+	if _table3d_active and board3d != null and is_instance_valid(board3d):
+		board3d.set_banner(_board_banner_text())
 
 ## 清空上一局可能残留的动画/挂起状态（对局结束时在途的看牌/贴牌揭示）。
 func _clear_settlement_anim_state() -> void:
@@ -666,8 +726,8 @@ func _render_duel(state: Dictionary) -> void:
 			var contestants: Array = duel.get("contestants", [])
 			duel["viewer_contestant"] = 1 if int(state.get("viewer_id", 0)) in contestants else 0
 			_duel_panel = DuelBarScript.new()
-			overlay.add_child(_duel_panel)
-			_duel_panel.setup(self, duel, _on_slap_duel_stop)
+			_mount_modal(_duel_panel, overlay)
+			_duel_panel.setup(self, duel, _on_slap_duel_stop, not _table3d_active)
 	else:
 		if _duel_panel != null:
 			_duel_panel.queue_free()
@@ -692,7 +752,7 @@ func _open_settlement() -> void:
 	# 末位子节点优先于棋盘（margin）接收点击；overlay 是 IGNORE，挂它下面会被 4.6 的
 	# get_mouse_filter_with_override 判定为整棵子树不可点。
 	page.z_index = 100
-	add_child(page)
+	_mount_modal(page)
 	var run: Dictionary = latest_state.get("run", {})
 	var match_limit: int = int(run.get("match_limit", KongRules.DEFAULT_MATCH_LIMIT))
 	var series: Dictionary = (latest_state.get("result", {}) as Dictionary).get("series", {})
@@ -719,13 +779,13 @@ func _close_settlement() -> void:
 ## SHOP 阶段打开/刷新商店面板（已存在则刷新内容，反映购买/售出/完成状态）。
 func _open_shop_panel() -> void:
 	if shop_panel != null and is_instance_valid(shop_panel):
-		shop_panel.setup(latest_state, _on_shop_buy, _on_shop_skip)
+		shop_panel.setup(latest_state, _on_shop_buy, _on_shop_skip, not _table3d_active)
 		return
 	var panel := ShopPanelScript.instantiate()
 	panel.name = "ShopPanel"
 	panel.z_index = 90
-	add_child(panel)
-	panel.setup(latest_state, _on_shop_buy, _on_shop_skip)
+	_mount_modal(panel)
+	panel.setup(latest_state, _on_shop_buy, _on_shop_skip, not _table3d_active)
 	shop_panel = panel
 
 func _close_shop_panel() -> void:
@@ -746,7 +806,7 @@ func _open_joker_transform_panel() -> void:
 	var panel := JokerTransformPanelScript.instantiate()
 	panel.name = "JokerTransformPanel"
 	panel.z_index = 95
-	add_child(panel)
+	_mount_modal(panel)
 	panel.setup(_on_joker_confirm, _on_joker_cancel)
 	joker_panel = panel
 
