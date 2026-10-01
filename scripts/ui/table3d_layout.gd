@@ -6,8 +6,8 @@ extends RefCounted
 
 const BLOCK_SIZE := Vector3(0.7, 0.04, 1.0)   # 平铺桌面：X 宽 × Y 厚 × Z 深
 const BLOCK_GAP := Vector3(0.06, 0.0, 0.06)
-const TABLE_RADIUS := 3.5  # 桌面半边长（场景 Table 网格 7×7）×2 前基准
-const SEAT_RADIUS := 2.4
+const TABLE_RADIUS := 3.8  # 桌面半边长（场景 Table 网格 7×7）×2 前基准
+const SEAT_RADIUS := 3.0
 const UNKNOWN_COLOR := Color(0.20, 0.20, 0.22)
 const LOW_COLOR := Color(0.45, 0.55, 0.62)  # 2-6 灰蓝
 

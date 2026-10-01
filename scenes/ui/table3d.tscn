@@ -16,13 +16,13 @@ ambient_light_energy = 1.2
 albedo_color = Color(0.16, 0.18, 0.22, 1)
 
 [sub_resource type="BoxMesh" id="TableMesh"]
-size = Vector3(7, 0.08, 7)
+size = Vector3(7.6, 0.08, 7.6)
 
 [sub_resource type="StandardMaterial3D" id="TableEdgeMat"]
 albedo_color = Color(0.09, 0.1, 0.12, 1)
 
 [sub_resource type="BoxMesh" id="TableEdgeMesh"]
-size = Vector3(7.375, 0.12, 7.375)
+size = Vector3(7.975, 0.12, 7.975)
 
 [sub_resource type="SphereMesh" id="BellDomeMesh"]
 radius = 0.26
@@ -105,7 +105,7 @@ mesh = SubResource("BodyMesh")
 material_override = SubResource("AvatarMat")
 
 [node name="Head" type="MeshInstance3D" parent="Seats/Seat0/Avatar"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.0, 0)
 mesh = SubResource("HeadMesh")
 material_override = SubResource("AvatarMat")
 
@@ -123,7 +123,7 @@ mesh = SubResource("BodyMesh")
 material_override = SubResource("AvatarMat")
 
 [node name="Head" type="MeshInstance3D" parent="Seats/Seat1/Avatar"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.0, 0)
 mesh = SubResource("HeadMesh")
 material_override = SubResource("AvatarMat")
 
@@ -141,7 +141,7 @@ mesh = SubResource("BodyMesh")
 material_override = SubResource("AvatarMat")
 
 [node name="Head" type="MeshInstance3D" parent="Seats/Seat2/Avatar"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.0, 0)
 mesh = SubResource("HeadMesh")
 material_override = SubResource("AvatarMat")
 
@@ -159,7 +159,7 @@ mesh = SubResource("BodyMesh")
 material_override = SubResource("AvatarMat")
 
 [node name="Head" type="MeshInstance3D" parent="Seats/Seat3/Avatar"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.0, 0)
 mesh = SubResource("HeadMesh")
 material_override = SubResource("AvatarMat")
 
