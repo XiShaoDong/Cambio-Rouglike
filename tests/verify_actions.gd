@@ -39,3 +39,16 @@ func _run() -> void:
 	_check("Ready 可用", ActionModel.ready_enabled(r, false))
 	_check("点击后不可用", not ActionModel.ready_enabled(r, true))
 	_check("全员 ready 不可用", not ActionModel.ready_enabled({"ready_count": 2, "players": [{}, {}]}, false))
+	# 弃牌堆可用性（取弃牌顶 / 弃大牌）
+	var take := {"phase": 2, "viewer_id": 0, "current_player": 0, "discard": {"rank": "7", "suit": "♣"}}
+	_check("取弃牌顶可用", ActionModel.discard_take_available(take))
+	_check("弃牌堆空不可取", not ActionModel.discard_take_available({"phase": 2, "viewer_id": 0, "current_player": 0, "discard": {}}))
+	_check("非当前不可取弃牌顶", not ActionModel.discard_take_available({"phase": 2, "viewer_id": 1, "current_player": 0, "discard": {"rank": "7", "suit": "♣"}}))
+	_check("非抽牌阶段不可取", not ActionModel.discard_take_available({"phase": 3, "viewer_id": 0, "current_player": 0, "discard": {"rank": "7", "suit": "♣"}}))
+	var pend := {"phase": 3, "viewer_id": 0, "current_player": 0, "pending": {"rank": "7", "source": "draw"}}
+	_check("弃大牌可用", ActionModel.pending_discard_available(pend))
+	_check("取自弃牌堆的 pending 不可弃", not ActionModel.pending_discard_available({"phase": 3, "viewer_id": 0, "current_player": 0, "pending": {"rank": "7", "source": "discard"}}))
+	_check("非当前不可弃大牌", not ActionModel.pending_discard_available({"phase": 3, "viewer_id": 1, "current_player": 0, "pending": {"rank": "7", "source": "draw"}}))
+	_check("无 pending 不可弃", not ActionModel.pending_discard_available({"phase": 3, "viewer_id": 0, "current_player": 0, "pending": {}}))
+	_check("弃牌堆 actionable 合并", ActionModel.discard_pile_actionable(take) and ActionModel.discard_pile_actionable(pend))
+	_check("空快照弃牌堆不可点", not ActionModel.discard_pile_actionable({}))
