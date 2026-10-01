@@ -465,3 +465,34 @@
 **修复**：把揭示色提升为**一等状态** `_reveal_color`：`reveal()` 设 `_reveal_color` 后统一走 `_paint_glow()`；`_paint_glow()` 优先级改为 **`flash > reveal > protected > actionable > hover`**；`setup()` 与 `restore()` 清空 `_reveal_color`。这样揭示炫光（绿/红/蓝）不会被选中/hover/重绘覆盖。
 
 **诊断方法**：`verify_table3d_exchange`「揭示炫光覆盖 hover 浅蓝」「hover 重绘不覆盖揭示炫光」「actionable 重绘不覆盖揭示炫光」「恢复后揭示炫光清除、回到 hover 浅蓝」。
+
+## B39：常驻提示板吞掉牌桌点击（3D 卡牌完全点不了）
+
+**现象**：3D 全息看板引入常驻提示板后，3D 模式下**卡牌/牌堆完全点击无反应**。
+
+**根因**：`hint3d` 常驻可见（面板始终挂载 → `visible=true`），而 `main._table3d_click` 写成：
+```
+if _board_has_panel() or (hint3d != null and ... and hint3d.visible):
+    var hit := _board_hit()
+    if not hit.is_empty(): ...
+    return      # ← 未命中看板也 return
+```
+该条件恒为真，且未命中看板时直接 `return`，导致点击永远走不到牌桌分发（`pick_center` → `slot/deck/discard/pending/hud`）。
+
+**修复**：把点击判定改为显式路由 `_click_route(board_hit: bool)`：命中看板 → `"board"`；有模态面板 → `"blocked"`（不点穿）；否则 → `"table"`。`_table3d_click` 据此分发；常驻提示板可见不再等于"模态打开"。
+
+**诊断方法**：`verify_board3d`「无模态时点击落到牌桌」「命中看板时点击给看板」「有模态时未命中看板则拦截（不点穿牌桌）」。
+
+## B40：退出 3D 时看板对已释放模态面板崩溃
+
+**现象**：3D 中打开过某模态（如 Joker 变换，随状态变化被自动关闭），随后按 F10/V 退出 3D 时抛错：
+```
+SCRIPT ERROR: Invalid type in function 'unmount_panel' ... argument 1 (previously freed)
+at: Board3d.detach_all (board3d.gd) ← _set_table3d(false)
+```
+
+**根因**：模态面板被 `queue_free()` 后**仍留在 `Board3d._panels`**；退出 3D 时 `_set_table3d(false)` → `Board3d.detach_all()` 遍历 `_panels` 调用 `unmount_panel(control: Control)`，把已释放对象传给**类型化参数** → GDScript 参数类型检查在进入函数前即失败（"previously freed"）。触发点：`_on_joker_cancel`（Joker 面板随状态自动关闭）、以及任何 `queue_free` 但未从看板卸下的模态。
+
+**修复**：① `Board3d` 增 `_prune_panels()`，在 `mount_panel`/`has_panel`/`detach_all` 前剔除 `is_instance_valid` 为假的条目（`detach_all` 只对存活面板调用 `unmount_panel`）；② `main` 增 `_unmount_modal(control)`，所有模态关闭点（结算/商店/Joker/比拼/重连）先卸下再 `queue_free`。
+
+**诊断方法**：`verify_board3d`「已释放面板被清理：has_panel 为假」「detach_all 对已释放条目安全」。
