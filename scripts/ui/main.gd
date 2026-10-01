@@ -360,6 +360,7 @@ func _process(_delta: float) -> void:
 		board3d.set_facing(cam)
 	if hint3d != null and is_instance_valid(hint3d):
 		hint3d.set_facing(cam)
+	table3d.update_facing()
 	var on_board := _update_board_hover()
 	if _board_has_panel():
 		table3d.clear_hover()

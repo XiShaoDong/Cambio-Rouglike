@@ -16,6 +16,7 @@ const HOVER_COLOR := Color(0.7, 0.95, 1.0, 0.35)         # 准星悬停目标高
 const STAT_VIEWPORT_SIZE := Vector2i(320, 120)
 const STAT_PANEL_OFFSET := Vector3(0.0, 0.75, 0.0)
 const STAT_PANEL_PIXEL_SIZE := 0.005
+const PENDING_Y := 0.95  # 大牌竖立悬浮中心离桌高度（牌高 1.0 → 底≈0.45、顶≈1.45）
 
 # 回合标识：当前行动者名字面板上方的红色倒三角（黑色描边，billboard，纯展示），顶部提示「看牌」
 const TURN_MARKER_COLOR := Color(0.92, 0.15, 0.15)         # 填充：红色
@@ -84,6 +85,11 @@ func _bind() -> void:
 	_deck_node = deck_block
 	_discard_node = _discard_block
 	_pending_node = _pending_block
+	if _pending_node != null and _deck_node != null and _discard_node != null:
+		var mid := (_deck_node.position + _discard_node.position) * 0.5
+		_pending_node.position = Vector3(mid.x, PENDING_Y, mid.z)
+	if _pending_block != null and _pending_block.has_method("set_upright"):
+		_pending_block.set_upright(true)
 	var bell := get_node_or_null("Center/KongBell")
 	if bell != null:
 		_bell_dome = bell.get_node_or_null("Dome")
@@ -430,6 +436,28 @@ func pick_center() -> Dictionary:
 	var center := get_viewport().get_visible_rect().size * 0.5
 	return Table3dPicker.pick(camera.camera_node(), get_world_3d(), center)
 
+## 每帧让大牌绕世界 Y 朝向本机相机（保持竖直，不用含俯仰的完全 billboard）。
+## 位置不变，只重写 basis：本地 +Y（卡面法向）→ 水平指向相机；本地 +Z（卡高）→ 世界向上。
+func update_facing() -> void:
+	if _pending_node == null or not is_instance_valid(_pending_node) or camera == null:
+		return
+	var cam: Camera3D = camera.camera_node()
+	if cam == null:
+		return
+	var node := _pending_node as Node3D
+	var origin := node.global_position
+	var to_cam := cam.global_position - origin
+	to_cam.y = 0.0
+	if to_cam.length_squared() < 0.0001:
+		return
+	var fwd := to_cam.normalized()
+	var up := Vector3.UP
+	var x := fwd.cross(up)
+	if x.length_squared() < 0.0001:
+		x = Vector3.RIGHT
+	x = x.normalized()
+	node.global_transform = Transform3D(Basis(x, fwd, up), origin)
+
 ## 瞬时揭示某槽位（水平翻到正面，dur 秒后翻回）。槽位不存在则忽略；
 ## 记录在 `_reveals`，`render` 重建卡牌后会重新应用（否则状态广播会把翻牌冲掉）。
 func reveal_slot(seat_id: int, slot: int, card: Dictionary, color := Color(0, 0, 0, 0), dur := 1.5) -> void:
@@ -591,11 +619,12 @@ func slot_xform(seat_id: int, slot: int) -> Transform3D:
 		return Transform3D.IDENTITY
 	return node.global_transform * _slot_local(slot)
 
-## 座位本地槽位变换（与 _render_seat 定位一致：列 -X、行 (1-行) +Z）。
+## 座位本地槽位变换（与 _render_seat 定位一致：列关于座位中轴居中、行 (1-行) +Z）。
+## 主牌 2 列（grid.x 0/1）以列中点对齐座位 x 中轴（x=0），故两列落在 ±半个列距。
 func _slot_local(slot: int) -> Transform3D:
 	var grid := Table3dLayout.slot_grid_pos(slot)
 	return Transform3D(Basis.IDENTITY, Vector3(
-		-grid.x * (Table3dLayout.BLOCK_SIZE.x + Table3dLayout.BLOCK_GAP.x),
+		(0.5 - grid.x) * (Table3dLayout.BLOCK_SIZE.x + Table3dLayout.BLOCK_GAP.x),
 		0.0,
 		(1.0 - grid.y) * (Table3dLayout.BLOCK_SIZE.z + Table3dLayout.BLOCK_GAP.z)))
 

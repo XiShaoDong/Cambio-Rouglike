@@ -166,18 +166,18 @@ material_override = SubResource("AvatarMat")
 [node name="Center" type="Node3D" parent="." unique_id=1551981273]
 
 [node name="Deck" type="Node3D" parent="Center" unique_id=2025843720]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.03, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.45, 0.03, 0)
 script = ExtResource("3_block")
 
 [node name="DeckCount" type="Label3D" parent="Center" unique_id=1324010359]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.25, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.45, 0.25, 0)
 pixel_size = 0.004
 billboard = 1
 no_depth_test = true
 font_size = 64
 
 [node name="DiscardTop" type="Node3D" parent="Center" unique_id=586434583]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.9, 0.03, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.45, 0.03, 0)
 script = ExtResource("3_block")
 
 [node name="Pending" type="Node3D" parent="Center" unique_id=1182893267]
@@ -185,7 +185,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.05, 0)
 script = ExtResource("3_block")
 
 [node name="KongBell" type="Node3D" parent="Center"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.75, 0, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.2, 0, 0)
 
 [node name="Base" type="MeshInstance3D" parent="Center/KongBell"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)

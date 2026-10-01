@@ -79,6 +79,13 @@ func _test_card_block() -> void:
 	_check("背面板预旋转 180°(绕卡长轴)", absf(vb.back_node().rotation_degrees.z - 180.0) < 0.01)
 	_check("揭示 pivot 在 visual 下", vb.flip_node() != null and vb.flip_node().get_parent() == vb.visual_node())
 
+	var ub := CardBlock.new()
+	add_child(ub)
+	ub.set_upright(true)
+	_check("upright 标签移到牌顶(+Z)", ub._label.position.z > 0.0 and is_zero_approx(ub._label.position.y))
+	ub.set_upright(false)
+	_check("upright 关闭恢复标签(+Y)", ub._label.position.y > 0.0 and is_zero_approx(ub._label.position.z))
+
 ## 构造带场景子节点的相机 rig（契约：PitchPivot/Camera3D 由场景提供）。
 func _make_camera_rig() -> Table3dCamera:
 	var rig := Table3dCamera.new()
@@ -153,10 +160,30 @@ func _test_view() -> void:
 	var avatar = view._seat_nodes[0].get_node("Avatar")
 	_check("角色位于眼位（EYE_HEIGHT/CAMERA_BACK）", avatar.position.is_equal_approx(Vector3(0.0, view.camera.EYE_HEIGHT, -view.camera.CAMERA_BACK)))
 	_check("身体在头正下方（无水平位移）", avatar.get_node("Body").position.x == 0.0 and avatar.get_node("Body").position.z == 0.0)
-	# 默认取景：准星应指向牌堆（可点），且 hover 有高亮反馈
-	_check("默认准星指向牌堆", str(view.pick_center().get("kind", "")) == "deck")
-	_check("hover 命中可点目标", view.update_hover())
+	# 大牌竖立悬浮 + 面向本机相机
+	var pnode: Node3D = view.get_node("Center/Pending")
+	var dnode: Node3D = view.get_node("Center/Deck")
+	var xnode: Node3D = view.get_node("Center/DiscardTop")
+	var mid := Vector3((dnode.position.x + xnode.position.x) * 0.5, Table3dView.PENDING_Y, (dnode.position.z + xnode.position.z) * 0.5)
+	_check("大牌位于牌堆中点/悬浮高度", pnode.position.distance_to(mid) < 0.001)
+	view.update_facing()
+	var b := pnode.global_transform.basis
+	_check("大牌竖直(+Z 对齐世界上方)", b.z.dot(Vector3.UP) > 0.99)
+	_check("大牌无俯仰(+Y.y≈0)", absf(b.y.y) < 0.01)
+	var cam: Camera3D = view.camera.camera_node()
+	var horiz := cam.global_position - pnode.global_position
+	horiz.y = 0.0
+	_check("大牌朝向相机(+Y 指向相机水平方向)", horiz.length_squared() > 0.0001 and b.y.dot(horiz.normalized()) > 0.99)
+	_check("大牌标签竖立在牌顶", (view.get_node("Center/Pending") as CardBlock)._label.position.z > 0.0)
+	# 默认取景对准桌心（大牌在桌心正上方）；两堆现对称偏在左右侧（Deck -0.45 / DiscardTop +0.45），
+	# 需瞄准后再验证 hover 反馈。
 	var deck_block = view.get_node("Center/Deck")
+	view.camera.get_node("PitchPivot").rotation_degrees = Vector3(-90.0, 0.0, 0.0)
+	view.camera.rotation_degrees = Vector3.ZERO
+	view.camera.global_position = deck_block.global_position + Vector3(0.0, 1.2, 0.0)
+	await get_tree().physics_frame
+	_check("准星瞄向抽牌堆命中", str(view.pick_center().get("kind", "")) == "deck")
+	_check("hover 命中可点目标", view.update_hover())
 	_check("hover 边缘高亮", deck_block.has_glow())
 	view.clear_hover()
 	_check("取消 hover 清除高亮", not deck_block.has_glow())
