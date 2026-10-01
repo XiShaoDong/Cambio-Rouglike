@@ -20,6 +20,7 @@ func _check(name: String, ok: bool) -> void:
 func _run() -> void:
 	await _test_board_input()
 	await _test_board3d()
+	await _test_modals_dim()
 
 func _test_board_input() -> void:
 	var size := Vector2(2.6, 1.8)
@@ -97,6 +98,25 @@ func _test_board3d() -> void:
 	b.set_banner("")
 	_check("banner 空 → 隐藏", not b.visible)
 	panel.queue_free()
+
+
+func _test_modals_dim() -> void:
+	var shop: Control = load("res://scenes/ui/shop_panel.tscn").instantiate()
+	add_child(shop)
+	await get_tree().process_frame
+	var shop_state := {"viewer_id": 0, "players": [{"id": 0, "currency": 100}], "shop": {"offers": [], "done": []}}
+	shop.setup(shop_state, Callable(), Callable(), true)
+	_check("shop dim=true → Dim 可见", (shop.get_node("Dim") as CanvasItem).visible)
+	shop.setup(shop_state, Callable(), Callable(), false)
+	_check("shop dim=false → Dim 隐藏", not (shop.get_node("Dim") as CanvasItem).visible)
+	shop.queue_free()
+
+	var duel := DuelBar.new()
+	add_child(duel)
+	await get_tree().process_frame
+	duel.setup(self, {"duration_ms": 2000, "target": 0.5, "viewer_contestant": 0}, Callable(), false)
+	_check("duel dim=false → 无 Dim 遮罩", duel.get_node_or_null("Dim") == null)
+	duel.queue_free()
 
 
 class KeyCatcher extends Control:

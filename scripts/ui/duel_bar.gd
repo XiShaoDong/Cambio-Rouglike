@@ -16,24 +16,26 @@ var _tween: Tween
 var _stopped := false
 var _on_stop: Callable = Callable()
 
-func setup(owner_main: Node, duel: Dictionary, on_stop: Callable) -> void:
+func setup(owner_main: Node, duel: Dictionary, on_stop: Callable, dim := true) -> void:
 	main = owner_main
 	_on_stop = on_stop
-	_build_ui(duel)
+	_build_ui(duel, dim)
 	_start_sweep()
 
-func _build_ui(duel: Dictionary) -> void:
+func _build_ui(duel: Dictionary, dim := true) -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var duration_ms := int(duel.get("duration_ms", 2000))
 	var target := clampf(float(duel.get("target", 0.5)), 0.0, 1.0)
 	var is_contestant: bool = int(duel.get("viewer_contestant", 0)) == 1
 
-	# 全屏半透明遮罩，突出比拼窗口
-	var dim := ColorRect.new()
-	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	dim.color = Color(0, 0, 0, 0.55)
-	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(dim)
+	# 全屏半透明遮罩（仅 2D；3D 看板模式不加）
+	if dim:
+		var overlay := ColorRect.new()
+		overlay.name = "Dim"
+		overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		overlay.color = Color(0, 0, 0, 0.55)
+		overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(overlay)
 
 	# 居中窗口（CenterContainer 自动按内容居中）
 	var center := CenterContainer.new()

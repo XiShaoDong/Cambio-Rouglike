@@ -15,10 +15,11 @@ var _state: Dictionary = {}
 var _on_buy: Callable = Callable()
 var _on_skip: Callable = Callable()
 
-func setup(state: Dictionary, on_buy: Callable, on_skip: Callable) -> void:
+func setup(state: Dictionary, on_buy: Callable, on_skip: Callable, dim := true) -> void:
 	_state = state
 	_on_buy = on_buy
 	_on_skip = on_skip
+	get_node("Dim").visible = dim
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_viewer = int(state.get("viewer_id", -1))
 	_currency = 0
