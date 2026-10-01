@@ -188,6 +188,13 @@ func _test_main_routing() -> void:
 	_check("无模态时点击落到牌桌", main._click_route(false) == "table")
 	_check("命中看板时点击给看板", main._click_route(true) == "board")
 
+	# 看板落在"相机→桌心"连线、距相机 BOARD_DIST；提示板在大板上方
+	var cam: Camera3D = main.table3d.camera.camera_node()
+	var bdist: float = main.get_script().get_script_constant_map().get("BOARD_DIST", 0.0)
+	var expect: Vector3 = cam.global_position + (Vector3.ZERO - cam.global_position).normalized() * bdist
+	_check("模态板在相机→桌心连线上", main.board3d.global_position.distance_to(expect) < 0.05)
+	_check("提示板在大板上方", main.hint3d.global_position.y > main.board3d.global_position.y + 0.2)
+
 	main._open_shop_panel()
 	await get_tree().process_frame
 	await get_tree().process_frame

@@ -127,15 +127,29 @@ func _ensure_board() -> void:
 	if board3d == null or not is_instance_valid(board3d):
 		board3d = Board3d.new()
 		board3d.name = "ModalBoard"
-		board3d.position = Vector3(0.0, BOARD_Y, 0.0)
 		table3d.add_child(board3d)
 	if hint3d == null or not is_instance_valid(hint3d):
 		hint3d = Board3d.new()
 		hint3d.name = "HintBoard"
-		hint3d.position = Vector3(0.0, HINT_Y, 0.0)
 		table3d.add_child(hint3d)
 		_hint_panel = _make_hint_panel()
 		hint3d.mount_panel(_hint_panel)
+
+## 把两块看板放到"相机 → 桌心"的连线上（距相机 BOARD_DIST），提示板再抬高 HINT_RISE。
+func _place_boards() -> void:
+	if table3d == null or not is_instance_valid(table3d):
+		return
+	var cam: Camera3D = table3d.camera.camera_node()
+	if cam == null:
+		return
+	var dir := Vector3.ZERO - cam.global_position
+	if dir.length_squared() < 0.0001:
+		return
+	dir = dir.normalized()
+	if board3d != null and is_instance_valid(board3d):
+		board3d.global_position = cam.global_position + dir * BOARD_DIST
+	if hint3d != null and is_instance_valid(hint3d):
+		hint3d.global_position = cam.global_position + dir * BOARD_DIST + Vector3(0.0, HINT_RISE, 0.0)
 
 ## 模态挂载：3D 激活挂到模态大板，否则沿用 2D 父节点（默认 main）。
 func _mount_modal(control: Control, parent_2d: Node = null) -> void:
@@ -173,13 +187,31 @@ func _make_hint_panel() -> Control:
 	var lbl := Label.new()
 	lbl.name = "HintLabel"
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	lbl.add_theme_font_size_override("font_size", 18)
+	lbl.add_theme_font_size_override("font_size", 20)
 	lbl.add_theme_color_override("font_color", Color(0.92, 0.95, 1.0))
 	vb.add_child(lbl)
+	# Ready：与游戏按钮一致的醒目 accent UI（更大字号/尺寸 + accent 底）
 	var ready := Button.new()
 	ready.name = "ReadyButton"
 	ready.text = "Ready"
-	ready.add_theme_font_size_override("font_size", 16)
+	ready.custom_minimum_size = Vector2(200.0, 48.0)
+	ready.add_theme_font_size_override("font_size", 22)
+	ready.add_theme_color_override("font_color", Color(0.08, 0.09, 0.12))
+	var acc := UITheme.color("accent")
+	var bstyle := StyleBoxFlat.new()
+	bstyle.bg_color = acc
+	bstyle.set_corner_radius_all(8)
+	bstyle.set_content_margin_all(10)
+	ready.add_theme_stylebox_override("normal", bstyle)
+	var bhover: StyleBoxFlat = bstyle.duplicate()
+	bhover.bg_color = acc.lightened(0.15)
+	ready.add_theme_stylebox_override("hover", bhover)
+	var bdown: StyleBoxFlat = bstyle.duplicate()
+	bdown.bg_color = acc.darkened(0.15)
+	ready.add_theme_stylebox_override("pressed", bdown)
+	var boff: StyleBoxFlat = bstyle.duplicate()
+	boff.bg_color = UITheme.color("bg_elevated")
+	ready.add_theme_stylebox_override("disabled", boff)
 	ready.pressed.connect(_on_hint_ready)
 	vb.add_child(ready)
 	return panel
@@ -257,6 +289,7 @@ func _set_table3d(on: bool) -> void:
 		_ensure_board()
 		table3d.set_hud_buttons(_hud_buttons())
 		table3d.render(latest_state, interaction.card_actionable)
+		_place_boards()
 		_sync_table3d_pointer()
 		_refresh_hint_panel()
 		_ensure_self_panel()
@@ -319,6 +352,7 @@ func _process(_delta: float) -> void:
 		return
 	if table3d == null or not is_instance_valid(table3d):
 		return
+	_place_boards()
 	var cam: Camera3D = table3d.camera.camera_node()
 	if board3d != null and is_instance_valid(board3d):
 		board3d.set_facing(cam)
@@ -365,8 +399,8 @@ const PHASE_GAME_OVER := 7
 const PHASE_SLAP_DUEL := 8
 const PHASE_SHOP := 10
 
-const BOARD_Y := 3.2   # 模态大板高度（可调）
-const HINT_Y := 4.6    # 常驻提示板高度（在大板上方，可调）
+const BOARD_DIST := 3.0   # 看板沿"相机→桌心"连线距相机的距离（可调）
+const HINT_RISE := 1.0    # 提示板相对大板的世界 Y 抬升（在大板上方，可调）
 
 const PEEK_GLOW_COLOR := Color("3ef0f7ff")  # 查看牌蓝色光晕
 const PEEK_GLOW_DURATION := 1.5
