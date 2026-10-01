@@ -169,6 +169,8 @@ func _test_main_routing() -> void:
 	_check("3D 下有 hint3d 节点", main.hint3d != null and is_instance_valid(main.hint3d))
 	_check("提示板已挂常驻提示面板", main.hint3d.has_panel())
 	_check("无模态时模态大板不显示", not main.board3d.visible)
+	_check("无模态时点击落到牌桌", main._click_route(false) == "table")
+	_check("命中看板时点击给看板", main._click_route(true) == "board")
 
 	main._open_shop_panel()
 	await get_tree().process_frame
@@ -176,6 +178,7 @@ func _test_main_routing() -> void:
 	_check("模态挂到模态大板 SubViewport", main.shop_panel.get_parent() == main.board3d.viewport())
 	_check("board3d.has_panel()", main.board3d.has_panel())
 	_check("有模态时模态大板显示", main.board3d.visible)
+	_check("有模态时未命中看板则拦截（不点穿牌桌）", main._click_route(false) == "blocked")
 
 	# 开局记忆阶段：提示板显示 Ready 按钮
 	var st := _tournament_state()

@@ -36,17 +36,26 @@ func _leave_to_main_menu() -> void:
 func _toggle_table3d() -> void:
 	_set_table3d(not _table3d_active)
 
+## 点击路由：命中看板 → "board"；有模态面板 → "blocked"；否则 → "table"。
+## 关键：常驻提示板可见不等于"模态打开"，不能因此吞掉牌桌点击。
+func _click_route(board_hit: bool) -> String:
+	if board_hit:
+		return "board"
+	if _board_has_panel():
+		return "blocked"
+	return "table"
+
 ## 准星点击分发：只调用既有入口，不改规则。
 func _table3d_click() -> void:
 	if table3d == null or not is_instance_valid(table3d):
 		return
-	if _board_has_panel() or (hint3d != null and is_instance_valid(hint3d) and hint3d.visible):
-		var hit := _board_hit()
-		if not hit.is_empty():
+	var hit := _board_hit()
+	match _click_route(not hit.is_empty()):
+		"board":
 			(hit.host as Board3d).push_click(hit.coord)
-		return
-	if _board_has_panel():
-		return
+			return
+		"blocked":
+			return
 	var pick: Dictionary = table3d.pick_center()
 	match str(pick.get("kind", "")):
 		"slot":
