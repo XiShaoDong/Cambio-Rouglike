@@ -224,6 +224,7 @@ func _test_discard_pile_actionable() -> void:
 	add_child(view)
 	await get_tree().process_frame
 	var disc = view.get_node("Center/DiscardTop")
+	var deck = view.get_node("Center/Deck")
 	# TURN_DRAW 当前玩家 + 弃牌堆非空 → 可取弃牌顶 + 光晕
 	var s := _base_state()
 	s["phase"] = 2
@@ -233,6 +234,7 @@ func _test_discard_pile_actionable() -> void:
 	await get_tree().process_frame
 	_check("TURN_DRAW 弃牌堆可点", disc.is_pick_enabled())
 	_check("TURN_DRAW 弃牌堆金色光晕", disc.has_glow() and disc.glow_color() == Table3dLayout.ACTIONABLE_COLOR)
+	_check("TURN_DRAW 自己抽牌 → 抽牌堆金色光晕", deck.has_glow() and deck.glow_color() == Table3dLayout.ACTIONABLE_COLOR)
 	# TURN_DECISION 当前玩家 + pending(draw) → 可弃大牌 + 光晕；大牌本身不可点
 	var s2 := _base_state()
 	s2["phase"] = 3
@@ -252,4 +254,5 @@ func _test_discard_pile_actionable() -> void:
 	await get_tree().process_frame
 	_check("非当前弃牌堆不可点", not disc.is_pick_enabled())
 	_check("非当前弃牌堆不光晕", not disc.has_glow())
+	_check("非当前抽牌堆不光晕", not deck.has_glow())
 	view.queue_free()
