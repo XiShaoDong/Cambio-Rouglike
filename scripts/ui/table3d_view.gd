@@ -53,6 +53,7 @@ var _reveal_seq := 0
 var _bell_dome: MeshInstance3D = null
 var _bell_mat: StandardMaterial3D = null
 var _deck_node: Node3D = null
+var _deck_block = null  # CardBlock（场景 Center/Deck）
 var _discard_node: Node3D = null
 var _pending_node: Node3D = null
 var _seat_node_by_id := {}     # seat -> Node3D（render 登记）
@@ -87,6 +88,7 @@ func _bind() -> void:
 	if deck_block != null and deck_block.has_method("set_pick"):
 		deck_block.set_pick({"kind": "deck"})
 	_deck_node = deck_block
+	_deck_block = deck_block
 	_discard_node = _discard_block
 	_pending_node = _pending_block
 	if _pending_node != null and _deck_node != null and _discard_node != null:
@@ -209,15 +211,22 @@ func render(state: Dictionary, actionable := Callable()) -> void:
 			_apply_reveal(int(parts[0]), int(parts[1]))
 	# 中央
 	_deck_label.text = str(int(state.get("draw_count", 0)))
+	# 抽牌堆：轮到自己抽牌（TURN_DRAW）时金色光晕
+	if _deck_block != null and is_instance_valid(_deck_block):
+		_deck_block.set_actionable(ActionModel.draw_available(state))
 	var discard: Dictionary = state.get("discard", {})
+	# 弃牌堆可点：取弃牌顶（TURN_DRAW）或 弃掉大牌/用能力（TURN_DECISION）；可点时金色光晕
+	var discard_actionable := ActionModel.discard_pile_actionable(state)
 	if _discard_hold:
 		_discard_block.visible = false
 		_discard_block.set_pick_enabled(false)
+		_discard_block.set_actionable(false)
 	else:
 		_discard_block.visible = true
 		_discard_block.setup({"card": discard} if not discard.is_empty() else {})
 		_discard_block.set_pick({"kind": "discard"})
-		_discard_block.set_pick_enabled(not discard.is_empty())
+		_discard_block.set_pick_enabled(discard_actionable)
+		_discard_block.set_actionable(discard_actionable)
 	var pending: Dictionary = state.get("pending", {})
 	_detect_draw(pending, discard)
 	_prev_pending = pending.duplicate()
@@ -225,7 +234,8 @@ func render(state: Dictionary, actionable := Callable()) -> void:
 	_pending_seen = true
 	_pending_block.visible = not pending.is_empty() and not _pending_hold
 	_pending_block.set_pick({"kind": "pending"})
-	_pending_block.set_pick_enabled(not pending.is_empty() and not _pending_hold)
+	# 大牌不再直接可点（弃牌/用能力改由弃牌堆触发）；禁用拾取避免准星误标为可点
+	_pending_block.set_pick_enabled(false)
 	if not pending.is_empty():
 		_pending_block.setup({"card": pending} if pending.has("rank") else {})
 	# HUD 放在 viewer 座位内侧、朝向 viewer

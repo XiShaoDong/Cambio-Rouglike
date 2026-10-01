@@ -22,6 +22,7 @@ func _run() -> void:
 	await _test_reveal_replay_no_restart()
 	_test_reveal_glow_priority()
 	await _test_draw_fly()
+	await _test_discard_pile_actionable()
 
 func _base_state() -> Dictionary:
 	return {
@@ -215,4 +216,43 @@ func _test_draw_fly() -> void:
 	await get_tree().process_frame
 	_check("非行动者抽牌飞牌为背面", view._flyers.size() == 1 and view._flyers[0].card_block().label_text() == "")
 	await _wait_flyers(view)
+	view.queue_free()
+
+## 弃牌堆按上下文可点 + 金色光晕；大牌不再直接可点。
+func _test_discard_pile_actionable() -> void:
+	var view = load("res://scenes/ui/table3d.tscn").instantiate()
+	add_child(view)
+	await get_tree().process_frame
+	var disc = view.get_node("Center/DiscardTop")
+	var deck = view.get_node("Center/Deck")
+	# TURN_DRAW 当前玩家 + 弃牌堆非空 → 可取弃牌顶 + 光晕
+	var s := _base_state()
+	s["phase"] = 2
+	s["discard"] = {"rank": "7", "suit": "♣"}
+	s["pending"] = {}
+	view.render(s)
+	await get_tree().process_frame
+	_check("TURN_DRAW 弃牌堆可点", disc.is_pick_enabled())
+	_check("TURN_DRAW 弃牌堆金色光晕", disc.has_glow() and disc.glow_color() == Table3dLayout.ACTIONABLE_COLOR)
+	_check("TURN_DRAW 自己抽牌 → 抽牌堆金色光晕", deck.has_glow() and deck.glow_color() == Table3dLayout.ACTIONABLE_COLOR)
+	# TURN_DECISION 当前玩家 + pending(draw) → 可弃大牌 + 光晕；大牌本身不可点
+	var s2 := _base_state()
+	s2["phase"] = 3
+	s2["discard"] = {}
+	s2["pending"] = {"rank": "Q", "suit": "♦", "source": "draw"}
+	view.render(s2)
+	await get_tree().process_frame
+	_check("TURN_DECISION 弃牌堆可点（弃大牌）", disc.is_pick_enabled())
+	_check("TURN_DECISION 弃牌堆金色光晕", disc.has_glow() and disc.glow_color() == Table3dLayout.ACTIONABLE_COLOR)
+	_check("大牌本身不再可点", not view._pending_block.is_pick_enabled())
+	# 非当前玩家 → 弃牌堆不可点/不光晕
+	var s3 := _base_state()
+	s3["phase"] = 3
+	s3["current_player"] = 1
+	s3["pending"] = {"card_id": "zzz", "hidden": true}
+	view.render(s3)
+	await get_tree().process_frame
+	_check("非当前弃牌堆不可点", not disc.is_pick_enabled())
+	_check("非当前弃牌堆不光晕", not disc.has_glow())
+	_check("非当前抽牌堆不光晕", not deck.has_glow())
 	view.queue_free()
