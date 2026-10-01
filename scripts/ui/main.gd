@@ -736,7 +736,9 @@ func _build_lobby() -> void:
 func _on_deck_pressed() -> void:
 	if _slap_reveal_lock:
 		return
-	_draw_flip_pending = true
+	# 3D 下抽牌飞牌由 table3d_view 负责（不置 2D 抽牌标志，避免 2D 副本浮在 3D 画面上）
+	if not _table3d_active:
+		_draw_flip_pending = true
 	GameState.request_take("draw", _next_action_id())
 
 func _on_discard_pressed() -> void:

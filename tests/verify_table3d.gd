@@ -131,7 +131,9 @@ func _test_view_render() -> void:
 	var center = view.get_node("Center")
 	_check("弃牌顶标签 7♣", (center.get_node("DiscardTop") as CardBlock).label_text() == "7♣")
 	_check("pending 标签 Q♦", (center.get_node("Pending") as CardBlock).label_text() == "Q♦")
-	_check("pending 可见", (center.get_node("Pending") as Node3D).visible)
+	# pending 首次出现会触发抽牌飞牌（期间大牌隐藏），落地后才显示
+	await get_tree().create_timer(1.0).timeout
+	_check("pending 可见（抽牌飞牌落地后）", (center.get_node("Pending") as Node3D).visible)
 	_check("大牌位于桌心正上方", (center.get_node("Pending") as Node3D).position.is_equal_approx(Vector3(0.0, Table3dView.PENDING_Y, 0.0)))
 	var deck_n: Node3D = center.get_node("Deck")
 	var disc_n: Node3D = center.get_node("DiscardTop")
