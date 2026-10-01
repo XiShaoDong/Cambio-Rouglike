@@ -1,23 +1,25 @@
 class_name Board3d
 extends Node3D
-## 3D 全息看板宿主：把 2D Control 面板渲染到 SubViewport，再贴到朝向相机的半透明 quad。
+## 3D billboard UI 宿主：把 2D Control 渲染到 SubViewport，再贴到朝向相机的半透明 quad。
 ## 纯客户端展示层：不改规则/协议/快照；交互由 main 用准星射线 → push_input 合成事件驱动。
+## 支持多实例（模态大板 / 常驻提示板）：挂载后按面板内容 wrap 尺寸。
 
-const BOARD_W := 2.6
-const BOARD_H := 1.8
-const BOARD_Y := 1.6
-const BOARD_ALPHA := 0.92
-const VIEWPORT_SIZE := Vector2i(1024, 708)
-const HALO_MARGIN := 0.08
+const PIXEL_SCALE := 0.0022          # 每个视口像素对应的世界单位
+const WRAP_PADDING := Vector2i(24, 24)
+const MIN_VIEWPORT := Vector2i(120, 56)
+const HALO_MARGIN := 0.06
 const HALO_COLOR := Color(0.42, 0.72, 0.95, 0.35)
+const BOARD_ALPHA := 0.94
 
 var _viewport: SubViewport
 var _screen: MeshInstance3D
+var _halo: MeshInstance3D
 var _pick: Area3D
-var _banner_host: Control
-var _banner: Label
+var _pick_box: BoxShape3D
 var _panels: Array = []
 var _pending_release: InputEventMouseButton = null
+var _world_size := Vector2(0.6, 0.3)
+var _viewport_size := MIN_VIEWPORT
 
 func _ready() -> void:
 	_build()
@@ -25,62 +27,34 @@ func _ready() -> void:
 func _build() -> void:
 	if _viewport != null:
 		return
-	position = Vector3(0.0, BOARD_Y, 0.0)
 	visible = false
 
 	_viewport = SubViewport.new()
 	_viewport.name = "Viewport"
-	_viewport.size = VIEWPORT_SIZE
+	_viewport.size = _viewport_size
 	_viewport.transparent_bg = true
 	_viewport.disable_3d = true
 	_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	add_child(_viewport)
 
-	# 等待提示（无面板时显示）
-	_banner_host = CenterContainer.new()
-	_banner_host.name = "BannerHost"
-	_banner_host.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_banner_host.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var panel := PanelContainer.new()
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.08, 0.09, 0.12, 0.75)
-	style.set_corner_radius_all(12)
-	style.set_content_margin_all(18)
-	style.border_color = HALO_COLOR
-	style.set_border_width_all(1)
-	panel.add_theme_stylebox_override("panel", style)
-	_banner = Label.new()
-	_banner.name = "Banner"
-	_banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_banner.add_theme_font_size_override("font_size", 22)
-	_banner.add_theme_color_override("font_color", Color(0.92, 0.95, 1.0))
-	panel.add_child(_banner)
-	_banner_host.add_child(panel)
-	_viewport.add_child(_banner_host)
-	_banner_host.visible = false
-
 	# 光晕底（比屏幕略大，营造全息边）
-	var halo := MeshInstance3D.new()
-	halo.name = "Halo"
-	var halo_mesh := QuadMesh.new()
-	halo_mesh.size = Vector2(BOARD_W + HALO_MARGIN, BOARD_H + HALO_MARGIN)
-	halo.mesh = halo_mesh
+	_halo = MeshInstance3D.new()
+	_halo.name = "Halo"
+	_halo.mesh = QuadMesh.new()
 	var halo_mat := StandardMaterial3D.new()
 	halo_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	halo_mat.albedo_color = HALO_COLOR
 	halo_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	halo_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	halo_mat.no_depth_test = true
-	halo.material_override = halo_mat
-	halo.position = Vector3(0.0, 0.0, -0.01)
-	add_child(halo)
+	_halo.material_override = halo_mat
+	_halo.position = Vector3(0.0, 0.0, -0.01)
+	add_child(_halo)
 
 	# 屏幕
 	_screen = MeshInstance3D.new()
 	_screen.name = "Screen"
-	var quad := QuadMesh.new()
-	quad.size = Vector2(BOARD_W, BOARD_H)
-	_screen.mesh = quad
+	_screen.mesh = QuadMesh.new()
 	var mat := StandardMaterial3D.new()
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mat.albedo_texture = _viewport.get_texture()
@@ -91,18 +65,19 @@ func _build() -> void:
 	_screen.material_override = mat
 	add_child(_screen)
 
-	# 拾取
+	# 拾取（薄盒随根旋转，射线命中即本板）
 	_pick = Area3D.new()
 	_pick.name = "Pick"
 	_pick.collision_layer = Table3dLayout.PICK_MASK
 	_pick.collision_mask = 0
 	_pick.set_meta("pick", {"kind": "board"})
 	var shape := CollisionShape3D.new()
-	var box := BoxShape3D.new()
-	box.size = Vector3(BOARD_W, BOARD_H, 0.02)
-	shape.shape = box
+	_pick_box = BoxShape3D.new()
+	shape.shape = _pick_box
 	_pick.add_child(shape)
 	add_child(_pick)
+
+	_apply_size()
 
 func viewport() -> SubViewport:
 	return _viewport
@@ -110,10 +85,16 @@ func viewport() -> SubViewport:
 func screen_mesh() -> MeshInstance3D:
 	return _screen
 
+func world_size() -> Vector2:
+	return _world_size
+
+func viewport_size() -> Vector2i:
+	return _viewport_size
+
 func has_panel() -> bool:
 	return _panels.size() > 0
 
-## 把面板挂进看板视口（3D 模式）。
+## 把面板挂进看板视口（3D 模式），随后按内容自适应尺寸。
 func mount_panel(control: Control) -> void:
 	_build()
 	if control == null:
@@ -127,6 +108,7 @@ func mount_panel(control: Control) -> void:
 	if not _panels.has(control):
 		_panels.append(control)
 	_sync_visible()
+	call_deferred("wrap_to_content")
 
 ## 从看板视口取出面板（不 free，由调用方决定去向）。
 func unmount_panel(control: Control) -> void:
@@ -142,15 +124,47 @@ func detach_all() -> Array:
 		unmount_panel(c)
 	return out
 
-func set_banner(text: String) -> void:
+## 按（最上层）面板内容最小尺寸调整视口与 quad 尺寸。
+func wrap_to_content() -> void:
 	_build()
-	_banner.text = text
-	_sync_visible()
+	if _panels.is_empty():
+		return
+	var control: Control = _panels[_panels.size() - 1]
+	var content := _content_min_size(control)
+	_viewport_size = Vector2i(
+		int(ceil(content.x)) + WRAP_PADDING.x,
+		int(ceil(content.y)) + WRAP_PADDING.y).max(MIN_VIEWPORT)
+	_apply_size()
+
+func _content_min_size(control: Control) -> Vector2:
+	if control == null or not is_instance_valid(control):
+		return Vector2(MIN_VIEWPORT) / PIXEL_SCALE
+	var pc := _find_panel_container(control)
+	if pc != null:
+		return pc.get_combined_minimum_size()
+	var m := control.get_combined_minimum_size()
+	return m if m != Vector2.ZERO else Vector2(MIN_VIEWPORT) / PIXEL_SCALE
+
+func _find_panel_container(node: Node) -> PanelContainer:
+	if node is PanelContainer:
+		return node
+	for c in node.get_children():
+		var r := _find_panel_container(c)
+		if r != null:
+			return r
+	return null
+
+func _apply_size() -> void:
+	if _viewport == null:
+		return
+	_viewport.size = _viewport_size
+	_world_size = Vector2(_viewport_size) * PIXEL_SCALE
+	(_screen.mesh as QuadMesh).size = _world_size
+	(_halo.mesh as QuadMesh).size = _world_size + Vector2(HALO_MARGIN, HALO_MARGIN) * 2.0
+	_pick_box.size = Vector3(_world_size.x, _world_size.y, 0.02)
 
 func _sync_visible() -> void:
-	if _banner_host != null:
-		_banner_host.visible = not has_panel() and not _banner.text.is_empty()
-	visible = has_panel() or (_banner != null and not _banner.text.is_empty())
+	visible = _panels.size() > 0
 
 ## 每帧朝向相机（billboard）。用显式基让 quad 正面（+Z）朝相机，贴图不镜像。
 func set_facing(cam: Camera3D) -> void:
@@ -169,17 +183,17 @@ func set_facing(cam: Camera3D) -> void:
 	t.basis = Basis(right, up, fwd)
 	global_transform = t
 
-## 屏幕中心射线命中看板 → 返回视口像素坐标；未命中返回 (-1,-1)。
+## 屏幕中心射线命中本看板 → 返回视口像素坐标；未命中返回 (-1,-1)。
 func hit_viewport_coord(cam: Camera3D) -> Vector2i:
 	if cam == null or not visible:
 		return Vector2i(-1, -1)
 	var center := get_viewport().get_visible_rect().size * 0.5
 	var hit := Table3dPicker.pick_hit(cam, get_world_3d(), center)
-	if str(hit.get("pick", {}).get("kind", "")) != "board":
+	if hit.get("collider") != _pick:
 		return Vector2i(-1, -1)
 	var local := BoardInput.world_to_local(global_transform, hit.get("position", Vector3.ZERO))
-	var uv := BoardInput.local_to_uv(local, Vector2(BOARD_W, BOARD_H))
-	return BoardInput.uv_to_viewport(uv, VIEWPORT_SIZE)
+	var uv := BoardInput.local_to_uv(local, _world_size)
+	return BoardInput.uv_to_viewport(uv, _viewport_size)
 
 func push_motion(pos: Vector2i, rel := Vector2.ZERO) -> void:
 	var ev := InputEventMouseMotion.new()

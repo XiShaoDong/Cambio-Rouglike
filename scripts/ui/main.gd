@@ -40,10 +40,12 @@ func _toggle_table3d() -> void:
 func _table3d_click() -> void:
 	if table3d == null or not is_instance_valid(table3d):
 		return
+	if _board_has_panel() or (hint3d != null and is_instance_valid(hint3d) and hint3d.visible):
+		var hit := _board_hit()
+		if not hit.is_empty():
+			(hit.host as Board3d).push_click(hit.coord)
+		return
 	if _board_has_panel():
-		var coord: Vector2i = board3d.hit_viewport_coord(table3d.camera.camera_node())
-		if coord.x >= 0:
-			board3d.push_click(coord)
 		return
 	var pick: Dictionary = table3d.pick_center()
 	match str(pick.get("kind", "")):
@@ -73,15 +75,9 @@ func _on_action(action: String) -> void:
 		"joker":
 			_open_joker_transform_panel()
 
-## 3D 操作面板按钮（Ready + 条件动作；Kongbaya 由 3D 铃铛负责，不在面板里）。
+## 3D 操作面板按钮（条件动作；Ready 已移到提示板、Kongbaya 由 3D 铃铛负责）。
 func _hud_buttons() -> Array:
-	var out: Array = []
-	if int(latest_state.get("phase", PHASE_LOBBY)) == PHASE_INITIAL_PEEK:
-		out.append({"text": ActionModel.ready_text(latest_state, game_view._ready_clicked),
-			"action": "ready",
-			"enabled": ActionModel.ready_enabled(latest_state, game_view._ready_clicked)})
-	out.append_array(ActionModel.conditional_actions(latest_state))
-	return out
+	return ActionModel.conditional_actions(latest_state)
 
 ## 3D 激活时恒定捕获鼠标（看板交互走准星），准星恒显示。
 func _sync_table3d_pointer() -> void:
@@ -115,17 +111,24 @@ func _update_self_panel() -> void:
 			_self_panel.set_data("", int(p.get("health", 0)), int(p.get("currency", 0)), int(p.get("count", 0)))
 			return
 
-## 确保看板存在（挂在 table3d 下，随 3D 世界显隐/释放）。
+## 确保看板存在：模态大板 board3d + 常驻提示板 hint3d（均挂 table3d 下，随 3D 世界显隐）。
 func _ensure_board() -> void:
-	if board3d != null and is_instance_valid(board3d):
-		return
 	if table3d == null or not is_instance_valid(table3d):
 		return
-	board3d = Board3d.new()
-	board3d.name = "HologramBoard"
-	table3d.add_child(board3d)
+	if board3d == null or not is_instance_valid(board3d):
+		board3d = Board3d.new()
+		board3d.name = "ModalBoard"
+		board3d.position = Vector3(0.0, BOARD_Y, 0.0)
+		table3d.add_child(board3d)
+	if hint3d == null or not is_instance_valid(hint3d):
+		hint3d = Board3d.new()
+		hint3d.name = "HintBoard"
+		hint3d.position = Vector3(0.0, HINT_Y, 0.0)
+		table3d.add_child(hint3d)
+		_hint_panel = _make_hint_panel()
+		hint3d.mount_panel(_hint_panel)
 
-## 模态挂载：3D 激活挂到看板，否则沿用 2D 父节点（默认 main）。
+## 模态挂载：3D 激活挂到模态大板，否则沿用 2D 父节点（默认 main）。
 func _mount_modal(control: Control, parent_2d: Node = null) -> void:
 	if _table3d_active:
 		_ensure_board()
@@ -137,16 +140,86 @@ func _mount_modal(control: Control, parent_2d: Node = null) -> void:
 func _board_has_panel() -> bool:
 	return board3d != null and is_instance_valid(board3d) and board3d.has_panel()
 
-## 看板等待提示文本：无面板时用当前 hint，其余情况为空。
-func _board_banner_text() -> String:
-	if _board_has_panel():
-		return ""
+## 构造常驻提示面板：提示文本 + （开局记忆阶段）Ready 按钮。
+func _make_hint_panel() -> Control:
+	var panel := PanelContainer.new()
+	panel.name = "HintPanel"
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.08, 0.09, 0.12, 0.75)
+	style.set_corner_radius_all(10)
+	style.set_content_margin_all(12)
+	style.border_color = Color(0.42, 0.72, 0.95, 0.6)
+	style.set_border_width_all(1)
+	panel.add_theme_stylebox_override("panel", style)
+	var vb := VBoxContainer.new()
+	vb.name = "VBox"
+	vb.add_theme_constant_override("separation", 8)
+	panel.add_child(vb)
+	var lbl := Label.new()
+	lbl.name = "HintLabel"
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.add_theme_font_size_override("font_size", 18)
+	lbl.add_theme_color_override("font_color", Color(0.92, 0.95, 1.0))
+	vb.add_child(lbl)
+	var ready := Button.new()
+	ready.name = "ReadyButton"
+	ready.text = "Ready"
+	ready.add_theme_font_size_override("font_size", 16)
+	ready.pressed.connect(_on_hint_ready)
+	vb.add_child(ready)
+	return panel
+
+func _on_hint_ready() -> void:
+	game_view._ready_clicked = true
+	GameState.request_initial_ready()
+
+## 刷新提示板：文本 + Ready 可见性/状态；随后按内容重算尺寸。LOBBY 隐藏。
+func _refresh_hint_panel() -> void:
+	if _hint_panel == null or not is_instance_valid(_hint_panel):
+		return
 	var phase := int(latest_state.get("phase", PHASE_LOBBY))
 	if phase == PHASE_LOBBY:
-		return ""
+		if hint3d != null and is_instance_valid(hint3d):
+			hint3d.visible = false
+		return
+	if hint3d != null and is_instance_valid(hint3d):
+		hint3d.visible = true
 	var viewer := int(latest_state.get("viewer_id", 0))
 	var current := int(latest_state.get("current_player", -1))
-	return _hint_for(phase, viewer == current)
+	var lbl: Label = _hint_panel.get_node_or_null("VBox/HintLabel")
+	if lbl != null:
+		lbl.text = _hint_for(phase, viewer == current)
+	var ready: Button = _hint_panel.get_node_or_null("VBox/ReadyButton")
+	if ready != null:
+		ready.visible = phase == PHASE_INITIAL_PEEK
+		ready.text = ActionModel.ready_text(latest_state, game_view._ready_clicked)
+		ready.disabled = not ActionModel.ready_enabled(latest_state, game_view._ready_clicked)
+	if hint3d != null and is_instance_valid(hint3d):
+		hint3d.wrap_to_content()
+
+## 准星射线命中哪块看板（模态板 / 提示板）→ {host, coord}；未命中 {}。
+func _board_hit() -> Dictionary:
+	if table3d == null or not is_instance_valid(table3d):
+		return {}
+	var cam: Camera3D = table3d.camera.camera_node()
+	for host in [board3d, hint3d]:
+		if host != null and is_instance_valid(host) and host.visible:
+			var c: Vector2i = host.hit_viewport_coord(cam)
+			if c.x >= 0:
+				return {"host": host, "coord": c}
+	return {}
+
+## 更新两块看板内 hover：命中板推送 motion，其余推 motion_out；返回是否命中任一板。
+func _update_board_hover() -> bool:
+	var hit := _board_hit()
+	for host in [board3d, hint3d]:
+		if host == null or not is_instance_valid(host):
+			continue
+		if not hit.is_empty() and hit.host == host:
+			host.push_motion(hit.coord)
+		else:
+			host.push_motion_out()
+	return not hit.is_empty()
 
 ## 3D 只读预览开关（仅对局中可用）。激活时隐藏 2D 棋盘（含 background，
 ## 否则 CanvasItem 会盖住 3D）并捕获鼠标；退出时恢复并重绘 2D。
@@ -170,8 +243,7 @@ func _set_table3d(on: bool) -> void:
 		table3d.set_hud_buttons(_hud_buttons())
 		table3d.render(latest_state, interaction.card_actionable)
 		_sync_table3d_pointer()
-		if board3d != null and is_instance_valid(board3d):
-			board3d.set_banner(_board_banner_text())
+		_refresh_hint_panel()
 		_ensure_self_panel()
 		_self_panel.visible = true
 		_update_self_panel()
@@ -190,7 +262,6 @@ func _set_table3d(on: bool) -> void:
 			for c in board3d.detach_all():
 				if c != null and is_instance_valid(c):
 					add_child(c)
-			board3d.set_banner("")
 		background.visible = true
 		game_panel.visible = true
 		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
@@ -227,25 +298,27 @@ func _input(event: InputEvent) -> void:
 		_table3d_click()
 		get_viewport().set_input_as_handled()
 
-## 3D 悬停指示：每帧按准星命中更新目标高亮与准星状态（仅 3D 且无模态时）。
+## 3D 悬停指示：每帧按准星命中更新目标高亮与准星状态。
 func _process(_delta: float) -> void:
 	if not _table3d_active:
 		return
 	if table3d == null or not is_instance_valid(table3d):
 		return
+	var cam: Camera3D = table3d.camera.camera_node()
 	if board3d != null and is_instance_valid(board3d):
-		board3d.set_facing(table3d.camera.camera_node())
+		board3d.set_facing(cam)
+	if hint3d != null and is_instance_valid(hint3d):
+		hint3d.set_facing(cam)
+	var on_board := _update_board_hover()
 	if _board_has_panel():
 		table3d.clear_hover()
-		var coord: Vector2i = board3d.hit_viewport_coord(table3d.camera.camera_node())
-		if coord.x >= 0:
-			board3d.push_motion(coord)
-			if _crosshair != null and is_instance_valid(_crosshair):
-				_crosshair.set_active(true)
-		else:
-			board3d.push_motion_out()
-			if _crosshair != null and is_instance_valid(_crosshair):
-				_crosshair.set_active(false)
+		if _crosshair != null and is_instance_valid(_crosshair):
+			_crosshair.set_active(on_board)
+		return
+	if on_board:
+		table3d.clear_hover()
+		if _crosshair != null and is_instance_valid(_crosshair):
+			_crosshair.set_active(true)
 		return
 	var on_target: bool = table3d.update_hover()
 	if _crosshair != null and is_instance_valid(_crosshair):
@@ -276,6 +349,9 @@ const PHASE_SLAP_EXCHANGE := 6
 const PHASE_GAME_OVER := 7
 const PHASE_SLAP_DUEL := 8
 const PHASE_SHOP := 10
+
+const BOARD_Y := 3.2   # 模态大板高度（可调）
+const HINT_Y := 4.6    # 常驻提示板高度（在大板上方，可调）
 
 const PEEK_GLOW_COLOR := Color("3ef0f7ff")  # 查看牌蓝色光晕
 const PEEK_GLOW_DURATION := 1.5
@@ -322,6 +398,8 @@ var pending_overlay: Control
 var background: ColorRect
 var board: Control
 var board3d: Board3d = null
+var hint3d: Board3d = null
+var _hint_panel: Control = null
 var table3d: Node3D = null
 var _table3d_active := false
 var _crosshair: Control = null
@@ -677,8 +755,8 @@ func _on_state_updated(state: Dictionary) -> void:
 		_on_joker_cancel()
 	_show_shop_result_toast(state)
 	_sync_table3d_pointer()
-	if _table3d_active and board3d != null and is_instance_valid(board3d):
-		board3d.set_banner(_board_banner_text())
+	if _table3d_active:
+		_refresh_hint_panel()
 
 ## 清空上一局可能残留的动画/挂起状态（对局结束时在途的看牌/贴牌揭示）。
 func _clear_settlement_anim_state() -> void:
