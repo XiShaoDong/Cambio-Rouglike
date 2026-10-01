@@ -119,6 +119,22 @@ func _test_board3d() -> void:
 	b.unmount_panel(panel)
 	_check("unmount 后面板脱离视口", panel.get_parent() == null)
 	_check("unmount 后隐藏", not b.has_panel() and not b.visible)
+
+	# 已释放面板残留在 _panels：has_panel / detach_all 不得对已释放对象报错（复现退出 3D 崩溃）
+	var ghost := PanelContainer.new()
+	var glbl := Label.new()
+	glbl.text = "ghost"
+	ghost.add_child(glbl)
+	add_child(ghost)
+	b.mount_panel(ghost)
+	await get_tree().process_frame
+	ghost.queue_free()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check("已释放面板被清理：has_panel 为假", not b.has_panel())
+	b.detach_all()
+	_check("detach_all 对已释放条目安全", true)
+
 	panel.queue_free()
 	p2.queue_free()
 	b2.queue_free()

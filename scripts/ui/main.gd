@@ -146,6 +146,12 @@ func _mount_modal(control: Control, parent_2d: Node = null) -> void:
 			return
 	(parent_2d if parent_2d != null else self).add_child(control)
 
+## 模态关闭前先从看板卸下（3D 时），避免已释放面板残留在看板 _panels。
+func _unmount_modal(control: Control) -> void:
+	if _table3d_active and board3d != null and is_instance_valid(board3d) \
+			and control != null and is_instance_valid(control):
+		board3d.unmount_panel(control)
+
 func _board_has_panel() -> bool:
 	return board3d != null and is_instance_valid(board3d) and board3d.has_panel()
 
@@ -617,6 +623,7 @@ func _show_reconnect_panel(title: String) -> void:
 
 func _hide_reconnect_panel() -> void:
 	if _reconnect_panel != null and is_instance_valid(_reconnect_panel):
+		_unmount_modal(_reconnect_panel)
 		_reconnect_panel.queue_free()
 	_reconnect_panel = null
 
@@ -817,6 +824,7 @@ func _render_duel(state: Dictionary) -> void:
 			_duel_panel.setup(self, duel, _on_slap_duel_stop, not _table3d_active)
 	else:
 		if _duel_panel != null:
+			_unmount_modal(_duel_panel)
 			_duel_panel.queue_free()
 			_duel_panel = null
 
@@ -860,6 +868,7 @@ func _on_settlement_flip(seat: int, slot: int, card: Dictionary) -> void:
 ## 关闭结算弹层（收到新局/中止时调用）。
 func _close_settlement() -> void:
 	if settlement_page != null and is_instance_valid(settlement_page):
+		_unmount_modal(settlement_page)
 		settlement_page.queue_free()
 	settlement_page = null
 
@@ -877,6 +886,7 @@ func _open_shop_panel() -> void:
 
 func _close_shop_panel() -> void:
 	if shop_panel != null and is_instance_valid(shop_panel):
+		_unmount_modal(shop_panel)
 		shop_panel.queue_free()
 	shop_panel = null
 
@@ -899,6 +909,7 @@ func _open_joker_transform_panel() -> void:
 
 func _on_joker_cancel() -> void:
 	if joker_panel != null and is_instance_valid(joker_panel):
+		_unmount_modal(joker_panel)
 		joker_panel.queue_free()
 	joker_panel = null
 

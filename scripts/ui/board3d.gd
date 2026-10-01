@@ -92,13 +92,23 @@ func viewport_size() -> Vector2i:
 	return _viewport_size
 
 func has_panel() -> bool:
+	_prune_panels()
 	return _panels.size() > 0
+
+## 清理已释放（queue_free 后）的面板条目，避免后续对已释放对象做类型化调用。
+func _prune_panels() -> void:
+	var live: Array = []
+	for c in _panels:
+		if c != null and is_instance_valid(c):
+			live.append(c)
+	_panels = live
 
 ## 把面板挂进看板视口（3D 模式），随后按内容自适应尺寸。
 func mount_panel(control: Control) -> void:
 	_build()
 	if control == null:
 		return
+	_prune_panels()
 	var parent := control.get_parent()
 	if parent != null and parent != _viewport:
 		parent.remove_child(control)
@@ -119,6 +129,7 @@ func unmount_panel(control: Control) -> void:
 
 ## 取出全部面板并返回（切回 2D 时用）。
 func detach_all() -> Array:
+	_prune_panels()
 	var out: Array = _panels.duplicate()
 	for c in out:
 		unmount_panel(c)
