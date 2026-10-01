@@ -21,6 +21,7 @@ func _run() -> void:
 	await _test_exchange()
 	await _test_reveal_replay_no_restart()
 	_test_reveal_glow_priority()
+	await _test_draw_fly()
 
 func _base_state() -> Dictionary:
 	return {
@@ -167,3 +168,51 @@ func _test_reveal_glow_priority() -> void:
 	b.restore()
 	_check("恢复后揭示炫光清除、回到 hover 浅蓝", b.glow_color() == Color(0.7, 0.95, 1.0))
 	b.queue_free()
+
+## 3D 抽牌飞牌：pending 出现 → 飞牌（抽牌堆/弃牌堆 → 竖立大牌），所有人可见。
+func _test_draw_fly() -> void:
+	var view = load("res://scenes/ui/table3d.tscn").instantiate()
+	add_child(view)
+	await get_tree().process_frame
+	# 首帧（无 pending）建立基线，不触发
+	view.render(_base_state())
+	await get_tree().process_frame
+	_check("首帧无 pending 不触发飞牌", view._flyers.is_empty())
+
+	# 抽牌堆抽牌：pending 出现 → 1 张飞牌 + 大牌隐藏
+	var s := _base_state()
+	s["pending"] = {"rank": "Q", "suit": "♦", "source": "draw"}
+	view.render(s)
+	await get_tree().process_frame
+	_check("抽牌出现 → 1 张飞牌", view._flyers.size() == 1)
+	_check("抽牌期间大牌隐藏", view._pending_hold and not view._pending_block.visible)
+	_check("抽牌飞牌从抽牌堆侧起飞", view._flyers[0].global_position.x < view.center_xform("pending").origin.x)
+	await _wait_flyers(view)
+	_check("抽牌落地 → 大牌显示、锁解除", not view._pending_hold and view._pending_block.visible)
+
+	# 取弃牌顶：弃牌堆顶变化 → 从弃牌堆起飞
+	view.render(_base_state())
+	await get_tree().process_frame
+	var s2 := _base_state()
+	s2["discard"] = {"rank": "7", "suit": "♣"}
+	view.render(s2)   # prev：pending 空、弃牌顶 7♣
+	await get_tree().process_frame
+	var s3 := _base_state()
+	s3["discard"] = {}                              # 弃牌堆被取走 → 顶变化
+	s3["pending"] = {"rank": "7", "suit": "♣", "source": "discard"}
+	view.render(s3)
+	await get_tree().process_frame
+	_check("取弃牌顶 → 1 张飞牌", view._flyers.size() == 1)
+	_check("取弃牌顶从弃牌堆侧起飞", view._flyers[0].global_position.x > view.center_xform("pending").origin.x)
+	await _wait_flyers(view)
+
+	# 非行动者：pending 隐藏 → 飞牌为背面
+	view.render(_base_state())
+	await get_tree().process_frame
+	var s5 := _base_state()
+	s5["pending"] = {"card_id": "z", "hidden": true}
+	view.render(s5)
+	await get_tree().process_frame
+	_check("非行动者抽牌飞牌为背面", view._flyers.size() == 1 and view._flyers[0].card_block().label_text() == "")
+	await _wait_flyers(view)
+	view.queue_free()

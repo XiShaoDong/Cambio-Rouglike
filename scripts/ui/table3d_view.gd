@@ -60,6 +60,10 @@ var _slot_cards := {}          # {seat: {slot: card}}（render 登记，供 slap
 var _anim_slots := {}          # "seat_slot" -> true（在途动画槽位，render 跳过）
 var _flyers: Array = []        # 在途 CardFly
 var _discard_hold := false     # 飞向弃牌堆期间隐藏弃牌顶
+var _pending_hold := false     # 抽牌飞行期间隐藏大牌
+var _prev_pending := {}        # 上一帧快照的 pending（检测新抽牌）
+var _prev_discard := {}        # 上一帧快照的弃牌顶（判断抽牌 vs 取弃牌顶）
+var _pending_seen := false     # 已见过一次 pending（避免进入 3D 首帧误触发抽牌飞牌）
 var _last_state: Dictionary = {}
 var _last_actionable := Callable()
 
@@ -215,9 +219,13 @@ func render(state: Dictionary, actionable := Callable()) -> void:
 		_discard_block.set_pick({"kind": "discard"})
 		_discard_block.set_pick_enabled(not discard.is_empty())
 	var pending: Dictionary = state.get("pending", {})
-	_pending_block.visible = not pending.is_empty()
+	_detect_draw(pending, discard)
+	_prev_pending = pending.duplicate()
+	_prev_discard = discard.duplicate()
+	_pending_seen = true
+	_pending_block.visible = not pending.is_empty() and not _pending_hold
 	_pending_block.set_pick({"kind": "pending"})
-	_pending_block.set_pick_enabled(not pending.is_empty())
+	_pending_block.set_pick_enabled(not pending.is_empty() and not _pending_hold)
 	if not pending.is_empty():
 		_pending_block.setup({"card": pending} if pending.has("rank") else {})
 	# HUD 放在 viewer 座位内侧、朝向 viewer
@@ -697,6 +705,33 @@ func _clear_exchange_anim() -> void:
 	_flyers.clear()
 	_anim_slots.clear()
 	_discard_hold = false
+	_pending_hold = false
+	_pending_seen = false
+	_prev_pending = {}
+	_prev_discard = {}
+
+## 快照检测：pending 由空→非空 = 有人抽牌/取弃牌顶 → 播飞牌（viewer 无关，所有人可见）。
+## 来源判定（无需协议字段）：弃牌顶未变 = 抽牌堆；弃牌顶变了 = 取弃牌顶。
+func _detect_draw(pending: Dictionary, discard: Dictionary) -> void:
+	if not _pending_seen or _pending_hold:
+		return   # 进入 3D 首帧 / 已有在途抽牌飞牌：不触发
+	if pending.is_empty():
+		return
+	if not _prev_pending.is_empty() and str(_prev_pending.get("card_id", "")) == str(pending.get("card_id", "")):
+		return   # 同一张大牌，非新抽牌
+	_anim_draw(pending, str(discard) != str(_prev_discard))
+
+## 抽牌飞牌：牌从抽牌堆（或弃牌堆）飞到竖立大牌位置。行动者（可见牌面）飞行中翻到正面，他人一直背面。
+func _anim_draw(pending: Dictionary, from_discard: bool) -> void:
+	var face_up := pending.has("rank")
+	var data: Dictionary = pending.duplicate()
+	data.erase("source")
+	data.erase("hidden")
+	var from_x := center_xform("discard") if from_discard else center_xform("deck")
+	var to_x := center_xform("pending")
+	_pending_hold = true
+	_spawn_fly(from_x, to_x, data if face_up else {}, false, face_up, func():
+		_pending_hold = false)
 
 func _anim_replace(data: Dictionary) -> void:
 	var actor := int(data.get("actor", 0))
