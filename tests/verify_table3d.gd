@@ -103,6 +103,7 @@ func _test_view_render() -> void:
 	_check("对手座位可见", view._seat_nodes[1].visible)
 	_check("空座位隐藏", not view._seat_nodes[2].visible and not view._seat_nodes[3].visible)
 	_check("viewer 手牌 4 槽", view._seat_nodes[0].get_node("HandAnchor").get_child_count() == 4)
+	_check("主手牌两列关于座位中轴居中", is_zero_approx(view._slot_local(0).origin.x + view._slot_local(1).origin.x) and is_zero_approx(view._slot_local(2).origin.x + view._slot_local(3).origin.x))
 	_check("viewer 面板 data", view._seat_panels[0].data.get("name") == "甲" and int(view._seat_panels[0].data.get("currency")) == 100)
 	_check("对手面板 data", view._seat_panels[1].data.get("name") == "乙")
 	_check("每席面板各一", view._seat_panels.size() == 4)
@@ -131,6 +132,10 @@ func _test_view_render() -> void:
 	_check("弃牌顶标签 7♣", (center.get_node("DiscardTop") as CardBlock).label_text() == "7♣")
 	_check("pending 标签 Q♦", (center.get_node("Pending") as CardBlock).label_text() == "Q♦")
 	_check("pending 可见", (center.get_node("Pending") as Node3D).visible)
+	_check("大牌位于桌心正上方", (center.get_node("Pending") as Node3D).position.is_equal_approx(Vector3(0.0, Table3dView.PENDING_Y, 0.0)))
+	var deck_n: Node3D = center.get_node("Deck")
+	var disc_n: Node3D = center.get_node("DiscardTop")
+	_check("两堆关于桌心对称", is_zero_approx(deck_n.position.x + disc_n.position.x) and is_zero_approx(deck_n.position.z - disc_n.position.z))
 	# 空槽（贴牌成功被清掉的牌）不渲染 → 卡牌消失
 	view.render({
 		"viewer_id": 0,

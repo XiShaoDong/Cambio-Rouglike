@@ -36,10 +36,26 @@ func _leave_to_main_menu() -> void:
 func _toggle_table3d() -> void:
 	_set_table3d(not _table3d_active)
 
+## 点击路由：命中看板 → "board"；有模态面板 → "blocked"；否则 → "table"。
+## 关键：常驻提示板可见不等于"模态打开"，不能因此吞掉牌桌点击。
+func _click_route(board_hit: bool) -> String:
+	if board_hit:
+		return "board"
+	if _board_has_panel():
+		return "blocked"
+	return "table"
+
 ## 准星点击分发：只调用既有入口，不改规则。
 func _table3d_click() -> void:
 	if table3d == null or not is_instance_valid(table3d):
 		return
+	var hit := _board_hit()
+	match _click_route(not hit.is_empty()):
+		"board":
+			(hit.host as Board3d).push_click(hit.coord)
+			return
+		"blocked":
+			return
 	var pick: Dictionary = table3d.pick_center()
 	match str(pick.get("kind", "")):
 		"slot":
@@ -68,31 +84,17 @@ func _on_action(action: String) -> void:
 		"joker":
 			_open_joker_transform_panel()
 
-## 3D 操作面板按钮（Ready + 条件动作；Kongbaya 由 3D 铃铛负责，不在面板里）。
+## 3D 操作面板按钮（条件动作；Ready 已移到提示板、Kongbaya 由 3D 铃铛负责）。
 func _hud_buttons() -> Array:
-	var out: Array = []
-	if int(latest_state.get("phase", PHASE_LOBBY)) == PHASE_INITIAL_PEEK:
-		out.append({"text": ActionModel.ready_text(latest_state, game_view._ready_clicked),
-			"action": "ready",
-			"enabled": ActionModel.ready_enabled(latest_state, game_view._ready_clicked)})
-	out.append_array(ActionModel.conditional_actions(latest_state))
-	return out
+	return ActionModel.conditional_actions(latest_state)
 
-## 是否有 2D 模态打开（打开时释放鼠标，让模态可点）。
-func _table3d_modal_open() -> bool:
-	for panel in [settlement_page, shop_panel, joker_panel, _duel_panel, _reconnect_panel]:
-		if panel != null and is_instance_valid(panel) and (panel as CanvasItem).visible:
-			return true
-	return false
-
-## 3D 激活时同步鼠标模式与准星：模态打开 → 可见（交还 2D）；否则捕获（准星环视）。
+## 3D 激活时恒定捕获鼠标（看板交互走准星），准星恒显示。
 func _sync_table3d_pointer() -> void:
 	if not _table3d_active:
 		return
-	var modal := _table3d_modal_open()
-	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE if modal else Input.MOUSE_MODE_CAPTURED)
+	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	if _crosshair != null and is_instance_valid(_crosshair):
-		_crosshair.visible = not modal
+		_crosshair.visible = true
 
 ## 3D 自己面板（屏幕右下角）：生命/金钱/卡牌数（无名字）。
 func _ensure_self_panel() -> void:
@@ -118,6 +120,156 @@ func _update_self_panel() -> void:
 			_self_panel.set_data("", int(p.get("health", 0)), int(p.get("currency", 0)), int(p.get("count", 0)))
 			return
 
+## 确保看板存在：模态大板 board3d + 常驻提示板 hint3d（均挂 table3d 下，随 3D 世界显隐）。
+func _ensure_board() -> void:
+	if table3d == null or not is_instance_valid(table3d):
+		return
+	if board3d == null or not is_instance_valid(board3d):
+		board3d = Board3d.new()
+		board3d.name = "ModalBoard"
+		table3d.add_child(board3d)
+	if hint3d == null or not is_instance_valid(hint3d):
+		hint3d = Board3d.new()
+		hint3d.name = "HintBoard"
+		table3d.add_child(hint3d)
+		_hint_panel = _make_hint_panel()
+		hint3d.mount_panel(_hint_panel)
+
+## 把两块看板放到"相机 → 桌心"的连线上（距相机 BOARD_DIST），提示板再抬高 HINT_RISE。
+func _place_boards() -> void:
+	if table3d == null or not is_instance_valid(table3d):
+		return
+	var cam: Camera3D = table3d.camera.camera_node()
+	if cam == null:
+		return
+	var dir := Vector3.ZERO - cam.global_position
+	if dir.length_squared() < 0.0001:
+		return
+	dir = dir.normalized()
+	var base := cam.global_position + dir * BOARD_DIST
+	var lifted := Vector3(base.x, base.y * (1.0 + BOARD_LIFT), base.z)
+	if board3d != null and is_instance_valid(board3d):
+		board3d.global_position = lifted
+	if hint3d != null and is_instance_valid(hint3d):
+		hint3d.global_position = lifted + Vector3(0.0, HINT_RISE, 0.0)
+
+## 模态挂载：3D 激活挂到模态大板，否则沿用 2D 父节点（默认 main）。
+func _mount_modal(control: Control, parent_2d: Node = null) -> void:
+	if _table3d_active:
+		_ensure_board()
+		if board3d != null and is_instance_valid(board3d):
+			board3d.mount_panel(control)
+			return
+	(parent_2d if parent_2d != null else self).add_child(control)
+
+## 模态关闭前先从看板卸下（3D 时），避免已释放面板残留在看板 _panels。
+func _unmount_modal(control: Control) -> void:
+	if _table3d_active and board3d != null and is_instance_valid(board3d) \
+			and control != null and is_instance_valid(control):
+		board3d.unmount_panel(control)
+
+func _board_has_panel() -> bool:
+	return board3d != null and is_instance_valid(board3d) and board3d.has_panel()
+
+## 构造常驻提示面板：提示文本 + （开局记忆阶段）Ready 按钮。
+func _make_hint_panel() -> Control:
+	var panel := PanelContainer.new()
+	panel.name = "HintPanel"
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.08, 0.09, 0.12, 0.75)
+	style.set_corner_radius_all(10)
+	style.set_content_margin_all(12)
+	style.border_color = Color(0.42, 0.72, 0.95, 0.6)
+	style.set_border_width_all(1)
+	panel.add_theme_stylebox_override("panel", style)
+	var vb := VBoxContainer.new()
+	vb.name = "VBox"
+	vb.add_theme_constant_override("separation", 8)
+	panel.add_child(vb)
+	var lbl := Label.new()
+	lbl.name = "HintLabel"
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.add_theme_font_size_override("font_size", 20)
+	lbl.add_theme_color_override("font_color", Color(0.92, 0.95, 1.0))
+	vb.add_child(lbl)
+	# Ready：与游戏按钮一致的醒目 accent UI（更大字号/尺寸 + accent 底）
+	var ready := Button.new()
+	ready.name = "ReadyButton"
+	ready.text = "Ready"
+	ready.custom_minimum_size = Vector2(200.0, 48.0)
+	ready.add_theme_font_size_override("font_size", 22)
+	ready.add_theme_color_override("font_color", Color(0.08, 0.09, 0.12))
+	var acc := UITheme.color("accent")
+	var bstyle := StyleBoxFlat.new()
+	bstyle.bg_color = acc
+	bstyle.set_corner_radius_all(8)
+	bstyle.set_content_margin_all(10)
+	ready.add_theme_stylebox_override("normal", bstyle)
+	var bhover: StyleBoxFlat = bstyle.duplicate()
+	bhover.bg_color = acc.lightened(0.15)
+	ready.add_theme_stylebox_override("hover", bhover)
+	var bdown: StyleBoxFlat = bstyle.duplicate()
+	bdown.bg_color = acc.darkened(0.15)
+	ready.add_theme_stylebox_override("pressed", bdown)
+	var boff: StyleBoxFlat = bstyle.duplicate()
+	boff.bg_color = UITheme.color("bg_elevated")
+	ready.add_theme_stylebox_override("disabled", boff)
+	ready.pressed.connect(_on_hint_ready)
+	vb.add_child(ready)
+	return panel
+
+func _on_hint_ready() -> void:
+	game_view._ready_clicked = true
+	GameState.request_initial_ready()
+
+## 刷新提示板：文本 + Ready 可见性/状态；随后按内容重算尺寸。LOBBY 隐藏。
+func _refresh_hint_panel() -> void:
+	if _hint_panel == null or not is_instance_valid(_hint_panel):
+		return
+	var phase := int(latest_state.get("phase", PHASE_LOBBY))
+	if phase == PHASE_LOBBY:
+		if hint3d != null and is_instance_valid(hint3d):
+			hint3d.visible = false
+		return
+	if hint3d != null and is_instance_valid(hint3d):
+		hint3d.visible = true
+	var viewer := int(latest_state.get("viewer_id", 0))
+	var current := int(latest_state.get("current_player", -1))
+	var lbl: Label = _hint_panel.get_node_or_null("VBox/HintLabel")
+	if lbl != null:
+		lbl.text = _hint_for(phase, viewer == current)
+	var ready: Button = _hint_panel.get_node_or_null("VBox/ReadyButton")
+	if ready != null:
+		ready.visible = phase == PHASE_INITIAL_PEEK
+		ready.text = ActionModel.ready_text(latest_state, game_view._ready_clicked)
+		ready.disabled = not ActionModel.ready_enabled(latest_state, game_view._ready_clicked)
+	if hint3d != null and is_instance_valid(hint3d):
+		hint3d.wrap_to_content()
+
+## 准星射线命中哪块看板（模态板 / 提示板）→ {host, coord}；未命中 {}。
+func _board_hit() -> Dictionary:
+	if table3d == null or not is_instance_valid(table3d):
+		return {}
+	var cam: Camera3D = table3d.camera.camera_node()
+	for host in [board3d, hint3d]:
+		if host != null and is_instance_valid(host) and host.visible:
+			var c: Vector2i = host.hit_viewport_coord(cam)
+			if c.x >= 0:
+				return {"host": host, "coord": c}
+	return {}
+
+## 更新两块看板内 hover：命中板推送 motion，其余推 motion_out；返回是否命中任一板。
+func _update_board_hover() -> bool:
+	var hit := _board_hit()
+	for host in [board3d, hint3d]:
+		if host == null or not is_instance_valid(host):
+			continue
+		if not hit.is_empty() and hit.host == host:
+			host.push_motion(hit.coord)
+		else:
+			host.push_motion_out()
+	return not hit.is_empty()
+
 ## 3D 只读预览开关（仅对局中可用）。激活时隐藏 2D 棋盘（含 background，
 ## 否则 CanvasItem 会盖住 3D）并捕获鼠标；退出时恢复并重绘 2D。
 func _set_table3d(on: bool) -> void:
@@ -136,9 +288,12 @@ func _set_table3d(on: bool) -> void:
 			_crosshair.name = "Crosshair"
 			_crosshair.z_index = 80
 			add_child(_crosshair)
+		_ensure_board()
 		table3d.set_hud_buttons(_hud_buttons())
 		table3d.render(latest_state, interaction.card_actionable)
+		_place_boards()
 		_sync_table3d_pointer()
+		_refresh_hint_panel()
 		_ensure_self_panel()
 		_self_panel.visible = true
 		_update_self_panel()
@@ -153,6 +308,10 @@ func _set_table3d(on: bool) -> void:
 			_crosshair.set_active(false)
 		if _self_panel != null and is_instance_valid(_self_panel):
 			_self_panel.visible = false
+		if board3d != null and is_instance_valid(board3d):
+			for c in board3d.detach_all():
+				if c != null and is_instance_valid(c):
+					add_child(c)
 		background.visible = true
 		game_panel.visible = true
 		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
@@ -163,13 +322,23 @@ func _set_table3d(on: bool) -> void:
 func _input(event: InputEvent) -> void:
 	if not _table3d_active:
 		return
-	if _table3d_modal_open():
-		return   # 交给 2D 模态
-	if event is InputEventKey and event.pressed and not event.echo \
-			and (event.keycode == KEY_F10 or event.keycode == KEY_V or event.keycode == KEY_ESCAPE):
-		_set_table3d(false)
-		get_viewport().set_input_as_handled()
-		return
+	var board_panel := _board_has_panel()
+	if event is InputEventKey and event.pressed and not event.echo:
+		# F10/V 任何时候都可切回 2D（含看板面板打开时；面板会被重挂回 2D）。
+		if event.keycode == KEY_F10 or event.keycode == KEY_V:
+			_set_table3d(false)
+			get_viewport().set_input_as_handled()
+			return
+		# 有看板面板时，Enter/Esc 交给面板（Joker/商店）；否则 Esc 退出 3D。
+		if board_panel and (event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER or event.keycode == KEY_ESCAPE):
+			if board3d != null and is_instance_valid(board3d):
+				board3d.push_key(event)
+			get_viewport().set_input_as_handled()
+			return
+		if not board_panel and event.keycode == KEY_ESCAPE:
+			_set_table3d(false)
+			get_viewport().set_input_as_handled()
+			return
 	if event is InputEventMouseMotion:
 		if table3d != null and is_instance_valid(table3d):
 			table3d.camera.look(event.relative)
@@ -179,16 +348,29 @@ func _input(event: InputEvent) -> void:
 		_table3d_click()
 		get_viewport().set_input_as_handled()
 
-## 3D 悬停指示：每帧按准星命中更新目标高亮与准星状态（仅 3D 且无模态时）。
+## 3D 悬停指示：每帧按准星命中更新目标高亮与准星状态。
 func _process(_delta: float) -> void:
 	if not _table3d_active:
 		return
 	if table3d == null or not is_instance_valid(table3d):
 		return
-	if _table3d_modal_open():
+	_place_boards()
+	var cam: Camera3D = table3d.camera.camera_node()
+	if board3d != null and is_instance_valid(board3d):
+		board3d.set_facing(cam)
+	if hint3d != null and is_instance_valid(hint3d):
+		hint3d.set_facing(cam)
+	table3d.update_facing()
+	var on_board := _update_board_hover()
+	if _board_has_panel():
 		table3d.clear_hover()
 		if _crosshair != null and is_instance_valid(_crosshair):
-			_crosshair.set_active(false)
+			_crosshair.set_active(on_board)
+		return
+	if on_board:
+		table3d.clear_hover()
+		if _crosshair != null and is_instance_valid(_crosshair):
+			_crosshair.set_active(true)
 		return
 	var on_target: bool = table3d.update_hover()
 	if _crosshair != null and is_instance_valid(_crosshair):
@@ -219,6 +401,10 @@ const PHASE_SLAP_EXCHANGE := 6
 const PHASE_GAME_OVER := 7
 const PHASE_SLAP_DUEL := 8
 const PHASE_SHOP := 10
+
+const BOARD_DIST := 3.0        # 看板沿"相机→桌心"连线距相机的距离（可调）
+const HINT_RISE := 0.5         # 提示板相对大板的世界 Y 抬升（gap，已缩小 1/2）
+const BOARD_LIFT := 0.8        # 面板高度抬升比例（y *= 1 + BOARD_LIFT；比上次降低 1/5）
 
 const PEEK_GLOW_COLOR := Color("3ef0f7ff")  # 查看牌蓝色光晕
 const PEEK_GLOW_DURATION := 1.5
@@ -264,6 +450,9 @@ var overlay: Control
 var pending_overlay: Control
 var background: ColorRect
 var board: Control
+var board3d: Board3d = null
+var hint3d: Board3d = null
+var _hint_panel: Control = null
 var table3d: Node3D = null
 var _table3d_active := false
 var _crosshair: Control = null
@@ -467,11 +656,12 @@ func _show_reconnect_panel(title: String) -> void:
 	var btn_later: Button = _button("稍后")
 	btn_later.pressed.connect(_hide_reconnect_panel)
 	row.add_child(btn_later)
-	overlay.add_child(panel)
+	_mount_modal(panel, overlay)
 	_reconnect_panel = panel
 
 func _hide_reconnect_panel() -> void:
 	if _reconnect_panel != null and is_instance_valid(_reconnect_panel):
+		_unmount_modal(_reconnect_panel)
 		_reconnect_panel.queue_free()
 	_reconnect_panel = null
 
@@ -619,6 +809,8 @@ func _on_state_updated(state: Dictionary) -> void:
 		_on_joker_cancel()
 	_show_shop_result_toast(state)
 	_sync_table3d_pointer()
+	if _table3d_active:
+		_refresh_hint_panel()
 
 ## 清空上一局可能残留的动画/挂起状态（对局结束时在途的看牌/贴牌揭示）。
 func _clear_settlement_anim_state() -> void:
@@ -666,10 +858,11 @@ func _render_duel(state: Dictionary) -> void:
 			var contestants: Array = duel.get("contestants", [])
 			duel["viewer_contestant"] = 1 if int(state.get("viewer_id", 0)) in contestants else 0
 			_duel_panel = DuelBarScript.new()
-			overlay.add_child(_duel_panel)
-			_duel_panel.setup(self, duel, _on_slap_duel_stop)
+			_mount_modal(_duel_panel, overlay)
+			_duel_panel.setup(self, duel, _on_slap_duel_stop, not _table3d_active)
 	else:
 		if _duel_panel != null:
+			_unmount_modal(_duel_panel)
 			_duel_panel.queue_free()
 			_duel_panel = null
 
@@ -692,7 +885,7 @@ func _open_settlement() -> void:
 	# 末位子节点优先于棋盘（margin）接收点击；overlay 是 IGNORE，挂它下面会被 4.6 的
 	# get_mouse_filter_with_override 判定为整棵子树不可点。
 	page.z_index = 100
-	add_child(page)
+	_mount_modal(page)
 	var run: Dictionary = latest_state.get("run", {})
 	var match_limit: int = int(run.get("match_limit", KongRules.DEFAULT_MATCH_LIMIT))
 	var series: Dictionary = (latest_state.get("result", {}) as Dictionary).get("series", {})
@@ -713,23 +906,25 @@ func _on_settlement_flip(seat: int, slot: int, card: Dictionary) -> void:
 ## 关闭结算弹层（收到新局/中止时调用）。
 func _close_settlement() -> void:
 	if settlement_page != null and is_instance_valid(settlement_page):
+		_unmount_modal(settlement_page)
 		settlement_page.queue_free()
 	settlement_page = null
 
 ## SHOP 阶段打开/刷新商店面板（已存在则刷新内容，反映购买/售出/完成状态）。
 func _open_shop_panel() -> void:
 	if shop_panel != null and is_instance_valid(shop_panel):
-		shop_panel.setup(latest_state, _on_shop_buy, _on_shop_skip)
+		shop_panel.setup(latest_state, _on_shop_buy, _on_shop_skip, not _table3d_active)
 		return
 	var panel := ShopPanelScript.instantiate()
 	panel.name = "ShopPanel"
 	panel.z_index = 90
-	add_child(panel)
-	panel.setup(latest_state, _on_shop_buy, _on_shop_skip)
+	_mount_modal(panel)
+	panel.setup(latest_state, _on_shop_buy, _on_shop_skip, not _table3d_active)
 	shop_panel = panel
 
 func _close_shop_panel() -> void:
 	if shop_panel != null and is_instance_valid(shop_panel):
+		_unmount_modal(shop_panel)
 		shop_panel.queue_free()
 	shop_panel = null
 
@@ -746,12 +941,13 @@ func _open_joker_transform_panel() -> void:
 	var panel := JokerTransformPanelScript.instantiate()
 	panel.name = "JokerTransformPanel"
 	panel.z_index = 95
-	add_child(panel)
+	_mount_modal(panel)
 	panel.setup(_on_joker_confirm, _on_joker_cancel)
 	joker_panel = panel
 
 func _on_joker_cancel() -> void:
 	if joker_panel != null and is_instance_valid(joker_panel):
+		_unmount_modal(joker_panel)
 		joker_panel.queue_free()
 	joker_panel = null
 

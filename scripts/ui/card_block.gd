@@ -41,6 +41,7 @@ var _glow_base := Color(0, 0, 0, 0)
 var _flash_color := Color(0, 0, 0, 0)
 var _reveal_color := Color(0, 0, 0, 0)   # 揭示炫光色（绿/红/蓝），优先于 actionable/hover
 var _hovered := false
+var _upright := false
 var _hover_color := Color(0.7, 0.95, 1.0)
 var _flip_tween: Tween = null
 static var _anim_cfg: CardAnimationConfig = null
@@ -391,6 +392,18 @@ static func card_text(card: Dictionary) -> String:
 
 func label_text() -> String:
 	return _label.text if _label != null else ""
+
+## 竖立显示模式：标签从卡面法向正上方（本地 +Y）改到卡高方向顶端（本地 +Z）。
+## 仅用于竖立的大牌；默认关闭，不影响手牌/弃牌/飞牌等平铺卡。
+func set_upright(on: bool) -> void:
+	_build()
+	_upright = on
+	if _label == null:
+		return
+	if on:
+		_label.position = Vector3(0.0, 0.0, Table3dLayout.BLOCK_SIZE.z * 0.5 + 0.08)
+	else:
+		_label.position = Vector3(0.0, Table3dLayout.BLOCK_SIZE.y * 0.5 + 0.08, 0.0)
 
 ## 视觉子节点（hover 位移/旋转作用于它；拾取盒在根，不受影响）。
 func visual_node() -> Node3D:

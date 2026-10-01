@@ -92,6 +92,7 @@ run_single "table3d_interaction" res://tests/verify_table3d_interaction.tscn
 run_single "card_animation" res://tests/verify_card_animation.tscn
 run_single "card_fly"   res://tests/verify_card_fly.tscn
 run_single "table3d_exchange" res://tests/verify_table3d_exchange.tscn
+run_single "board3d"    res://tests/verify_board3d.tscn
 run_single "hint"       res://tests/verify_hint.tscn
 
 if [ "$QUICK" -eq 1 ]; then
