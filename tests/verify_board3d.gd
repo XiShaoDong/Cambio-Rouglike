@@ -76,8 +76,11 @@ func _test_board3d() -> void:
 
 	b.set_facing(cam)
 	await get_tree().process_frame
-	var to_cam := (cam.global_position - b.global_position).normalized()
-	_check("看板 +Z 朝相机", b.global_transform.basis.z.normalized().dot(to_cam) > 0.99)
+	var to_cam := (cam.global_position - b.global_position)
+	to_cam.y = 0.0
+	to_cam = to_cam.normalized()
+	_check("看板 +Z 水平朝相机", b.global_transform.basis.z.normalized().dot(to_cam) > 0.99)
+	_check("看板竖直（+Y=世界 up）", b.global_transform.basis.y.normalized().dot(Vector3.UP) > 0.99)
 
 	await get_tree().physics_frame
 	await get_tree().physics_frame
@@ -188,12 +191,17 @@ func _test_main_routing() -> void:
 	_check("无模态时点击落到牌桌", main._click_route(false) == "table")
 	_check("命中看板时点击给看板", main._click_route(true) == "board")
 
-	# 看板落在"相机→桌心"连线、距相机 BOARD_DIST；提示板在大板上方
+	# 看板：XZ 在"相机→桌心"连线上、Y 抬高 1/3；面板竖直；提示板在大板上方
 	var cam: Camera3D = main.table3d.camera.camera_node()
-	var bdist: float = main.get_script().get_script_constant_map().get("BOARD_DIST", 0.0)
-	var expect: Vector3 = cam.global_position + (Vector3.ZERO - cam.global_position).normalized() * bdist
-	_check("模态板在相机→桌心连线上", main.board3d.global_position.distance_to(expect) < 0.05)
-	_check("提示板在大板上方", main.hint3d.global_position.y > main.board3d.global_position.y + 0.2)
+	var cm: Dictionary = main.get_script().get_script_constant_map()
+	var bdist: float = cm.get("BOARD_DIST", 0.0)
+	var base: Vector3 = cam.global_position + (Vector3.ZERO - cam.global_position).normalized() * bdist
+	var bp: Vector3 = main.board3d.global_position
+	_check("模态板 XZ 在相机→桌心连线上", absf(bp.x - base.x) < 0.05 and absf(bp.z - base.z) < 0.05)
+	_check("模态板高度抬高 1/3", bp.y > base.y + 0.1)
+	_check("面板完全竖直（+Y=世界 up）",
+		main.board3d.global_transform.basis.y.normalized().dot(Vector3.UP) > 0.99)
+	_check("提示板在大板上方", main.hint3d.global_position.y > bp.y + 0.1)
 
 	main._open_shop_panel()
 	await get_tree().process_frame

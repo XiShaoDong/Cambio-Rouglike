@@ -146,10 +146,12 @@ func _place_boards() -> void:
 	if dir.length_squared() < 0.0001:
 		return
 	dir = dir.normalized()
+	var base := cam.global_position + dir * BOARD_DIST
+	var lifted := Vector3(base.x, base.y * (1.0 + BOARD_LIFT), base.z)
 	if board3d != null and is_instance_valid(board3d):
-		board3d.global_position = cam.global_position + dir * BOARD_DIST
+		board3d.global_position = lifted
 	if hint3d != null and is_instance_valid(hint3d):
-		hint3d.global_position = cam.global_position + dir * BOARD_DIST + Vector3(0.0, HINT_RISE, 0.0)
+		hint3d.global_position = lifted + Vector3(0.0, HINT_RISE, 0.0)
 
 ## 模态挂载：3D 激活挂到模态大板，否则沿用 2D 父节点（默认 main）。
 func _mount_modal(control: Control, parent_2d: Node = null) -> void:
@@ -399,8 +401,9 @@ const PHASE_GAME_OVER := 7
 const PHASE_SLAP_DUEL := 8
 const PHASE_SHOP := 10
 
-const BOARD_DIST := 3.0   # 看板沿"相机→桌心"连线距相机的距离（可调）
-const HINT_RISE := 1.0    # 提示板相对大板的世界 Y 抬升（在大板上方，可调）
+const BOARD_DIST := 3.0        # 看板沿"相机→桌心"连线距相机的距离（可调）
+const HINT_RISE := 0.5         # 提示板相对大板的世界 Y 抬升（gap，已缩小 1/2）
+const BOARD_LIFT := 1.0 / 3.0  # 面板高度在连线点基础上再抬高的比例（+1/3）
 
 const PEEK_GLOW_COLOR := Color("3ef0f7ff")  # 查看牌蓝色光晕
 const PEEK_GLOW_DURATION := 1.5

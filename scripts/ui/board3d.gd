@@ -177,19 +177,20 @@ func _apply_size() -> void:
 func _sync_visible() -> void:
 	visible = _panels.size() > 0
 
-## 每帧朝向相机（billboard）。用显式基让 quad 正面（+Z）朝相机，贴图不镜像。
+## 只绕世界 Y 朝向相机（**完全竖直**，不含俯仰）。+Y = 世界 up，+Z 水平指向相机，贴图不镜像。
 func set_facing(cam: Camera3D) -> void:
 	if cam == null:
 		return
 	var to_cam := cam.global_position - global_position
+	to_cam.y = 0.0
 	if to_cam.length_squared() < 0.0001:
 		return
 	var fwd := to_cam.normalized()
-	var right := Vector3.UP.cross(fwd)
+	var up := Vector3.UP
+	var right := up.cross(fwd)
 	if right.length_squared() < 0.0001:
-		right = Vector3.RIGHT
+		return
 	right = right.normalized()
-	var up := fwd.cross(right).normalized()
 	var t := global_transform
 	t.basis = Basis(right, up, fwd)
 	global_transform = t
