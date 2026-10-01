@@ -617,6 +617,8 @@ git commit -m "feat: 商店/比拼面板支持去黑底（3D 看板模式 dim=fa
 
 ## Task 4: `main` 挂载路由 + 指针/输入转发 + banner + F10 重挂
 
+> **实现修正（重要）**：原计划用字段名 `board`，与 `main` **既有字段** `var board: Control`（2D 棋盘，由 `game_view.gd` 赋值、`pending_overlay = main.board`）冲突。实现改用 **`board3d`**（`var board3d: Board3d = null`）。**下面所有代码块中的裸 `board`（含 `main.board`）一律读作 `board3d`**；`var board: Control` 保持原样不动。
+
 **Files:**
 - Modify: `scripts/ui/main.gd`
 - Test: `tests/verify_board3d.gd`（追加 `_test_main_routing`）
@@ -624,7 +626,7 @@ git commit -m "feat: 商店/比拼面板支持去黑底（3D 看板模式 dim=fa
 **Interfaces:**
 - Consumes: `Board3d.*`（Task 2）、`ShopPanel.setup(...,dim)`、`DuelBar.setup(...,dim)`（Task 3）。
 - Produces（`main`）：
-  - 字段 `board: Board3d = null`
+  - 字段 `board3d: Board3d = null`
   - `_ensure_board() -> void`、`_mount_modal(control: Control, parent_2d: Node = null) -> void`
   - `_board_has_panel() -> bool`、`_board_banner_text() -> String`
   - `_sync_table3d_pointer()` 在 3D 下恒定 `CAPTURED`、准星恒显示
