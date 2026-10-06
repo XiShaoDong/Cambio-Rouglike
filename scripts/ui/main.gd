@@ -80,15 +80,31 @@ func _on_action(action: String) -> void:
 		"kongbaya":
 			_request_kongbaya()
 		"q_keep":
+			_release_q_holds()
 			GameState.request_q_decision(false, -1, _next_action_id())
 		"q_exchange":
+			# 不在此释放：保留两张正面，等交换飞牌 consume 后从正面起飞、背面落地
 			GameState.request_q_decision(true, -1, _next_action_id())
+		"j_exchange":
+			interaction.jack_swap_now()
+		"j_keep":
+			interaction.jack_cancel()
 		"joker":
 			_open_joker_transform_panel()
 
-## 3D 操作面板按钮（条件动作；Ready 已移到提示板、Kongbaya 由 3D 铃铛负责）。
+## 3D 操作面板按钮：条件动作（Q/Joker）已移到提示板下方，Ready 在提示板、Kongbaya 由铃铛负责，
+## 故 3D 桌面 HUD 不再承载按钮（保留空面板以兼容既有结构）。
 func _hud_buttons() -> Array:
-	return ActionModel.conditional_actions(latest_state)
+	return []
+
+## 本地交互态上下文（供 ActionModel.conditional_actions 判定 J 是否可选交换/交换是否可用）。
+func _interaction_ctx() -> Dictionary:
+	return {
+		"action_mode": interaction.action_mode,
+		"selected_target": interaction.selected_target,
+		"selected_their_slot": interaction.selected_their_slot,
+		"selected_own_slot": interaction.selected_own_slot,
+	}
 
 ## 3D 激活时恒定捕获鼠标（看板交互走准星），准星恒显示。
 func _sync_table3d_pointer() -> void:
@@ -106,12 +122,61 @@ func _ensure_self_panel() -> void:
 	_self_panel.name = "SelfStatPanel"
 	_self_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_self_panel.z_index = 80
+	_self_panel.set_corner_style(true)  # 屏幕角落 HUD：dark 下 #FEF0E4 底 + 白字
 	add_child(_self_panel)
-	_self_panel.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	_self_panel.offset_left = -272.0
-	_self_panel.offset_top = -84.0
-	_self_panel.offset_right = -16.0
-	_self_panel.offset_bottom = -16.0
+	_self_panel.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT, Control.PRESET_MODE_MINSIZE, int(round(_corner_margin())))
+	_self_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_self_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
+
+## 四角 HUD 到屏幕边缘的边距：把"目标屏幕像素 75"换算成 CanvasItem 设计坐标，
+## 补偿 `window/stretch/mode=canvas_items` 的窗口拉伸（窗口大于 1280×760 时放大 → 实测 >75）。
+func _corner_margin() -> float:
+	var win := get_window()
+	if win == null:
+		return CORNER_MARGIN
+	var base := Vector2(win.content_scale_size)
+	var win_size := Vector2(win.size)
+	if base.x <= 0.0 or win_size.x <= 0.0:
+		return CORNER_MARGIN
+	var scale := win_size.x / base.x
+	return CORNER_MARGIN / maxf(scale, 0.0001)
+
+## 3D 左下角按键提示（放大 Command / 手册 Tab）：说明纯白 + 圆角白底按键。
+func _ensure_key_hints() -> void:
+	if _key_hints != null and is_instance_valid(_key_hints):
+		return
+	_key_hints = KeyHintPanel.new()
+	_key_hints.name = "KeyHints"
+	_key_hints.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_key_hints.z_index = 80
+	add_child(_key_hints)
+	_key_hints.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE, int(round(_corner_margin())))
+	_key_hints.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_key_hints.grow_horizontal = Control.GROW_DIRECTION_END
+	_key_hints.setup([["放大", "Command"], ["手册", "Tab"]])
+
+## 3D 右上角回合徽标（与按键 chip 同款圆角灰底+边框，字号 = Command chip ×2）。
+func _ensure_round_badge() -> void:
+	if _round_badge != null and is_instance_valid(_round_badge):
+		return
+	_round_badge = KeyHintPanel.make_chip("回合 1/1", KeyHintPanel.ROUND_FONT_SIZE, KeyHintPanel.ROUND_H_PAD)
+	_round_badge.name = "RoundBadge"
+	_round_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_round_badge.z_index = 80
+	add_child(_round_badge)
+	_round_badge.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT, Control.PRESET_MODE_MINSIZE, int(round(_corner_margin())))
+	_round_badge.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_round_badge.grow_vertical = Control.GROW_DIRECTION_END
+	_update_round_badge()
+
+func _update_round_badge() -> void:
+	if _round_badge == null or not is_instance_valid(_round_badge):
+		return
+	var label: Label = _round_badge.get_node_or_null("Key")
+	if label == null:
+		return
+	var limit := int((latest_state.get("run", {}) as Dictionary).get("match_limit", KongRules.DEFAULT_MATCH_LIMIT))
+	label.text = "回合 %d/%d" % [int(latest_state.get("match_number", 1)), limit]
 
 func _update_self_panel() -> void:
 	if _self_panel == null or not is_instance_valid(_self_panel):
@@ -153,7 +218,26 @@ func _place_boards() -> void:
 	if board3d != null and is_instance_valid(board3d):
 		board3d.global_position = lifted
 	if hint3d != null and is_instance_valid(hint3d):
-		hint3d.global_position = lifted + Vector3(0.0, HINT_RISE, 0.0)
+		# 当"下一步是点看板按钮"（Ready / Q 决策 / J 已选齐待确认）时贴到准星（base 在相机→桌心射线上，
+		# 默认准星即命中）——否则默认准星落在其上方空白，玩家必须抬头才够得到（"3D 点不到 Ready"）。
+		# 其余情况（纯提示 / 需要点卡选牌）仍抬高，避免挡住牌桌与卡牌。
+		hint3d.global_position = base if _hint_center_on_crosshair() else lifted + Vector3(0.0, HINT_RISE, 0.0)
+
+## 提示板是否应贴准星：下一步动作为看板按钮（而非点牌）。
+func _hint_center_on_crosshair() -> bool:
+	if _hint_panel == null or not is_instance_valid(_hint_panel):
+		return false
+	var phase := int(latest_state.get("phase", PHASE_LOBBY))
+	if phase == PHASE_INITIAL_PEEK:
+		var ready: Button = _hint_panel.get_node_or_null("VBox/ReadyButton")
+		return ready != null and ready.visible
+	if phase == PHASE_Q_DECISION:
+		var acts: HBoxContainer = _hint_panel.get_node_or_null("VBox/HintActions")
+		return acts != null and acts.get_child_count() > 0
+	# J 已选齐两人牌 → 只剩「交换/不交换」按钮
+	if str(interaction.action_mode) == "jack_ready":
+		return true
+	return false
 
 ## 模态挂载：3D 激活挂到模态大板，否则沿用 2D 父节点（默认 main）。
 func _mount_modal(control: Control, parent_2d: Node = null) -> void:
@@ -194,30 +278,43 @@ func _make_hint_panel() -> Control:
 	lbl.add_theme_font_size_override("font_size", 20)
 	lbl.add_theme_color_override("font_color", Color(0.92, 0.95, 1.0))
 	vb.add_child(lbl)
-	# Ready：与游戏按钮一致的醒目 accent UI（更大字号/尺寸 + accent 底）
+	# Ready：醒目 accent 底 + 大尺寸（3D 板上尺寸即世界尺寸，越大越好点/越明显）
 	var ready := Button.new()
 	ready.name = "ReadyButton"
 	ready.text = "Ready"
-	ready.custom_minimum_size = Vector2(200.0, 48.0)
-	ready.add_theme_font_size_override("font_size", 22)
+	ready.custom_minimum_size = Vector2(260.0, 66.0)
+	ready.add_theme_font_size_override("font_size", 26)
 	ready.add_theme_color_override("font_color", Color(0.08, 0.09, 0.12))
+	ready.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	var acc := UITheme.color("accent")
 	var bstyle := StyleBoxFlat.new()
 	bstyle.bg_color = acc
-	bstyle.set_corner_radius_all(8)
-	bstyle.set_content_margin_all(10)
+	bstyle.set_corner_radius_all(12)
+	bstyle.set_content_margin_all(12)
+	bstyle.border_color = acc.darkened(0.25)
+	bstyle.set_border_width_all(2)
 	ready.add_theme_stylebox_override("normal", bstyle)
+	# hover：明显变亮 + 白边，反馈更强（3D 准星悬停同一 hover 态）
 	var bhover: StyleBoxFlat = bstyle.duplicate()
-	bhover.bg_color = acc.lightened(0.15)
+	bhover.bg_color = acc.lightened(0.35)
+	bhover.border_color = Color(1, 1, 1, 0.85)
+	bhover.set_border_width_all(3)
 	ready.add_theme_stylebox_override("hover", bhover)
 	var bdown: StyleBoxFlat = bstyle.duplicate()
 	bdown.bg_color = acc.darkened(0.15)
 	ready.add_theme_stylebox_override("pressed", bdown)
 	var boff: StyleBoxFlat = bstyle.duplicate()
 	boff.bg_color = UITheme.color("bg_elevated")
+	boff.border_color = UITheme.color("text_muted")
 	ready.add_theme_stylebox_override("disabled", boff)
 	ready.pressed.connect(_on_hint_ready)
 	vb.add_child(ready)
+	# 条件动作按钮（Q 交换/不交换、变换 Joker）统一放提示文本下方（与 2D HintArea/HintActions 一致）
+	var acts := HBoxContainer.new()
+	acts.name = "HintActions"
+	acts.add_theme_constant_override("separation", 16)
+	acts.alignment = BoxContainer.ALIGNMENT_CENTER
+	vb.add_child(acts)
 	return panel
 
 func _on_hint_ready() -> void:
@@ -245,6 +342,16 @@ func _refresh_hint_panel() -> void:
 		ready.visible = phase == PHASE_INITIAL_PEEK
 		ready.text = ActionModel.ready_text(latest_state, game_view._ready_clicked)
 		ready.disabled = not ActionModel.ready_enabled(latest_state, game_view._ready_clicked)
+	# 条件动作按钮（Q 交换/不交换、变换 Joker）重建：紧贴提示文本下方
+	var acts: HBoxContainer = _hint_panel.get_node_or_null("VBox/HintActions")
+	if acts != null:
+		for child in acts.get_children():
+			child.queue_free()
+		for entry in ActionModel.conditional_actions(latest_state, _interaction_ctx()):
+			var act_btn := _decision_button(str(entry.get("text", "")))
+			act_btn.disabled = not bool(entry.get("enabled", true))
+			act_btn.pressed.connect(_on_action.bind(str(entry.get("action", ""))))
+			acts.add_child(act_btn)
 	if hint3d != null and is_instance_valid(hint3d):
 		hint3d.wrap_to_content()
 
@@ -299,17 +406,27 @@ func _set_table3d(on: bool) -> void:
 		_ensure_self_panel()
 		_self_panel.visible = true
 		_update_self_panel()
+		_ensure_key_hints()
+		_key_hints.visible = true
+		_ensure_round_badge()
+		_round_badge.visible = true
 		background.visible = false
 		game_panel.visible = false
 	else:
+		_close_manual()
 		if table3d != null and is_instance_valid(table3d):
 			table3d.clear_hover()
 			table3d.set_active(false)
+			table3d.camera.reset_zoom()
 		if _crosshair != null and is_instance_valid(_crosshair):
 			_crosshair.visible = false
 			_crosshair.set_active(false)
 		if _self_panel != null and is_instance_valid(_self_panel):
 			_self_panel.visible = false
+		if _key_hints != null and is_instance_valid(_key_hints):
+			_key_hints.visible = false
+		if _round_badge != null and is_instance_valid(_round_badge):
+			_round_badge.visible = false
 		if board3d != null and is_instance_valid(board3d):
 			for c in board3d.detach_all():
 				if c != null and is_instance_valid(c):
@@ -325,10 +442,24 @@ func _input(event: InputEvent) -> void:
 	if not _table3d_active:
 		return
 	var board_panel := _board_has_panel()
+	# 按住 Command/Alt：拉近视场（放大）；松开恢复。不标记 handled，避免影响其他快捷键。
+	if event is InputEventKey and not event.echo and (event.keycode == KEY_META or event.keycode == KEY_ALT):
+		if table3d != null and is_instance_valid(table3d):
+			table3d.camera.set_zoom(event.pressed)
 	if event is InputEventKey and event.pressed and not event.echo:
 		# F10/V 任何时候都可切回 2D（含看板面板打开时；面板会被重挂回 2D）。
 		if event.keycode == KEY_F10 or event.keycode == KEY_V:
 			_set_table3d(false)
+			get_viewport().set_input_as_handled()
+			return
+		# Tab：开/关手册（3D 全息看板）
+		if event.keycode == KEY_TAB:
+			_toggle_manual()
+			get_viewport().set_input_as_handled()
+			return
+		# 手册打开时 Esc 先关手册（优先于退出 3D）
+		if event.keycode == KEY_ESCAPE and manual_panel != null and is_instance_valid(manual_panel):
+			_close_manual()
 			get_viewport().set_input_as_handled()
 			return
 		# 有看板面板时，Enter/Esc 交给面板（Joker/商店）；否则 Esc 退出 3D。
@@ -404,6 +535,7 @@ const PHASE_GAME_OVER := 7
 const PHASE_SLAP_DUEL := 8
 const PHASE_SHOP := 10
 
+const CORNER_MARGIN := 75.0     # 3D 四个角 HUD 到屏幕边缘的统一边距（目标=屏幕像素）
 const BOARD_DIST := 3.0        # 看板沿"相机→桌心"连线距相机的距离（可调）
 const HINT_RISE := 0.5         # 提示板相对大板的世界 Y 抬升（gap，已缩小 1/2）
 const BOARD_LIFT := 0.8        # 面板高度抬升比例（y *= 1 + BOARD_LIFT；比上次降低 1/5）
@@ -419,6 +551,7 @@ const SettingsMenuScript := preload("res://scripts/ui/settings_menu.gd")
 const SettlementPageScript := preload("res://scenes/ui/settlement_page.tscn")
 const ShopPanelScript := preload("res://scenes/ui/shop_panel.tscn")
 const JokerTransformPanelScript := preload("res://scenes/ui/joker_transform_panel.tscn")
+const ManualPanelScript := preload("res://scenes/ui/manual_panel.tscn")
 
 var latest_lobby: Dictionary = {}
 var latest_state: Dictionary = {}
@@ -494,8 +627,14 @@ var _reconnect_expected := false
 var settlement_page: Control = null
 var shop_panel: Control = null
 var joker_panel: Control = null
+var manual_panel: Control = null
+var _key_hints: KeyHintPanel = null
+var _round_badge: Control = null
 var _shop_result_shown := ""
 var _pending_winner_sfx := false
+# Q 能力：下一次收到的看牌揭示保持正面（不自动翻回），直到玩家确认交换/不交换。
+var _hold_next_reveal := false
+var _q_hold_active := false
 
 ## 标记某个玩家槽位正在动画（渲染时该槽位显示虚线占位，不显示原卡）。
 func mark_anim_slot(pid: int, slot: int) -> void:
@@ -516,6 +655,25 @@ func _slap_reveal_begin() -> void:
 func _slap_reveal_end() -> void:
 	_slap_reveal_count = maxi(0, _slap_reveal_count - 1)
 	_slap_reveal_lock = _slap_reveal_count > 0
+
+## 清除 Q 能力的 hold 揭示（2D overlay + 3D 揭示登记）。animate_back=true 播翻回动画
+## （2D 副本 / 3D 跨 render 续播），false 立即清除（结算等强制场景）。
+func _drop_q_holds(animate_back := false) -> void:
+	_hold_next_reveal = false
+	_q_hold_active = false
+	if reveal != null:
+		reveal.release_held_peeks(animate_back)
+	if table3d != null and is_instance_valid(table3d):
+		table3d.release_held_reveals(animate_back)
+
+## 玩家确认 Q 不交换（或已不在 Q_DECISION）时调用：翻回 hold 的牌（带动画）。
+## 交换路径不在此释放——保留正面由交换飞牌 consume（翻回/飞牌衔接见 animate_swap）。
+func _release_q_holds(animate_back := true) -> void:
+	if not _q_hold_active:
+		return
+	_drop_q_holds(animate_back)
+	if not animate_back:
+		_render_game_if_active()
 
 ## 贴牌结算时清除所有尚未播放的贴牌翻牌（本轮贴牌已全部裁决，不再需要补播）。
 func purge_slap_pending_flips() -> void:
@@ -789,17 +947,15 @@ func _on_state_updated(state: Dictionary) -> void:
 		last_phase = int(state.phase)
 	lobby_panel.visible = false
 	game_panel.visible = not _table3d_active
+	# 兜底：离开 Q_DECISION 时翻回 hold 的看牌（请求被拒/异常流转），避免牌永久正面。
+	if _q_hold_active and int(state.phase) != PHASE_Q_DECISION:
+		_release_q_holds()
 	if int(state.phase) == PHASE_GAME_OVER:
 		# 结算接管棋盘：先清残留动画/挂起状态再渲染，
 		# 保证卡牌以真实卡（而非在途揭示的动画占位）出现。
 		_clear_settlement_anim_state()
 	_render_game()
 	dev.refresh_panel()
-	if _table3d_active and table3d != null and is_instance_valid(table3d):
-		table3d.render(state, interaction.card_actionable)
-		table3d.set_hud_buttons(_hud_buttons())
-	if _table3d_active:
-		_update_self_panel()
 	if int(state.phase) == PHASE_GAME_OVER:
 		_open_settlement()
 	else:
@@ -813,8 +969,6 @@ func _on_state_updated(state: Dictionary) -> void:
 		_on_joker_cancel()
 	_show_shop_result_toast(state)
 	_sync_table3d_pointer()
-	if _table3d_active:
-		_refresh_hint_panel()
 
 ## 清空上一局可能残留的动画/挂起状态（对局结束时在途的看牌/贴牌揭示）。
 func _clear_settlement_anim_state() -> void:
@@ -823,6 +977,7 @@ func _clear_settlement_anim_state() -> void:
 	_pending_flips.clear()
 	_slap_reveal_count = 0
 	_slap_reveal_lock = false
+	_drop_q_holds()
 
 ## 动画完成刷新：对局已进入结算（GAME_OVER，结算页接管棋盘）时跳过重渲染，
 ## 防止在途揭示动画的延迟 _render_game 把结算翻开的牌翻回背面。
@@ -839,6 +994,20 @@ func _render_game() -> void:
 	_render_duel(latest_state)
 	# ExtraLayer 附加卡已同步定位，罚牌 fly 可直接取到正确锚点
 	_flush_slap_penalties()
+	_refresh_table3d()
+
+## 3D 激活时把最新状态 + 本地交互态（interaction.action_mode）投影到 3D：
+## 渲染卡牌（含可操作高亮）/ HUD / 自身面板 / 提示板。
+## 集中在此，保证**本地** action_mode 变化（用能力、J 两段交换）也能即时刷新 3D 提示与高亮——
+## 过去只在 _on_state_updated（服务器广播）刷新，导致 3D 提示/高亮停留旧态，切 2D 再回才更新。
+func _refresh_table3d() -> void:
+	if not _table3d_active or table3d == null or not is_instance_valid(table3d):
+		return
+	table3d.render(latest_state, interaction.card_actionable)
+	table3d.set_hud_buttons(_hud_buttons())
+	_update_self_panel()
+	_update_round_badge()
+	_refresh_hint_panel()
 
 ## 罚牌 fly：事件到达时目标槽位可能尚未渲染（追加的第 5+ 张），render 后再补飞。
 func _flush_slap_penalties() -> void:
@@ -959,6 +1128,30 @@ func _on_joker_confirm(rank: String, suit: String) -> void:
 	GameState.request_joker_transform(rank, suit, _next_action_id())
 	_on_joker_cancel()
 
+## 手册：Tab 开/关（3D 全息看板，弹在面前；三列 牌/能力/分数）。
+func _toggle_manual() -> void:
+	if manual_panel != null and is_instance_valid(manual_panel):
+		_close_manual()
+	else:
+		_open_manual()
+
+func _open_manual() -> void:
+	if manual_panel != null and is_instance_valid(manual_panel):
+		return
+	var panel := ManualPanelScript.instantiate()
+	panel.name = "ManualPanel"
+	panel.z_index = 92
+	_mount_modal(panel)
+	manual_panel = panel
+
+func _close_manual() -> void:
+	if manual_panel != null and is_instance_valid(manual_panel):
+		# 无论是否仍处于 3D 都先从看板卸下（退出 3D 时 board3d.detach_all 不该再看到它）
+		if board3d != null and is_instance_valid(board3d) and manual_panel.get_parent() == board3d.viewport():
+			board3d.unmount_panel(manual_panel)
+		manual_panel.queue_free()
+	manual_panel = null
+
 ## 商店裁决结果一次性 toast（每个 shop_result 只提示一次）。
 func _show_shop_result_toast(state: Dictionary) -> void:
 	var result: Dictionary = state.get("shop_result", {})
@@ -1016,7 +1209,7 @@ func _flush_pending_flips() -> void:
 		var target_id := int(entry.target_id)
 		var slot := int(entry.slot)
 		if _card_slots.has(target_id) and _card_slots[target_id].has(slot) and is_instance_valid(_card_slots[target_id][slot]):
-			reveal._flip_at(_card_slots[target_id][slot], entry.card, target_id, slot, entry.has("correct"), bool(entry.get("correct", false)))
+			reveal._flip_at(_card_slots[target_id][slot], entry.card, target_id, slot, entry.has("correct"), bool(entry.get("correct", false)), bool(entry.get("hold", false)))
 		else:
 			remaining.append(entry)
 	_pending_flips = remaining
@@ -1116,9 +1309,11 @@ func _decision_hint(is_current: bool, name: String) -> String:
 		"q_view_own":
 			return "Peek one of your own cards, then decide to swap"
 		"jack_target":
-			return "Click the opponent's card to swap"
+			return "J: pick an opponent's card to swap"
 		"jack_own":
-			return "Click your own card to complete the swap"
+			return "J: pick one of your own cards, then confirm"
+		"jack_ready":
+			return "J: two cards picked — click Swap or Keep"
 	if rank == "J":
 		return "Discard to swap two cards, or replace one of your cards"
 	if rank in ["7", "8"]:
@@ -1133,6 +1328,11 @@ func _mode_instruction(fallback: String) -> String:
 	return interaction.mode_instruction(fallback)
 
 func _show_private_reveal(title: String, revealed_cards: Array, target: Dictionary = {}) -> void:
+	# Q 能力的两张揭示（对方牌 + 自己牌）保持正面，直到玩家确认交换/不交换。
+	var hold := _hold_next_reveal
+	_hold_next_reveal = false
+	if hold:
+		_q_hold_active = true
 	if _table3d_active and target.has("slot") and table3d != null and is_instance_valid(table3d):
 		var seat := int(target.get("player_id", 0))
 		var slot := int(target.get("slot", -1))
@@ -1142,9 +1342,12 @@ func _show_private_reveal(title: String, revealed_cards: Array, target: Dictiona
 		else:
 			color = PEEK_GLOW_COLOR
 		for card in revealed_cards:
-			table3d.reveal_slot(seat, slot, card, color, PEEK_GLOW_DURATION)
+			if hold:
+				table3d.reveal_slot_held(seat, slot, card, color)
+			else:
+				table3d.reveal_slot(seat, slot, card, color, PEEK_GLOW_DURATION)
 		return
-	reveal.show_private_reveal(title, revealed_cards, target)
+	reveal.show_private_reveal(title, revealed_cards, target, hold)
 
 ## 其他玩家查看某张牌时，在被查看的牌上标蓝色光晕 1 秒（不含牌面）。
 ## 记录槽位到 _peek_glow_slots，render 重建卡牌后仍可恢复光晕。
@@ -1178,6 +1381,43 @@ func _button(text: String) -> Button:
 	button.custom_minimum_size = Vector2(0, 40)
 	button.add_theme_font_size_override("font_size", 16)
 	return button
+
+## 决策按钮（Q/J 的 交换·不交换 等条件动作）：更大更好点，hover 变亮色 accent 明显反馈。
+## 2D `HintActions` 与 3D 提示板 `HintActions` 共用（3D 板上尺寸即世界尺寸，放大也更易用准星点到）。
+const DECISION_BTN_MIN := Vector2(210.0, 58.0)
+func _decision_button(text: String) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.custom_minimum_size = DECISION_BTN_MIN
+	b.add_theme_font_size_override("font_size", 24)
+	b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	var acc := UITheme.color("accent")
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = UITheme.color("bg_elevated")
+	normal.set_corner_radius_all(12)
+	normal.set_content_margin_all(12)
+	normal.border_color = UITheme.color("border_strong")
+	normal.set_border_width_all(2)
+	b.add_theme_stylebox_override("normal", normal)
+	b.add_theme_color_override("font_color", UITheme.color("text_primary"))
+	# hover：整块变亮 accent + 深色字，反馈强烈（3D 准星悬停也走同一 hover 态）
+	var hover: StyleBoxFlat = normal.duplicate()
+	hover.bg_color = acc.lightened(0.08)
+	hover.border_color = acc.lightened(0.35)
+	hover.set_border_width_all(3)
+	b.add_theme_stylebox_override("hover", hover)
+	b.add_theme_color_override("font_hover_color", Color(0.06, 0.08, 0.12))
+	var pressed: StyleBoxFlat = normal.duplicate()
+	pressed.bg_color = acc.darkened(0.12)
+	pressed.border_color = acc
+	b.add_theme_stylebox_override("pressed", pressed)
+	b.add_theme_color_override("font_pressed_color", Color(0.06, 0.08, 0.12))
+	var disabled: StyleBoxFlat = normal.duplicate()
+	disabled.bg_color = UITheme.color("bg_elevated")
+	disabled.border_color = UITheme.color("text_muted")
+	b.add_theme_stylebox_override("disabled", disabled)
+	b.add_theme_color_override("font_disabled_color", UITheme.color("text_muted"))
+	return b
 
 func _clear(node: Node) -> void:
 	for child in node.get_children():

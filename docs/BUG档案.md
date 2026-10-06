@@ -498,3 +498,37 @@ at: Board3d.detach_all (board3d.gd) ← _set_table3d(false)
 **修复**：① `Board3d` 增 `_prune_panels()`，在 `mount_panel`/`has_panel`/`detach_all` 前剔除 `is_instance_valid` 为假的条目（`detach_all` 只对存活面板调用 `unmount_panel`）；② `main` 增 `_unmount_modal(control)`，所有模态关闭点（结算/商店/Joker/比拼/重连）先卸下再 `queue_free`。
 
 **诊断方法**：`verify_board3d`「已释放面板被清理：has_panel 为假」「detach_all 对已释放条目安全」。
+
+## B41：3D 行动提示/卡牌高亮不随本地交互更新（用能力、J 两段交换）
+
+**现象**：2D 提示正确；3D 里用 Q/J/9/10/7/8 能力时提示停在"弃牌/换牌"，卡牌高亮也一直留在自己手牌。切回 2D 再进 3D 提示/高亮才正确。
+
+**根因**：`interaction.action_mode` 的变化是**本地**的（`begin_ability()`、`jack_target→jack_own` 只调 `main._render_game()`），而 3D 的 `table3d.render(...)` / `_refresh_hint_panel()` 只在 `_on_state_updated`（服务器广播）里刷新。于是本地交互不改 3D 提示与高亮；只有 `_set_table3d(true)`（切 2D→3D）才补渲染。
+
+**修复**：`main.gd` 新增 `_refresh_table3d()`（`table3d.render(latest_state, interaction.card_actionable)` + HUD + 自身面板 + 提示板），在 `_render_game()` 末尾统一调用；`_on_state_updated` 移除重复的 3D 刷新块。任何本地重渲染都会同步刷新 3D。
+
+**诊断方法**：编译检查 + 3D/动作回归（`verify_table3d_interaction` / `verify_board3d` / `verify_actions` / `verify_hint`）。
+
+## B42：Q 能力看牌不保持正面（翻完自动翻回，无法对照决策）
+
+**现象**：Q 发动后看到对方牌、再查看自己牌，两张翻牌在约 1~1.5s 后自动翻回背面，玩家还来不及决定交换/不交换。
+
+**根因**：`RevealController._play_flip_at` / `Table3dView.reveal_slot` 都是**瞬时**揭示，到时长即翻回。Q 需要"保持到决策"的语义，但两处都没有 hold 机制。
+
+**修复**：新增 hold 语义：2D `RevealController` 增 `_held_peek` 登记 + `release_held_peeks()`，`show_private_reveal(..., hold)` 走保持分支；3D `Table3dView` 增 `reveal_slot_held()` + `release_held_reveals()`（登记 `hold: true`、无定时器、跨 render 重放）。`main` 用本地标志 `_hold_next_reveal` 标记 Q 的两张揭示（`game_interaction` 在 `queen_target`/`q_view_own` 请求前置位），`_on_action` 的 `q_keep`/`q_exchange` 与离开 `Q_DECISION` 时 `_release_q_holds()` 释放。纯客户端展示层，规则/协议/快照零改动。
+
+**追加修复（释放动画 + 交换飞牌衔接）**：
+- **不交换**：`release_held_peeks(true)` 先 `flip_to_face(false)` 播翻回动画，动画期间槽位保持动画标记（2D 副本在 overlay 上跨广播持续；3D `_reveals` 记 `releasing/release_ms`，`render` 经 `_apply_reveal` → `CardBlock.reveal_from_to` 按已过时间续播），结束后才清登记 + 重渲染。此前 `_render_game_if_active()` 紧随释放会立刻重建，导致「正面瞬切背面」。
+- **交换**：`q_exchange` 不再在点击时释放，保留两张正面由交换飞牌 `consume`：2D `RevealController.consume_held` / 3D `Table3dView.take_held_reveal` 返回揭示牌面，交换飞牌据此**从正面起飞、背面落地**（`start_up=true, end_up=false`）；3D 起飞前隐藏 hold 源卡避免正面残留。
+
+**诊断方法**：`verify_table3d_exchange`「hold 揭示翻到正面 / 超过揭示时长仍正面 / render 后保持 / 释放后翻回动画进行中（0<进度<1）/ 翻回期间 render 续播 / 结束后恢复背面」；`verify_q_hold`「hold 登记 / consume 返回牌面与撤标记 / release 动画后清理」。
+
+## B43：3D 下其他玩家看不到 peek 蓝光（光晕被状态广播重建冲掉）
+
+**现象**：当前玩家 peek 他人/自己的牌时，2D 其他玩家能看到被查看卡牌上的蓝色光晕；3D 下看不到。
+
+**根因**：2D `_on_peek_highlight` 把槽位记入 `main._peek_glow_slots`（含到期时间戳），`game_view._render_card_slot` 在重建时按剩余时间重新 `flash_glow`，故跨广播保持。3D `Table3dView.flash_slot` 只对**当前** `CardBlock.flash()` 临时染色、不登记；而 server 在 `_broadcast_peek_highlight` 之后紧跟 `_broadcast_state`，客户端 render 重建卡牌 → 蓝光被冲掉。
+
+**修复**：`Table3dView` 增 `_flashes`（`"seat_slot" -> {color, until_ms}`）登记；`flash_slot` 登记并应用；`render` 重建后对每个未过期条目 `_apply_flash`（按剩余时间 `block.flash`，过期清除），与 `_reveals` 同款跨 render 重放。
+
+**诊断方法**：`verify_table3d_exchange`「flash_slot 立即显示蓝光 / render 后蓝光保持 / 过期后蓝光清除」。

@@ -20,7 +20,9 @@ func _check(name: String, ok: bool) -> void:
 func _run() -> void:
 	await _test_exchange()
 	await _test_reveal_replay_no_restart()
+	await _test_held_reveal()
 	_test_reveal_glow_priority()
+	await _test_flash_persist()
 	await _test_draw_fly()
 	await _test_discard_pile_actionable()
 
@@ -152,6 +154,40 @@ func _test_reveal_replay_no_restart() -> void:
 	await get_tree().create_timer(1.6).timeout
 	view.queue_free()
 
+## Q 能力：看牌保持正面（hold）不自动翻回，跨 render 保持，直到显式 release。
+func _test_held_reveal() -> void:
+	var view = load("res://scenes/ui/table3d.tscn").instantiate()
+	add_child(view)
+	await get_tree().process_frame
+	view.render(_base_state())
+	await get_tree().process_frame
+
+	view.reveal_slot_held(0, 2, {"rank": "Q", "suit": "♦"}, Color(0.9, 0.3, 0.3))
+	await get_tree().create_timer(CardBlock.FLIP_DURATION + 0.2).timeout
+	_check("hold 揭示翻到正面", is_equal_approx(view._card_blocks[0][2].reveal_progress(), 1.0))
+	_check("hold 揭示显示牌面", view._card_blocks[0][2].label_text() == "Q♦")
+	# 超过普通揭示时长（1.0s）仍保持正面
+	await get_tree().create_timer(1.0).timeout
+	_check("超过揭示时长仍正面（不自动翻回）", is_equal_approx(view._card_blocks[0][2].reveal_progress(), 1.0))
+	# 跨 render 保持
+	view.render(_base_state())
+	await get_tree().process_frame
+	_check("render 后 hold 揭示保持正面", is_equal_approx(view._card_blocks[0][2].reveal_progress(), 1.0))
+	# 释放：应先播放翻回动画（进度 1→0 之间），而非瞬切
+	view.release_held_reveals()
+	await get_tree().create_timer(0.12).timeout
+	var rp: float = view._card_blocks[0][2].reveal_progress()
+	_check("释放后翻回动画进行中（0<进度<1）", rp > 0.0 and rp < 1.0)
+	_check("翻回动画期间揭示登记仍在", not view._reveals.is_empty())
+	# 翻回动画期间 render 不打断（续播而非重置为背面）
+	view.render(_base_state())
+	await get_tree().process_frame
+	_check("翻回期间 render 仍为续播（进度>0）", view._card_blocks[0][2].reveal_progress() > 0.0)
+	await get_tree().create_timer(CardBlock.FLIP_DURATION + 0.2).timeout
+	_check("翻回动画结束后恢复背面", view._card_blocks[0][2].label_text() == "" and not view._card_blocks[0][2].has_glow())
+	_check("翻回结束后揭示登记清空", view._reveals.is_empty())
+	view.queue_free()
+
 ## 揭示炫光（贴对绿 / 贴错红 / 查看蓝）优先于一切非 flash；hover 又高于 actionable（悬停可确认选中）。
 func _test_reveal_glow_priority() -> void:
 	var b := CardBlock.new()
@@ -171,6 +207,28 @@ func _test_reveal_glow_priority() -> void:
 	b.restore()
 	_check("恢复后揭示炫光清除、回到 hover 浅蓝", b.glow_color() == Color(0.7, 0.95, 1.0))
 	b.queue_free()
+
+## peek_highlight 蓝光跨 render 保持（等价 2D _peek_glow_slots），过期后清除。
+func _test_flash_persist() -> void:
+	var view = load("res://scenes/ui/table3d.tscn").instantiate()
+	add_child(view)
+	await get_tree().process_frame
+	view.render(_base_state())
+	await get_tree().process_frame
+
+	var blue := Color(0.2, 0.6, 1.0)
+	view.flash_slot(1, 1, blue, 1.5)
+	_check("flash_slot 立即显示蓝光", view._card_blocks[1][1].has_glow() and view._card_blocks[1][1].glow_color() == blue)
+	# 状态广播重建后仍保持
+	view.render(_base_state())
+	await get_tree().process_frame
+	_check("render 后蓝光保持", view._card_blocks[1][1].has_glow() and view._card_blocks[1][1].glow_color() == blue)
+	# 过期后清除
+	await get_tree().create_timer(1.6).timeout
+	view.render(_base_state())
+	await get_tree().process_frame
+	_check("过期后蓝光清除", not view._card_blocks[1][1].has_glow() and view._flashes.is_empty())
+	view.queue_free()
 
 ## 3D 抽牌飞牌：pending 出现 → 飞牌（抽牌堆/弃牌堆 → 竖立大牌），所有人可见。
 func _test_draw_fly() -> void:

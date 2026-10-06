@@ -9,6 +9,8 @@ const YAW_LIMIT := 90.0
 @export var EYE_HEIGHT := 2.0
 @export var CAMERA_BACK := 1.5  # 相机在座位半径外再后退的距离（多看到桌面）
 @export_range(0,1,0.05) var MOUSE_SENSITIVITY := 0.5  # 度/像素（原 1.0 过快，减半）
+@export var ZOOM_FOV := 38.0    # 按住 Command/Alt 时拉近后的视场角（越小越放大）
+const ZOOM_TIME := 0.18
 
 ## 默认俯角：对准桌心（正=俯视）。取景时用，保证准星起始落在桌面上。
 static func aim_pitch_deg(eye_height: float, horizontal_distance: float) -> float:
@@ -25,6 +27,8 @@ var _framed := false
 var _framed_angle := 0.0
 var _pivot: Node3D
 var _camera: Camera3D
+var _base_fov := 75.0
+var _zoom_tween: Tween = null
 
 func _ready() -> void:
 	_build()
@@ -38,6 +42,8 @@ func _build() -> void:
 	_camera = _pivot.get_node_or_null("Camera3D") if _pivot != null else null
 	if _pivot == null or _camera == null:
 		push_error("[Table3dCamera] 场景缺少 PitchPivot/Camera3D 节点")
+	else:
+		_base_fov = _camera.fov
 
 ## 相机节点访问器（供射线拾取用）。
 func camera_node() -> Camera3D:
@@ -75,3 +81,29 @@ func _apply() -> void:
 		return
 	rotation_degrees = Vector3(0.0, yaw, 0.0)
 	_pivot.rotation_degrees = Vector3(-pitch, 0.0, 0.0)
+
+## 按住 Command/Alt 拉近视场（FOV 变小 = 放大）；松开恢复。纯观察者视角，不影响拾取/规则。
+func set_zoom(on: bool) -> void:
+	_build()
+	if _camera == null:
+		return
+	var target := ZOOM_FOV if on else _base_fov
+	if _zoom_tween != null and _zoom_tween.is_valid():
+		_zoom_tween.kill()
+	_zoom_tween = create_tween()
+	_zoom_tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	_zoom_tween.tween_property(_camera, "fov", target, ZOOM_TIME)
+
+## 立即复位视场（退出 3D 等，不播动画）。
+func reset_zoom() -> void:
+	_build()
+	if _zoom_tween != null and _zoom_tween.is_valid():
+		_zoom_tween.kill()
+	_zoom_tween = null
+	if _camera != null:
+		_camera.fov = _base_fov
+
+## 基准视场角（未拉近时的 FOV）。
+func base_fov() -> float:
+	_build()
+	return _base_fov

@@ -56,10 +56,12 @@ func on_card_pressed(player_id: int, slot: int) -> void:
 		"queen_target":
 			if player_id != viewer:
 				_play_select()
+				main._hold_next_reveal = true  # Q 看对方牌：保持正面直到确认交换/不交换
 				GameState.request_use_ability({"target": player_id, "target_slot": slot}, main._next_action_id())
 		"q_view_own":
 			if player_id == viewer:
 				_play_select()
+				main._hold_next_reveal = true  # Q 看自己牌：保持正面直到确认交换/不交换
 				GameState.request_q_view_own(slot, main._next_action_id())
 		"jack_target":
 			if player_id != viewer:
@@ -72,8 +74,17 @@ func on_card_pressed(player_id: int, slot: int) -> void:
 			if player_id == viewer:
 				_play_select()
 				selected_own_slot = slot
-				GameState.request_use_ability({"target": selected_target, "own_slot": selected_own_slot, "target_slot": selected_their_slot}, main._next_action_id())
-				_reset()
+				action_mode = "jack_ready"
+				main._render_game()
+		"jack_ready":
+			# 已选两张：允许改选（对方牌 → 换目标；自己牌 → 换自己那张），确认走按钮。
+			_play_select()
+			if player_id == viewer:
+				selected_own_slot = slot
+			else:
+				selected_target = player_id
+				selected_their_slot = slot
+			main._render_game()
 
 ## 根据抽到的能力牌设置交互模式。
 func begin_ability() -> void:
@@ -108,7 +119,23 @@ func card_actionable(player_id: int, _slot: int) -> bool:
 			return player_id != viewer
 		"jack_own":
 			return player_id == viewer
+		"jack_ready":
+			return true  # 已选两张仍可改选（对方/自己皆可点）
 	return false
+
+## J：确认交换（两张牌都已选）。由「J：交换」按钮调用。
+func jack_swap_now() -> void:
+	if selected_their_slot < 0 or selected_own_slot < 0:
+		return
+	GameState.request_use_ability({"target": selected_target, "own_slot": selected_own_slot, "target_slot": selected_their_slot}, main._next_action_id())
+	_reset()
+	main._render_game()
+
+## J：不交换（放弃能力，直接弃掉抽到的 J）。由「J：不交换」按钮调用。
+func jack_cancel() -> void:
+	GameState.request_discard_draw(main._next_action_id())
+	_reset()
+	main._render_game()
 
 ## 发送 J 交换请求后清空交互选择状态。
 func _reset() -> void:
@@ -129,8 +156,9 @@ func mode_instruction(fallback: String) -> String:
 		"peek_other": return "9 / 10：请选择其他玩家的一张牌。"
 		"queen_target": return "Q：请选择其他玩家的一张牌查看。"
 		"q_view_own": return "Q：请选择自己的一张牌查看，再决定是否交换。"
-		"jack_target": return "J：点击要换的对方牌。"
-		"jack_own": return "J：再点击自己要换的牌。"
+		"jack_target": return "J：请选择要交换的对方牌。"
+		"jack_own": return "J：再选择自己的一张牌，然后点击「交换」。"
+		"jack_ready": return "J：已选两张牌，点击「交换」或「不交换」。"
 	return fallback
 
 ## 阶段变化时重置交互状态。

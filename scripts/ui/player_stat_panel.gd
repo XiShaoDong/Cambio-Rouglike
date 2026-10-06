@@ -8,12 +8,37 @@ const FONT_SIZE := 14
 const NAME_FONT_SIZE := 28
 const BG_COLOR := Color(0.86, 0.88, 0.92, 0.22)
 const BORDER_COLOR := Color(0.0, 0.0, 0.0, 0.85)
+# 四个角 UI（dark mode）：背景纯白（保留原透明度 0.22），字体纯白。
+const CORNER_BG := Color(1.0, 1.0, 1.0, 0.22)
+const CORNER_TEXT := Color(1.0, 1.0, 1.0)
 
 var data := {}
 
 var _name_label: Label
 var _frame: PanelContainer
 var _row: HBoxContainer
+var _corner := false
+
+## 标记为"屏幕角落 HUD"（dark mode 下换 #FEF0E4 底 + 白字；仅自身面板用，头顶座位面板不调用）。
+func set_corner_style(on := true) -> void:
+	_corner = on
+	if _frame != null:
+		var style := _frame.get_theme_stylebox("panel")
+		if style is StyleBoxFlat:
+			(style as StyleBoxFlat).bg_color = _frame_bg()
+	if _name_label != null:
+		_name_label.add_theme_color_override("font_color", _text_color())
+	if not data.is_empty():
+		set_data(str(data.get("name", "")), int(data.get("health", 0)), int(data.get("currency", 0)), int(data.get("cards", 0)))
+
+func _corner_active() -> bool:
+	return _corner and UITheme.current == "dark"
+
+func _frame_bg() -> Color:
+	return CORNER_BG if _corner_active() else BG_COLOR
+
+func _text_color() -> Color:
+	return CORNER_TEXT if _corner_active() else UITheme.color("text_primary")
 
 func _ready() -> void:
 	_build()
@@ -26,7 +51,7 @@ func _build() -> void:
 	_name_label = Label.new()
 	_name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_name_label.add_theme_font_size_override("font_size", NAME_FONT_SIZE)
-	_name_label.add_theme_color_override("font_color", UITheme.color("text_primary"))
+	_name_label.add_theme_color_override("font_color", _text_color())
 	_name_label.visible = false
 	add_child(_name_label)
 
@@ -35,7 +60,7 @@ func _build() -> void:
 	_frame.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_frame.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	var style := StyleBoxFlat.new()
-	style.bg_color = BG_COLOR
+	style.bg_color = _frame_bg()
 	style.border_color = BORDER_COLOR
 	style.set_border_width_all(2)
 	style.set_corner_radius_all(6)
@@ -73,7 +98,7 @@ func _add_group(icon: Control, color: Color, value: int) -> void:
 	var num := Label.new()
 	num.text = str(value)
 	num.add_theme_font_size_override("font_size", FONT_SIZE)
-	num.add_theme_color_override("font_color", UITheme.color("text_primary"))
+	num.add_theme_color_override("font_color", _text_color())
 	num.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_row.add_child(num)
 

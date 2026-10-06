@@ -7,6 +7,7 @@ extends Node3D
 const PIXEL_SCALE := 0.0022          # 每个视口像素对应的世界单位
 const WRAP_PADDING := Vector2i(24, 24)
 const MIN_VIEWPORT := Vector2i(120, 56)
+const PICK_PAD := Vector2(0.18, 0.18)  # 拾取盒比视觉尺寸外扩的世界单位（准星略偏也能命中）
 const HALO_MARGIN := 0.06
 const HALO_COLOR := Color(0.42, 0.72, 0.95, 0.35)
 const BOARD_ALPHA := 0.94
@@ -172,7 +173,7 @@ func _apply_size() -> void:
 	_world_size = Vector2(_viewport_size) * PIXEL_SCALE
 	(_screen.mesh as QuadMesh).size = _world_size
 	(_halo.mesh as QuadMesh).size = _world_size + Vector2(HALO_MARGIN, HALO_MARGIN) * 2.0
-	_pick_box.size = Vector3(_world_size.x, _world_size.y, 0.02)
+	_pick_box.size = Vector3(_world_size.x + PICK_PAD.x, _world_size.y + PICK_PAD.y, 0.02)
 
 func _sync_visible() -> void:
 	visible = _panels.size() > 0

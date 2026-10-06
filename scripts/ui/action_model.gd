@@ -5,16 +5,23 @@ extends RefCounted
 
 const Q_KEEP := "q_keep"
 const Q_EXCHANGE := "q_exchange"
+const J_KEEP := "j_keep"
+const J_EXCHANGE := "j_exchange"
 const JOKER := "joker"
 
 const PHASE_TURN_DRAW := 2
 const PHASE_TURN_DECISION := 3
 const PHASE_Q_DECISION := 4
 
+## J 交换交互模式（本地 action_mode）：jack_target 选对方牌 → jack_own 选自己牌 → jack_ready 待确认。
+const JACK_MODES := ["jack_target", "jack_own", "jack_ready"]
+
 ## 条件动作按钮：需要时出现，点了触发 request_*。
 ## - Q_DECISION 且当前玩家且已看自己牌 → 「Q：不交换」「Q：交换」
+## - TURN_DECISION 且当前玩家且正在 J 交换（ctx.action_mode 为 jack_*）→ 「J：不交换」「J：交换」
+##   （「J：交换」仅当两张牌都已选，`ctx` 由本地 interaction 提供）
 ## - TURN_DECISION 且当前玩家且 pending 为 JOKER 且持有 Joker 遗物 → 「变换 Joker」
-static func conditional_actions(state: Dictionary) -> Array:
+static func conditional_actions(state: Dictionary, ctx: Dictionary = {}) -> Array:
 	var out: Array = []
 	if state.is_empty():
 		return out
@@ -33,6 +40,12 @@ static func conditional_actions(state: Dictionary) -> Array:
 			var run: Dictionary = state.get("run", {})
 			if (run.get("relics", {}) as Dictionary).has(Relics.JOKER_TRANSFORM_ID):
 				out.append({"action": JOKER, "text": "变换 Joker", "enabled": true})
+		# J 交换：两张都已选才能「交换」（与 Q 的确认按钮一致，仅多了"选两张牌"步骤）
+		if JACK_MODES.has(str(ctx.get("action_mode", ""))):
+			var both_selected := int(ctx.get("selected_their_slot", -1)) >= 0 \
+				and int(ctx.get("selected_own_slot", -1)) >= 0
+			out.append({"action": J_KEEP, "text": "J：不交换", "enabled": true})
+			out.append({"action": J_EXCHANGE, "text": "J：交换", "enabled": both_selected})
 	return out
 
 ## 抽牌堆可抽：TURN_DRAW 且 viewer 为当前玩家（2D 抽牌堆高亮 / 3D 抽牌堆光晕同源）。

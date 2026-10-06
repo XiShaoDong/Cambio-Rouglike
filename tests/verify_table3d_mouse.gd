@@ -69,3 +69,15 @@ func _run() -> void:
 	view.camera.look(Vector2(30.0, 20.0))
 	_check("鼠标移动改变相机朝向", view.camera.rotation_degrees != rot_before)
 	_check("yaw 夹在基准 ±90°", absf(view.camera.yaw - view.camera.base_yaw) <= 90.001)
+	# ⑤ 按住 Command/Alt 拉近视场（FOV 变小=放大），松开恢复；reset_zoom 立即复位
+	var base_fov: float = view.camera.base_fov()
+	view.camera.set_zoom(true)
+	await get_tree().create_timer(0.25).timeout
+	_check("按住放大后 FOV 变小", view.camera.camera_node().fov < base_fov - 1.0)
+	view.camera.set_zoom(false)
+	await get_tree().create_timer(0.25).timeout
+	_check("松开后 FOV 恢复", absf(view.camera.camera_node().fov - base_fov) < 0.5)
+	view.camera.set_zoom(true)
+	await get_tree().create_timer(0.05).timeout
+	view.camera.reset_zoom()
+	_check("reset_zoom 立即复位 FOV", absf(view.camera.camera_node().fov - base_fov) < 0.001)
