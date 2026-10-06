@@ -63,9 +63,11 @@ func _table3d_click() -> void:
 		"deck":
 			_on_deck_pressed()
 		"discard":
-			_on_discard_pressed()
-		"pending":
-			_on_pending_action()
+			# 弃牌堆按上下文：可弃大牌/用能力 → 弃掉抽到的牌；否则 → 取弃牌顶
+			if ActionModel.pending_discard_available(latest_state):
+				_on_pending_action()
+			else:
+				_on_discard_pressed()
 		"hud":
 			_on_action(str(pick.get("action", "")))
 

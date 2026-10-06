@@ -35,12 +35,43 @@ static func conditional_actions(state: Dictionary) -> Array:
 				out.append({"action": JOKER, "text": "变换 Joker", "enabled": true})
 	return out
 
-## 铃铛（Kongbaya）可用：TURN_DRAW 且 viewer 为当前玩家。
-static func kongbaya_available(state: Dictionary) -> bool:
+## 抽牌堆可抽：TURN_DRAW 且 viewer 为当前玩家（2D 抽牌堆高亮 / 3D 抽牌堆光晕同源）。
+static func draw_available(state: Dictionary) -> bool:
 	if state.is_empty():
 		return false
 	return int(state.get("phase", 0)) == PHASE_TURN_DRAW \
 		and int(state.get("viewer_id", 0)) == int(state.get("current_player", -1))
+
+## 铃铛（Kongbaya）可用：与抽牌同条件（TURN_DRAW 且 viewer 为当前玩家）。
+static func kongbaya_available(state: Dictionary) -> bool:
+	return draw_available(state)
+
+## 弃牌堆可直接点「取弃牌顶」：TURN_DRAW 且当前玩家且弃牌堆非空。
+static func discard_take_available(state: Dictionary) -> bool:
+	if state.is_empty():
+		return false
+	if int(state.get("phase", 0)) != PHASE_TURN_DRAW:
+		return false
+	if int(state.get("viewer_id", 0)) != int(state.get("current_player", -1)):
+		return false
+	return not (state.get("discard", {}) as Dictionary).is_empty()
+
+## 弃牌堆可直接点「弃掉抽到的牌 / 用能力」：TURN_DECISION 且当前玩家且 pending 非空且非取自弃牌堆。
+static func pending_discard_available(state: Dictionary) -> bool:
+	if state.is_empty():
+		return false
+	if int(state.get("phase", 0)) != PHASE_TURN_DECISION:
+		return false
+	if int(state.get("viewer_id", 0)) != int(state.get("current_player", -1)):
+		return false
+	var pending: Dictionary = state.get("pending", {})
+	if pending.is_empty():
+		return false
+	return str(pending.get("source", "draw")) != "discard"
+
+## 弃牌堆在当前快照下是否可点（取弃牌顶 或 弃掉大牌 / 用能力）。
+static func discard_pile_actionable(state: Dictionary) -> bool:
+	return discard_take_available(state) or pending_discard_available(state)
 
 ## Ready 按钮文案（2D 固定按钮与 3D HUD 共用）。
 static func ready_text(state: Dictionary, ready_clicked: bool) -> String:
