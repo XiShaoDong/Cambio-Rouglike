@@ -133,8 +133,8 @@ UI 层已拆分（main.gd 是组合根）：
 | `scenes/ui/player_area.tscn` + `scripts/ui/player_area.gd` | 玩家区域模板，`@export var card_size`（默认 62×90），名字在卡牌正下方；GameBoard 直接子节点，运行时复用填充 |
 | `action_model.gd` | **纯函数**：2D/3D 共用动作与可用性判定（`conditional_actions` / `kongbaya_available` / `ready_text` / `ready_enabled` / `discard_take_available` / `pending_discard_available` / `discard_pile_actionable`） |
 | `table3d_layout.gd` | **纯函数**：3D 布局数学（座位角度/槽位网格/分类色/拾取层与盒高/高亮色） |
-| `table3d_view.gd` | 3D 视图：`_bind()` 按固定路径解析场景骨架；按快照填每槽 `CardBlock`、头顶状态面板、铃铛发光、角色可见性与状态 overlay；`pick_center`/`update_hover`/`reveal_slot`/`flash_slot` |
-| `card_block.gd` | 3D 单卡方块：`PlaneMesh(FACE_Y)` 面 + 卡背/真实牌面贴图 + **边缘发光**（多层外扩平面：hover/protected/actionable/flash/reveal）+ **真实 3D 揭示翻转**（揭示（看牌/贴牌）双面几何、抬起+倾斜，不镜像；`setup`/`reveal`/`restore` 走 `_reveal_p`，`FLIP_DURATION`）+ 拾取 `Area3D` + `set_pick/set_pick_enabled/set_actionable/set_hover/reveal/restore/flash` |
+| `table3d_view.gd` | 3D 视图：`_bind()` 按固定路径解析场景骨架；按快照填每槽 `CardBlock`、头顶状态面板、铃铛发光、角色可见性与状态 overlay；`pick_center`/`update_hover`/`reveal_slot`/`flash_slot`；换牌/抽牌飞牌编排与堆光晕（见下） |
+| `card_block.gd` | 3D 单卡方块：`PlaneMesh(FACE_Y)` 面 + 卡背/真实牌面贴图 + **边缘发光**（多层外扩平面；优先级 `flash > reveal > protected > hover > actionable`）+ **真实 3D 揭示翻转**（揭示（看牌/贴牌）双面几何、抬起+倾斜，不镜像；`setup`/`reveal`/`restore` 走 `_reveal_p`，`FLIP_DURATION`）+ 拾取 `Area3D` + `set_pick/set_pick_enabled/set_actionable/set_hover/reveal/restore/flash` |
 | `table3d_camera.gd` | 3D 相机 rig：`frame_for_seat`（含 `aim_pitch_deg` 对准桌心）+ `look`（yaw/pitch 夹取）；`PitchPivot/Camera3D` 由场景提供 |
 | `table3d_picker.gd` | 屏幕中心射线拾取（`pick_hit` 返回 `{pick, collider}` / `pick` 只取 meta） |
 | `table3d_hud.gd` | 3D 操作面板按钮组（Ready / Q / 变换 Joker；Kongbaya 由 3D 铃铛负责） |
@@ -147,7 +147,7 @@ UI 层已拆分（main.gd 是组合根）：
 | `card_fly_math.gd` | **纯函数**：3D 换牌飞牌时长（恒定速度）/缓动/弧线/翻面/变换合成 |
 | `card_fly.gd` | 3D 单张飞牌控制器（标量 `p` + 每帧 compose 写 transform + `finished`） |
 | `card_fly_sandbox.gd` + `scenes/ui/card_fly_sandbox.tscn` | 3D 换牌动画沙盒（复刻对局布局 + 6 kind 按钮；接入前的手感原型） |
-| `table3d_view.gd`（换牌飞牌段） | 对局 3D 飞牌编排：`animate_exchange(data)` + `slot_xform`/`center_xform`/`slot_face_up`/`slot_card` + `_anim_slots`/`_discard_hold`/`_flyers` 跨 render 管理（`main.gd` 3D 分支调用） |
+| `table3d_view.gd`（换牌/抽牌飞牌段 + 堆光晕） | 对局 3D 飞牌编排：`animate_exchange(data)` + `slot_xform`/`center_xform`/`slot_face_up`/`slot_card` + `_anim_slots`/`_discard_hold`/`_flyers` 跨 render 管理（`main.gd` 3D 分支调用）；**抽牌飞牌** `_detect_draw`/`_anim_draw`（快照 pending 空→非空，所有人可见）；抽牌堆/弃牌堆可点**金色光晕**（`ActionModel.draw_available`/`discard_pile_actionable`） |
 | `board_input.gd` | 3D 全息看板坐标纯函数（`local↔uv↔viewport`） |
 | `board3d.gd` | 3D 全息看板宿主：`SubViewport`→半透明 billboard quad（按内容 wrap / 竖直仅绕 Y 朝相机 / 自身拾取消歧 / `push_input` 合成鼠标·键事件）；`main` 建 `board3d`（模态）+ `hint3d`（常驻提示+Ready）两实例 |
 
