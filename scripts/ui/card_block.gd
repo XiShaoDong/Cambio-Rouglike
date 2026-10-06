@@ -225,6 +225,25 @@ func reveal(card: Dictionary, color := Color(0, 0, 0, 0), from_p := 0.0) -> void
 	else:
 		_reveal_from(clampf(from_p, 0.0, 1.0))
 
+## 从 from_p 继续翻动到 target（0=背面 / 1=正面）。用于 Q hold 释放的翻回：
+## render 重建后按已过时间算出当前进度，再续播到背面（跨 render 不重播、不瞬切）。
+## target<=0 时结束不保留揭示炫光（`_reveal_color` 置空）。
+func reveal_from_to(card: Dictionary, color: Color, from_p: float, target: float) -> void:
+	_build()
+	_back_material.albedo_texture = _face_texture(card) if not card.is_empty() else _back_texture()
+	_back_material.albedo_color = Color.WHITE
+	_back_is_back = card.is_empty()
+	_label.text = card_text(card)
+	_reveal_color = Color(0, 0, 0, 0) if target <= 0.0 else color
+	_paint_glow()
+	_kill_flip()
+	_reveal_p = clampf(from_p, 0.0, 1.0)
+	_apply_flip_pose()
+	if is_inside_tree() and not is_equal_approx(_reveal_p, target):
+		set_process(true)
+		_flip_tween = create_tween()
+		_flip_tween.tween_property(self, "_reveal_p", target, absf(target - _reveal_p) * FLIP_DURATION).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
+
 ## 从给定进度续播到正面（from_p>=1 直接落位、不翻）。
 func _reveal_from(from_p: float) -> void:
 	_kill_flip()

@@ -21,7 +21,44 @@ func _run() -> void:
 	await _test_board_input()
 	await _test_board3d()
 	await _test_modals_dim()
+	await _test_ready_click()
 	await _test_main_routing()
+
+## 3D 开局记忆：Ready 在提示板上，且默认准星（相机→桌心连线）能直接落到它上面 → 可直接点到。
+func _test_ready_click() -> void:
+	Network.is_host = true
+	var main: Node = preload("res://scenes/main.tscn").instantiate()
+	get_tree().root.add_child(main)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var st := _tournament_state()
+	st["phase"] = 1
+	st["viewer_id"] = 0
+	st["current_player"] = 0
+	main.latest_state = st
+	main._set_table3d(true)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	main._refresh_hint_panel()
+	await get_tree().process_frame
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	var ready: Button = main._hint_panel.get_node_or_null("VBox/ReadyButton")
+	_check("3D 开局记忆显示 Ready", ready != null and ready.visible)
+	_check("Ready 已加大高度（易点）", ready != null and ready.custom_minimum_size.y >= 60.0)
+	_check("Ready 有明显 hover 样式", ready != null and ready.has_theme_stylebox_override("hover"))
+	# 有可点元素时提示板贴准星：默认准星（相机→桌心）应直接落在 Ready 内（无需抬头）
+	var cam: Camera3D = main.table3d.camera.camera_node()
+	for i in 3:
+		await get_tree().physics_frame
+	var coord: Vector2i = main.hint3d.hit_viewport_coord(cam)
+	var rr: Rect2 = ready.get_global_rect() if ready != null else Rect2()
+	_check("默认准星即落在 Ready 内（3D 可直接点）", coord.x >= 0 and rr.has_point(Vector2(coord)))
+	# 让 main._process 推送 hover motion，检查 Ready 是否真的进入 hover 态
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check("准星悬停时 Ready.is_hovered()", ready != null and ready.is_hovered())
+	main.queue_free()
 
 func _test_board_input() -> void:
 	var size := Vector2(2.6, 1.8)
@@ -219,6 +256,23 @@ func _test_main_routing() -> void:
 	await get_tree().process_frame
 	var ready: Button = main._hint_panel.get_node_or_null("VBox/ReadyButton")
 	_check("开局记忆阶段提示板显示 Ready", ready != null and ready.visible)
+
+	# Q_DECISION 已看自己牌：交换/不交换按钮出现在提示板下方（与 2D HintActions 一致）
+	var qst := _tournament_state()
+	qst["phase"] = 4
+	qst["viewer_id"] = 0
+	qst["current_player"] = 0
+	qst["q_decision"] = {"own_viewed": true, "actor": 0, "target": 1, "target_slot": 0}
+	main.latest_state = qst
+	main._refresh_hint_panel()
+	await get_tree().process_frame
+	var acts: HBoxContainer = main._hint_panel.get_node_or_null("VBox/HintActions")
+	_check("Q 决策按钮在提示板下方（2 个）", acts != null and acts.get_child_count() == 2)
+	_check("3D 桌面 HUD 不再承载条件动作", main._hud_buttons().is_empty())
+	# 决策按钮更大更好点 + 明显的 hover 反馈
+	var dbtn: Button = acts.get_child(0) if acts != null and acts.get_child_count() > 0 else null
+	_check("决策按钮尺寸放大", dbtn != null and dbtn.custom_minimum_size.x >= 200.0 and dbtn.custom_minimum_size.y >= 50.0)
+	_check("决策按钮有 hover 样式", dbtn != null and dbtn.has_theme_stylebox_override("hover"))
 
 	main._set_table3d(false)
 	await get_tree().process_frame

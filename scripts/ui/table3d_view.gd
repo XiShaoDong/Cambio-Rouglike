@@ -50,6 +50,7 @@ var _stat_viewports: Array = []
 var _seat_markers: Array = []     # 回合标识 Node3D per slot（供外部查询）
 var _reveals := {}                # "seat_slot" -> {card, color, token}（跨 render 保持揭示/翻牌）
 var _reveal_seq := 0
+var _flashes := {}                # "seat_slot" -> {color, until_ms}（跨 render 保持短暂光晕，如 peek_highlight）
 var _bell_dome: MeshInstance3D = null
 var _bell_mat: StandardMaterial3D = null
 var _deck_node: Node3D = null
@@ -209,6 +210,11 @@ func render(state: Dictionary, actionable := Callable()) -> void:
 		var parts: PackedStringArray = str(key).split("_")
 		if parts.size() == 2:
 			_apply_reveal(int(parts[0]), int(parts[1]))
+	# 重建后重新应用在途光晕提醒（peek_highlight），否则状态广播重建会冲掉蓝光
+	for key in _flashes.keys():
+		var fparts: PackedStringArray = str(key).split("_")
+		if fparts.size() == 2:
+			_apply_flash(int(fparts[0]), int(fparts[1]))
 	# 中央
 	_deck_label.text = str(int(state.get("draw_count", 0)))
 	# 抽牌堆：轮到自己抽牌（TURN_DRAW）时金色光晕
@@ -494,6 +500,54 @@ func reveal_slot(seat_id: int, slot: int, card: Dictionary, color := Color(0, 0,
 		if b != null:
 			b.restore())
 
+## 持续揭示某槽位（翻到正面并**保持**，不自动翻回；Q 能力确认交换/不交换前用）。
+## 同样登记在 `_reveals`，render 重建后 `_apply_reveal` 重放（elapsed 已过翻转时长 → 直接呈现正面）。
+func reveal_slot_held(seat_id: int, slot: int, card: Dictionary, color := Color(0, 0, 0, 0)) -> void:
+	var key := "%d_%d" % [seat_id, slot]
+	_reveal_seq += 1
+	_reveals[key] = {"card": card, "color": color, "token": _reveal_seq, "start_ms": Time.get_ticks_msec(), "hold": true}
+	_apply_reveal(seat_id, slot)
+
+## 某槽位是否为 Q hold 揭示。
+func has_held_reveal(seat_id: int, slot: int) -> bool:
+	var key := "%d_%d" % [seat_id, slot]
+	return _reveals.has(key) and bool(_reveals[key].get("hold", false))
+
+## 取走某槽位的 hold 揭示（不翻回，供交换飞牌从正面起飞），返回揭示牌面（无则 {}）。
+func take_held_reveal(seat_id: int, slot: int) -> Dictionary:
+	var key := "%d_%d" % [seat_id, slot]
+	if not _reveals.has(key) or not bool(_reveals[key].get("hold", false)):
+		return {}
+	var card: Dictionary = _reveals[key].get("card", {})
+	_reveals.erase(key)
+	return card
+
+## 释放全部 hold 揭示：animate_back=true 翻回背面（跨 render 续播，不瞬切），false 立即清除。
+func release_held_reveals(animate_back := true) -> void:
+	var now := Time.get_ticks_msec()
+	for key in _reveals.keys():
+		var r: Dictionary = _reveals[key]
+		if not bool(r.get("hold", false)):
+			continue
+		if animate_back:
+			r["hold"] = false
+			r["releasing"] = true
+			r["release_ms"] = now
+			var token := int(r.get("token", -1))
+			var k := str(key)
+			get_tree().create_timer(CardBlock.FLIP_DURATION + 0.05).timeout.connect(func():
+				if _reveals.has(k) and int(_reveals[k].get("token", -1)) == token:
+					_reveals.erase(k)
+					_refresh())
+			var parts := str(key).split("_")
+			_apply_reveal(int(parts[0]), int(parts[1]))
+		else:
+			_reveals.erase(key)
+			var parts2 := str(key).split("_")
+			var b = _find_block(int(parts2[0]), int(parts2[1]))
+			if b != null:
+				b.restore()
+
 ## 对当前（可能刚重建的）卡牌应用登记中的揭示。
 ## 按揭示已过时间计算翻转进度：重放时**续播**而非从 0 重播（已完成则直接呈现正面、不再翻），
 ## 避免状态广播 / 飞牌落地刷新把揭示重播一次（表现为翻完又显示正面 + 重新打炫光，见 B37）。
@@ -505,15 +559,35 @@ func _apply_reveal(seat_id: int, slot: int) -> void:
 	var b = _find_block(seat_id, slot)
 	if b == null:
 		return
+	if bool(r.get("releasing", false)):
+		# Q hold 释放：按距 release_ms 的已过时间算当前进度并续播到背面
+		var rel_elapsed := (Time.get_ticks_msec() - int(r.get("release_ms", 0))) / 1000.0
+		var rp := 1.0 - clampf(rel_elapsed / CardBlock.FLIP_DURATION, 0.0, 1.0)
+		(b as CardBlock).reveal_from_to(r.get("card", {}), r.get("color", Color(0, 0, 0, 0)), rp, 0.0)
+		return
 	var elapsed := (Time.get_ticks_msec() - int(r.get("start_ms", 0))) / 1000.0
 	var p := clampf(elapsed / CardBlock.FLIP_DURATION, 0.0, 1.0)
 	(b as CardBlock).reveal(r.get("card", {}), r.get("color", Color(0, 0, 0, 0)), p)
 
-## 短暂染色提醒（不翻面）。
+## 短暂染色提醒（不翻面）。登记到 `_flashes`，render 重建卡牌后按剩余时间重新应用
+## （等价 2D `_peek_glow_slots`）——否则 peek_highlight 紧跟着的状态广播会重建卡牌、冲掉光晕。
 func flash_slot(seat_id: int, slot: int, color: Color, dur: float) -> void:
+	_flashes["%d_%d" % [seat_id, slot]] = {"color": color, "until_ms": Time.get_ticks_msec() + int(dur * 1000.0)}
+	_apply_flash(seat_id, slot)
+
+## 对当前（可能刚重建的）卡牌应用登记中的光晕；已过期则清除登记。
+func _apply_flash(seat_id: int, slot: int) -> void:
+	var key := "%d_%d" % [seat_id, slot]
+	if not _flashes.has(key):
+		return
+	var f: Dictionary = _flashes[key]
+	var remain_ms := int(f.get("until_ms", 0)) - Time.get_ticks_msec()
+	if remain_ms <= 0:
+		_flashes.erase(key)
+		return
 	var block = _find_block(seat_id, slot)
 	if block != null:
-		block.flash(color, dur)
+		block.flash(f.get("color", Color(0, 0, 0, 0)), remain_ms / 1000.0)
 
 ## 设置 3D 操作面板按钮（[{text, action, enabled}]）。
 func set_hud_buttons(buttons: Array) -> void:
@@ -767,20 +841,46 @@ func _anim_swap(data: Dictionary) -> void:
 	var b_slot := int(data.get("b_slot", -1))
 	if a_slot < 0 or b_slot < 0:
 		return
-	var a_up := slot_face_up(a, a_slot)
-	var b_up := slot_face_up(b, b_slot)
+	var a_data: Dictionary = data.get("a_data", {})
+	var b_data: Dictionary = data.get("b_data", {})
+	var a_start := slot_face_up(a, a_slot)
+	var b_start := slot_face_up(b, b_slot)
+	# Q hold：行动者视角两张牌保持正面 → 从正面起飞、背面落地（落点是新的站牌）。
+	var a_held := has_held_reveal(a, a_slot)
+	var b_held := has_held_reveal(b, b_slot)
+	if a_held:
+		a_data = take_held_reveal(a, a_slot)
+		a_start = true
+	if b_held:
+		b_data = take_held_reveal(b, b_slot)
+		b_start = true
+	var a_end := slot_face_up(b, b_slot)
+	var b_end := slot_face_up(a, a_slot)
+	if a_held:
+		a_end = false
+	if b_held:
+		b_end = false
 	var xa := slot_xform(a, a_slot)
 	var xb := slot_xform(b, b_slot)
 	_mark_anim_slot(a, a_slot)
 	_mark_anim_slot(b, b_slot)
+	# hold 的源卡正面朝上：起飞前隐藏，避免飞牌离场后源位残留正面（render 落地时重建）
+	if a_held:
+		var ba = _find_block(a, a_slot)
+		if ba != null:
+			ba.visible = false
+	if b_held:
+		var bb = _find_block(b, b_slot)
+		if bb != null:
+			bb.visible = false
 	var counter := {"n": 2}
 	var done := func():
 		counter["n"] = int(counter["n"]) - 1
 		if int(counter["n"]) <= 0:
 			_unmark_anim_slot(a, a_slot)
 			_unmark_anim_slot(b, b_slot)
-	_spawn_fly(xa, xb, data.get("a_data", {}), a_up, b_up, done)
-	_spawn_fly(xb, xa, data.get("b_data", {}), b_up, a_up, done)
+	_spawn_fly(xa, xb, a_data, a_start, a_end, done)
+	_spawn_fly(xb, xa, b_data, b_start, b_end, done)
 
 func _anim_discard(data: Dictionary) -> void:
 	var actor := int(data.get("actor", 0))

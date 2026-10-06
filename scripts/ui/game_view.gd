@@ -254,11 +254,11 @@ func _render_controls(phase: int, is_current: bool) -> void:
 	if bool(main.latest_state.get("suspended", false)):
 		_render_suspended_controls()
 		return
-	for entry in ActionModel.conditional_actions(main.latest_state):
+	for entry in ActionModel.conditional_actions(main.latest_state, main._interaction_ctx()):
 		var action := str(entry.get("action", ""))
 		if action == ActionModel.Q_KEEP:
 			main.interaction.action_mode = ""
-		var btn: Button = main._button(str(entry.get("text", "")))
+		var btn: Button = main._decision_button(str(entry.get("text", "")))
 		btn.disabled = not bool(entry.get("enabled", true))
 		btn.pressed.connect(main._on_action.bind(action))
 		main._hint_actions.add_child(btn)

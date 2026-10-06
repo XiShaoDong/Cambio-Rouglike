@@ -68,12 +68,27 @@ func animate_swap(a: int, a_slot: int, b: int, b_slot: int, a_data: Dictionary, 
 		return
 	var rect_a: Rect2 = card_a.get_global_rect()
 	var rect_b: Rect2 = card_b.get_global_rect()
+	var start_a := _face_up_of(card_a)
+	var start_b := _face_up_of(card_b)
+	var end_a := _face_up_of(card_b)
+	var end_b := _face_up_of(card_a)
+	# Q hold：行动者视角两张牌此前保持正面 → 从正面起飞、背面落地（落点是新的站牌）。
+	var held_a: Dictionary = main.reveal.consume_held(a, a_slot)
+	var held_b: Dictionary = main.reveal.consume_held(b, b_slot)
+	if not held_a.is_empty():
+		a_data = held_a
+		start_a = true
+		end_a = false
+	if not held_b.is_empty():
+		b_data = held_b
+		start_b = true
+		end_b = false
 	# 标记动画槽位 + 隐藏源卡，副本互换（两个动画都完成后才清除标记并重建）
 	main.mark_anim_slot(a, a_slot)
 	main.mark_anim_slot(b, b_slot)
 	var counter := {"remaining": 2}
-	_fly(rect_a, rect_b, a_data, _face_up_of(card_a), _face_up_of(card_b), card_a, _swap_done.bind(counter, a, a_slot, b, b_slot))
-	_fly(rect_b, rect_a, b_data, _face_up_of(card_b), _face_up_of(card_a), card_b, _swap_done.bind(counter, a, a_slot, b, b_slot))
+	_fly(rect_a, rect_b, a_data, start_a, end_a, card_a, _swap_done.bind(counter, a, a_slot, b, b_slot))
+	_fly(rect_b, rect_a, b_data, start_b, end_b, card_b, _swap_done.bind(counter, a, a_slot, b, b_slot))
 
 ## 交换动画完成回调：两个副本都完成后清除标记并重建。
 func _swap_done(counter: Dictionary, a: int, a_slot: int, b: int, b_slot: int) -> void:

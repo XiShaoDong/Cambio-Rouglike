@@ -29,6 +29,15 @@ func _run() -> void:
 	_check("无遗物无 Joker 按钮", ActionModel.conditional_actions({"phase": 3, "viewer_id": 1, "current_player": 1, "pending": {"rank": "JOKER"}, "run": {"relics": {}}}).is_empty())
 	_check("非 JOKER pending 无按钮", ActionModel.conditional_actions({"phase": 3, "viewer_id": 1, "current_player": 1, "pending": {"rank": "7"}, "run": {"relics": {Relics.JOKER_TRANSFORM_ID: 1}}}).is_empty())
 	_check("空快照无动作", ActionModel.conditional_actions({}).is_empty())
+	# J 交换：与 Q 同款确认按钮，多"选两张牌"步骤（交换仅在两张已选时可用）
+	var jt := {"phase": 3, "viewer_id": 0, "current_player": 0, "pending": {"rank": "J"}}
+	var j_sel := ActionModel.conditional_actions(jt, {"action_mode": "jack_target", "selected_their_slot": -1, "selected_own_slot": -1})
+	_check("J 选择中出现交换/不交换", j_sel.size() == 2 and j_sel[0].action == ActionModel.J_KEEP and j_sel[1].action == ActionModel.J_EXCHANGE)
+	_check("J 未选齐时交换禁用", not bool(j_sel[1].enabled))
+	var j_both := ActionModel.conditional_actions(jt, {"action_mode": "jack_ready", "selected_their_slot": 1, "selected_own_slot": 0})
+	_check("J 两张已选交换启用", bool(j_both[1].enabled))
+	_check("J 非 jack 模式无按钮", ActionModel.conditional_actions(jt, {"action_mode": "replace"}).is_empty())
+	_check("J 非当前玩家无按钮", ActionModel.conditional_actions({"phase": 3, "viewer_id": 1, "current_player": 0}, {"action_mode": "jack_ready", "selected_their_slot": 0, "selected_own_slot": 0}).is_empty())
 	_check("抽牌堆可抽（TURN_DRAW 当前）", ActionModel.draw_available({"phase": 2, "viewer_id": 0, "current_player": 0}))
 	_check("非当前不可抽", not ActionModel.draw_available({"phase": 2, "viewer_id": 1, "current_player": 0}))
 	_check("非抽牌阶段不可抽", not ActionModel.draw_available({"phase": 3, "viewer_id": 0, "current_player": 0}))
