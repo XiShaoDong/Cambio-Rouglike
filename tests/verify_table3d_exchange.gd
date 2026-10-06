@@ -152,13 +152,15 @@ func _test_reveal_replay_no_restart() -> void:
 	await get_tree().create_timer(1.6).timeout
 	view.queue_free()
 
-## 揭示炫光（贴对绿 / 贴错红 / 查看蓝）优先于 actionable/hover，不被 hover 浅蓝覆盖。
+## 揭示炫光（贴对绿 / 贴错红 / 查看蓝）优先于一切非 flash；hover 又高于 actionable（悬停可确认选中）。
 func _test_reveal_glow_priority() -> void:
 	var b := CardBlock.new()
 	add_child(b)
 	b.setup({"card_id": "x"})
+	b.set_actionable(true)
+	_check("actionable 显示金色", b.has_glow() and b.glow_color() == Table3dLayout.ACTIONABLE_COLOR)
 	b.set_hover(true)
-	_check("hover 显示浅蓝", b.has_glow() and b.glow_color() == Color(0.7, 0.95, 1.0))
+	_check("hover 覆盖 actionable 显示浅蓝", b.glow_color() == Color(0.7, 0.95, 1.0))
 	b.reveal({"rank": "Q", "suit": "♦"}, Color(0.9, 0.3, 0.3))
 	_check("揭示炫光覆盖 hover 浅蓝", b.glow_color() == Color(0.9, 0.3, 0.3))
 	b.set_hover(true)

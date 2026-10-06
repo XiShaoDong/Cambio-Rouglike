@@ -462,7 +462,9 @@
 
 **根因**：`CardBlock._paint_glow()` 的优先级是 `flash > protected > actionable > hover`，**没有"揭示色"这一档**；`reveal(card, color)` 只是**直接** `_apply_glow_layers(color)` 设一次色，而 `set_hover`/`set_actionable`/`render` 重建后的重绘都会重新调用 `_paint_glow()`，把颜色覆盖回 actionable（金）/ hover（浅蓝）→ 揭示色被吞。
 
-**修复**：把揭示色提升为**一等状态** `_reveal_color`：`reveal()` 设 `_reveal_color` 后统一走 `_paint_glow()`；`_paint_glow()` 优先级改为 **`flash > reveal > protected > actionable > hover`**；`setup()` 与 `restore()` 清空 `_reveal_color`。这样揭示炫光（绿/红/蓝）不会被选中/hover/重绘覆盖。
+**修复**：把揭示色提升为**一等状态** `_reveal_color`：`reveal()` 设 `_reveal_color` 后统一走 `_paint_glow()`；`_paint_glow()` 优先级改为 **`flash > reveal > protected > hover > actionable`**；`setup()` 与 `restore()` 清空 `_reveal_color`。这样揭示炫光（绿/红/蓝）不会被选中/hover/重绘覆盖。
+
+**后续调整（同优先级表）**：hover 提到 actionable **之上**——3D 可为抽牌堆/弃牌堆加金色"可点"高亮后，若不调整，金光会盖住准星悬停的浅蓝，玩家无法确认"是否对准了目标"。现顺序：不悬停时可点目标显**金色**，悬停时改显**浅蓝**（确认选中），揭示炫光仍最高。三档互不冲突（reveal > hover > actionable）。
 
 **诊断方法**：`verify_table3d_exchange`「揭示炫光覆盖 hover 浅蓝」「hover 重绘不覆盖揭示炫光」「actionable 重绘不覆盖揭示炫光」「恢复后揭示炫光清除、回到 hover 浅蓝」。
 

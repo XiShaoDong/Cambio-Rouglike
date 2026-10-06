@@ -320,8 +320,9 @@ func show_back(back: bool) -> void:
 	else:
 		_apply_slot(_last_slot)
 
-## 按优先级决定边缘发光颜色：flash > reveal（揭示绿/红/蓝）> protected > actionable > hover。
-## reveal 高于 actionable/hover：贴牌对错炫光不应被选中/hover 的浅蓝覆盖（否则需移动光标才显示）。
+## 按优先级决定边缘发光颜色：flash > reveal（揭示绿/红/蓝）> protected > hover > actionable。
+## reveal 最高（仅次于 flash）：贴牌对错炫光不被选中/hover/可点高亮覆盖（B38）。
+## hover 高于 actionable：可点目标（金）在准星悬停时改显浅蓝，便于确认"是否对准了"（否则金光盖住蓝光无法确认选中）。
 func _paint_glow() -> void:
 	if _flash_color.a > 0.0:
 		_apply_glow_layers(_flash_color)
@@ -329,10 +330,10 @@ func _paint_glow() -> void:
 		_apply_glow_layers(_reveal_color)
 	elif bool(_last_slot.get("protected", false)):
 		_apply_glow_layers(PROTECTED_COLOR)
-	elif _actionable:
-		_apply_glow_layers(Table3dLayout.ACTIONABLE_COLOR)
 	elif _hovered:
 		_apply_glow_layers(_hover_color)
+	elif _actionable:
+		_apply_glow_layers(Table3dLayout.ACTIONABLE_COLOR)
 	else:
 		_apply_glow_layers(Color(0, 0, 0, 0))
 
