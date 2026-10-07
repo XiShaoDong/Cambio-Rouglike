@@ -8,6 +8,7 @@ extends Node3D
 
 const PROTECTED_COLOR := Color(0.62, 0.35, 0.85)
 const BACK_TEXTURE_PATH := "res://assets/Cards/back07.png"
+const PEEK_HIDDEN_TEXTURE_PATH := "res://assets/Cards/peek_hidden.svg"  # 他人 peek 时的"黑底闭眼"占位面
 const CARD_DIR := "res://assets/Cards/"
 const SUIT_FILE := {"♠": "spades", "♥": "hearts", "♣": "clubs", "♦": "diamonds"}
 const RANK_FILE := {"A": "ace", "J": "jack", "Q": "queen", "K": "king", "10": "10"}
@@ -20,6 +21,7 @@ const GLOW_LAYERS := [
 ]
 
 static var _back_tex: Texture2D = null
+static var _peek_hidden_tex: Texture2D = null
 static var _face_cache := {}
 
 var _built := false
@@ -240,6 +242,21 @@ func reveal(card: Dictionary, color := Color(0, 0, 0, 0), from_p := 0.0) -> void
 	else:
 		_reveal_from(clampf(from_p, 0.0, 1.0))
 
+## 他人 peek 占位揭示：翻到"黑底闭眼"面（不显示牌面/点数），可带颜色边缘光晕。
+## 用于 7/8/9/10/Q 看牌时向其他玩家表达"此牌正被人看"，比单纯蓝光更明显。
+func reveal_hidden(color := Color(0, 0, 0, 0), from_p := 0.0) -> void:
+	_build()
+	_back_material.albedo_texture = _peek_hidden_texture()
+	_back_material.albedo_color = Color.WHITE
+	_back_is_back = false
+	_set_label_text("")
+	_reveal_color = color
+	_paint_glow()
+	if from_p <= 0.0:
+		_reveal_to(1.0)
+	else:
+		_reveal_from(clampf(from_p, 0.0, 1.0))
+
 ## 从 from_p 继续翻动到 target（0=背面 / 1=正面）。用于 Q hold 释放的翻回：
 ## render 重建后按已过时间算出当前进度，再续播到背面（跨 render 不重播、不瞬切）。
 ## target<=0 时结束不保留揭示炫光（`_reveal_color` 置空）。
@@ -387,6 +404,11 @@ static func _back_texture() -> Texture2D:
 		_back_tex = load(BACK_TEXTURE_PATH)
 	return _back_tex
 
+static func _peek_hidden_texture() -> Texture2D:
+	if _peek_hidden_tex == null:
+		_peek_hidden_tex = load(PEEK_HIDDEN_TEXTURE_PATH)
+	return _peek_hidden_tex
+
 ## 真实牌面贴图：非 original 皮肤走 `CardAtlas`，original 走旧素材 assets/Cards/*.png；
 ## 均缺失时回退卡背。
 func _face_texture(card: Dictionary) -> Texture2D:
@@ -430,6 +452,11 @@ func label_text() -> String:
 
 func shadow_text() -> String:
 	return _label_shadow.text if _label_shadow != null else ""
+
+## 当前显示面是否为"他人 peek 闭眼占位面"。
+func is_peek_hidden() -> bool:
+	var m := _display_material()
+	return m != null and m.albedo_texture != null and m.albedo_texture == _peek_hidden_texture()
 
 ## 同步设置主标签与投影标签的文本。
 func _set_label_text(text: String) -> void:

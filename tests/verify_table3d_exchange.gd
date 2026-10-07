@@ -21,6 +21,7 @@ func _run() -> void:
 	await _test_exchange()
 	await _test_penalty_render_midflight()
 	await _test_swap_label_leak()
+	await _test_peek_hidden_flip()
 	await _test_reveal_replay_no_restart()
 	await _test_held_reveal()
 	_test_reveal_glow_priority()
@@ -172,6 +173,31 @@ func _test_swap_label_leak() -> void:
 			any_label = true
 	_check("明牌槽交换飞牌显示点数标签", any_label)
 	await _wait_flyers(view)
+	view.queue_free()
+
+## 他人 peek：翻到"黑底闭眼"占位面 + 蓝光，跨 render 续播，到时翻回。
+func _test_peek_hidden_flip() -> void:
+	var view = load("res://scenes/ui/table3d.tscn").instantiate()
+	add_child(view)
+	await get_tree().process_frame
+	view.render(_base_state())
+	await get_tree().process_frame
+	var blue := Color(0.2, 0.9, 1.0)
+	view.reveal_hidden_slot(0, 2, blue, 0.7)
+	_check("peek 隐藏揭示登记", view._reveals.has("0_2") and bool(view._reveals["0_2"].get("hidden", false)))
+	await get_tree().create_timer(CardBlock.FLIP_DURATION + 0.12).timeout
+	var b = view._card_blocks[0][2]
+	_check("peek 翻到闭眼面", b.is_peek_hidden())
+	_check("peek 闭眼面无点数标签", b.label_text() == "")
+	_check("peek 闭眼面保留蓝光", b.has_glow() and b.glow_color() == blue)
+	# 状态广播重建后仍保持（续播，不重播）
+	view.render(_base_state())
+	await get_tree().process_frame
+	_check("peek 隐藏跨 render 保持", view._card_blocks[0][2].is_peek_hidden())
+	_check("peek 隐藏揭示仍登记", view._reveals.has("0_2"))
+	# 到时翻回背面
+	await get_tree().create_timer(1.0).timeout
+	_check("peek 到时翻回背面", not view._card_blocks[0][2].is_peek_hidden() and is_equal_approx(view._card_blocks[0][2].reveal_progress(), 0.0))
 	view.queue_free()
 
 ## B37 回归：揭示重放不应把翻牌从头再播（翻完又显示正面 + 重新打炫光）。

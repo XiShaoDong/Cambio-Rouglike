@@ -559,6 +559,23 @@ func reveal_slot(seat_id: int, slot: int, card: Dictionary, color := Color(0, 0,
 		if b != null:
 			b.restore())
 
+## 他人 peek 占位揭示：翻到"黑底闭眼"面 + 颜色光晕，到时翻回。跨 render 重放（同 reveal_slot）。
+func reveal_hidden_slot(seat_id: int, slot: int, color := Color(0, 0, 0, 0), dur := 1.5) -> void:
+	var key := "%d_%d" % [seat_id, slot]
+	_reveal_seq += 1
+	var token := _reveal_seq
+	_reveals[key] = {"hidden": true, "color": color, "token": token, "start_ms": Time.get_ticks_msec()}
+	_apply_reveal(seat_id, slot)
+	get_tree().create_timer(dur).timeout.connect(func():
+		if not _reveals.has(key):
+			return
+		if int(_reveals[key].get("token", -1)) != token:
+			return   # 已被更新的揭示取代
+		_reveals.erase(key)
+		var b = _find_block(seat_id, slot)
+		if b != null:
+			b.restore())
+
 ## 持续揭示某槽位（翻到正面并**保持**，不自动翻回；Q 能力确认交换/不交换前用）。
 ## 同样登记在 `_reveals`，render 重建后 `_apply_reveal` 重放（elapsed 已过翻转时长 → 直接呈现正面）。
 func reveal_slot_held(seat_id: int, slot: int, card: Dictionary, color := Color(0, 0, 0, 0)) -> void:
@@ -623,6 +640,12 @@ func _apply_reveal(seat_id: int, slot: int) -> void:
 		var rel_elapsed := (Time.get_ticks_msec() - int(r.get("release_ms", 0))) / 1000.0
 		var rp := 1.0 - clampf(rel_elapsed / CardBlock.FLIP_DURATION, 0.0, 1.0)
 		(b as CardBlock).reveal_from_to(r.get("card", {}), r.get("color", Color(0, 0, 0, 0)), rp, 0.0)
+		return
+	if bool(r.get("hidden", false)):
+		# 他人 peek 占位面：按已过时间续播到闭眼面
+		var h_elapsed := (Time.get_ticks_msec() - int(r.get("start_ms", 0))) / 1000.0
+		var hp := clampf(h_elapsed / CardBlock.FLIP_DURATION, 0.0, 1.0)
+		(b as CardBlock).reveal_hidden(r.get("color", Color(0, 0, 0, 0)), hp)
 		return
 	var elapsed := (Time.get_ticks_msec() - int(r.get("start_ms", 0))) / 1000.0
 	var p := clampf(elapsed / CardBlock.FLIP_DURATION, 0.0, 1.0)

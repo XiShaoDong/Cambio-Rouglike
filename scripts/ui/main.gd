@@ -1368,7 +1368,8 @@ func _show_private_reveal(title: String, revealed_cards: Array, target: Dictiona
 ## 记录槽位到 _peek_glow_slots，render 重建卡牌后仍可恢复光晕。
 func _on_peek_highlight(data: Dictionary) -> void:
 	if _table3d_active and table3d != null and is_instance_valid(table3d):
-		table3d.flash_slot(int(data.get("player_id", 0)), int(data.get("slot", -1)), PEEK_GLOW_COLOR, PEEK_GLOW_DURATION)
+		# 3D：翻到"黑底闭眼"占位面 + 蓝光（比单纯蓝光更明显），到时翻回
+		table3d.reveal_hidden_slot(int(data.get("player_id", 0)), int(data.get("slot", -1)), PEEK_GLOW_COLOR, PEEK_GLOW_DURATION)
 		return
 	var pid := int(data.get("player_id", 0))
 	var slot := int(data.get("slot", -1))
