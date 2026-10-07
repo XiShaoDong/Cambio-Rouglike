@@ -29,6 +29,7 @@ var _back_node: MeshInstance3D
 var _back_material: StandardMaterial3D
 var _mesh: MeshInstance3D
 var _label: Label3D
+var _label_shadow: Label3D
 var _material: StandardMaterial3D
 var _area: Area3D
 var _pick_shape: CollisionShape3D
@@ -55,6 +56,11 @@ var _back_is_back := true
 
 ## 揭示 3D 翻转总时长（抬起+倾斜+绕长轴 180° 的整段）。调大 = 更慢。
 const FLIP_DURATION := 0.5
+
+## 点数标签：抬离牌面 + 一层深色底部投影，营造"悬浮在牌上"的立体感。
+const LABEL_LIFT := 0.16
+const LABEL_SHADOW_OFFSET := Vector3(0.03, -0.035, 0.03)
+const LABEL_SHADOW_COLOR := Color(0.0, 0.0, 0.0, 0.35)
 
 func _ready() -> void:
 	_build()
@@ -129,12 +135,21 @@ func _build() -> void:
 	_back_material.albedo_color = Color.WHITE
 	_back_node.material_override = _back_material
 	_flip.add_child(_back_node)
+	_label_shadow = Label3D.new()
+	_label_shadow.name = "LabelShadow"
+	_label_shadow.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_label_shadow.no_depth_test = true
+	_label_shadow.pixel_size = 0.0025
+	_label_shadow.font_size = 96
+	_label_shadow.modulate = LABEL_SHADOW_COLOR
+	_label_shadow.position = Vector3(0.0, Table3dLayout.BLOCK_SIZE.y * 0.5 + LABEL_LIFT, 0.0) + LABEL_SHADOW_OFFSET
+	_flip.add_child(_label_shadow)
 	_label = Label3D.new()
 	_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_label.no_depth_test = true
 	_label.pixel_size = 0.0025
 	_label.font_size = 96
-	_label.position = Vector3(0.0, Table3dLayout.BLOCK_SIZE.y * 0.5 + 0.08, 0.0)
+	_label.position = Vector3(0.0, Table3dLayout.BLOCK_SIZE.y * 0.5 + LABEL_LIFT, 0.0)
 	_flip.add_child(_label)
 	# 拾取标记：独立物理层，仅用于射线拾取
 	_area = Area3D.new()
@@ -173,7 +188,7 @@ func _apply_slot(slot: Dictionary) -> void:
 	_last_slot = slot
 	_flash_color = Color(0, 0, 0, 0)
 	var card: Dictionary = slot.get("card", {})
-	_label.text = "" if card.is_empty() else card_text(card)
+	_set_label_text("" if card.is_empty() else card_text(card))
 	_apply_color()
 
 ## 设置拾取元数据（{"kind":"slot","seat":..,"slot":..} 或 hud/deck/...）。
@@ -217,7 +232,7 @@ func reveal(card: Dictionary, color := Color(0, 0, 0, 0), from_p := 0.0) -> void
 	_back_material.albedo_texture = _face_texture(card) if not card.is_empty() else _back_texture()
 	_back_material.albedo_color = Color.WHITE
 	_back_is_back = card.is_empty()
-	_label.text = card_text(card)
+	_set_label_text(card_text(card))
 	_reveal_color = color
 	_paint_glow()
 	if from_p <= 0.0:
@@ -233,7 +248,7 @@ func reveal_from_to(card: Dictionary, color: Color, from_p: float, target: float
 	_back_material.albedo_texture = _face_texture(card) if not card.is_empty() else _back_texture()
 	_back_material.albedo_color = Color.WHITE
 	_back_is_back = card.is_empty()
-	_label.text = card_text(card)
+	_set_label_text(card_text(card))
 	_reveal_color = Color(0, 0, 0, 0) if target <= 0.0 else color
 	_paint_glow()
 	_kill_flip()
@@ -259,7 +274,7 @@ func restore() -> void:
 	_build()
 	_reveal_color = Color(0, 0, 0, 0)
 	var card: Dictionary = _last_slot.get("card", {})
-	_label.text = "" if card.is_empty() else card_text(card)
+	_set_label_text("" if card.is_empty() else card_text(card))
 	_paint_glow()
 	_reveal_to(0.0)
 
@@ -334,7 +349,7 @@ func show_back(back: bool) -> void:
 		_front_is_back = true
 		_material.albedo_texture = _back_texture()
 		_material.albedo_color = Color.WHITE
-		_label.text = ""
+		_set_label_text("")
 		_paint_glow()
 	else:
 		_apply_slot(_last_slot)
@@ -413,6 +428,16 @@ static func card_text(card: Dictionary) -> String:
 func label_text() -> String:
 	return _label.text if _label != null else ""
 
+func shadow_text() -> String:
+	return _label_shadow.text if _label_shadow != null else ""
+
+## 同步设置主标签与投影标签的文本。
+func _set_label_text(text: String) -> void:
+	if _label != null:
+		_label.text = text
+	if _label_shadow != null:
+		_label_shadow.text = text
+
 ## 竖立显示模式：标签从卡面法向正上方（本地 +Y）改到卡高方向顶端（本地 +Z）。
 ## 仅用于竖立的大牌；默认关闭，不影响手牌/弃牌/飞牌等平铺卡。
 func set_upright(on: bool) -> void:
@@ -421,9 +446,11 @@ func set_upright(on: bool) -> void:
 	if _label == null:
 		return
 	if on:
-		_label.position = Vector3(0.0, 0.0, Table3dLayout.BLOCK_SIZE.z * 0.5 + 0.08)
+		_label.position = Vector3(0.0, 0.0, Table3dLayout.BLOCK_SIZE.z * 0.5 + LABEL_LIFT)
 	else:
-		_label.position = Vector3(0.0, Table3dLayout.BLOCK_SIZE.y * 0.5 + 0.08, 0.0)
+		_label.position = Vector3(0.0, Table3dLayout.BLOCK_SIZE.y * 0.5 + LABEL_LIFT, 0.0)
+	if _label_shadow != null:
+		_label_shadow.position = _label.position + LABEL_SHADOW_OFFSET
 
 ## 视觉子节点（hover 位移/旋转作用于它；拾取盒在根，不受影响）。
 func visual_node() -> Node3D:

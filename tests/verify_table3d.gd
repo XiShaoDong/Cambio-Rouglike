@@ -110,10 +110,14 @@ func _test_view_render() -> void:
 	_check("每席面板各一", view._seat_panels.size() == 4)
 	_check("viewer 相机基准 0°", is_equal_approx(view.camera.base_yaw, 0.0))
 	var found_ace := false
+	var ace_block = null
 	for child in view._seat_nodes[0].get_node("HandAnchor").get_children():
 		if child is CardBlock and child.label_text() == "A♥":
 			found_ace = true
+			ace_block = child
 	_check("已知牌 A♥ 渲染", found_ace)
+	_check("点数标签有同步投影（悬浮）", ace_block != null and ace_block.shadow_text() == "A♥")
+	_check("投影在主标签下方", ace_block != null and ace_block._label_shadow.position.y < ace_block._label.position.y)
 	var hidden_ok := true
 	for child in view._seat_nodes[1].get_node("HandAnchor").get_children():
 		if child is CardBlock and child.label_text() != "":
