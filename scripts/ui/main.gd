@@ -616,10 +616,10 @@ const CORNER_MARGIN := 75.0     # 3D 四个角 HUD 到屏幕边缘的统一边�
 const BOARD_DIST := 3.0        # 回退用：看板沿"相机→桌心"连线距相机的距离（可调）
 const HINT_RISE := 0.5         # 提示板相对大板的世界 Y 抬升（gap，已缩小 1/2）
 const BOARD_LIFT := 0.8        # 面板高度抬升比例（y *= 1 + BOARD_LIFT；比上次降低 1/5）
-## 模态看板锚点（贴玩家、不靠后）：本机座位→桌心的 0..1 深度（用户 0-10 标度的 4/10）。
-const BOARD_DEPTH := 0.4
+## 模态看板锚点（贴玩家、不靠后）：本机座位→桌心的 0..1 深度（用户 0-10 标度的 2/10）。
+const BOARD_DEPTH := 0.2
 const BOARD_TABLE_HALF := 3.8  # 牌桌半宽（scenes/ui/table3d.tscn 桌面 7.6）
-const BOARD_FLOAT_H := 0.6     # 看板底部距桌面的悬浮高度
+const BOARD_FLOAT_H := 1.5     # 看板底部距桌面的悬浮高度（抬高，避免贴桌面）
 
 const PEEK_GLOW_COLOR := Color("3ef0f7ff")  # 查看牌蓝色光晕
 const PEEK_GLOW_DURATION := 1.5
