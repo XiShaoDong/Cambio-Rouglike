@@ -217,7 +217,8 @@ func render(state: Dictionary, actionable := Callable()) -> void:
 		if fparts.size() == 2:
 			_apply_flash(int(fparts[0]), int(fparts[1]))
 	# 中央
-	_deck_label.text = str(int(state.get("draw_count", 0)))
+	# 抽牌堆剩余/总数（如 45/54）
+	_deck_label.text = "%d/%d" % [int(state.get("draw_count", 0)), KongRules.DECK_SIZE]
 	# 抽牌堆：轮到自己抽牌（TURN_DRAW）时金色光晕
 	if _deck_block != null and is_instance_valid(_deck_block):
 		_deck_block.set_actionable(ActionModel.draw_available(state))

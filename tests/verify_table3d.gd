@@ -99,6 +99,7 @@ func _test_view_render() -> void:
 	}
 	view.render(state)
 	await get_tree().process_frame
+	_check("抽牌堆显示 剩余/总数（30/54）", view._deck_label.text == "30/54")
 	_check("viewer 座位可见", view._seat_nodes[0].visible)
 	_check("对手座位可见", view._seat_nodes[1].visible)
 	_check("空座位隐藏", not view._seat_nodes[2].visible and not view._seat_nodes[3].visible)

@@ -7,6 +7,8 @@ extends RefCounted
 const MAX_PLAYERS := 4
 const MIN_PLAYERS := 2
 const HAND_SIZE := 4
+## 初始牌堆总张数：4 花色 × 13 点数 + 2 Joker = 54（用于抽牌堆 "剩余/总数" 展示）。
+const DECK_SIZE := 54
 ## 玩家机器人配色（进入游戏时随机分配、保证不重复；末位为原默认色）。
 const PLAYER_COLORS := ["#3ABA64", "#BD414B", "#A36DE9", "#7158FE", "#A0D45D", "#B18C3E", "#63CBEA", "#496AFE"]
 

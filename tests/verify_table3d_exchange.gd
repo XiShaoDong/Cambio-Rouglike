@@ -20,6 +20,7 @@ func _check(name: String, ok: bool) -> void:
 func _run() -> void:
 	await _test_exchange()
 	await _test_penalty_render_midflight()
+	await _test_swap_label_leak()
 	await _test_reveal_replay_no_restart()
 	await _test_held_reveal()
 	_test_reveal_glow_priority()
@@ -143,6 +144,34 @@ func _test_penalty_render_midflight() -> void:
 	_check("罚牌中途 render 槽不渲染", not view._card_blocks[1].has(4))
 	await _wait_flyers(view)
 	_check("罚牌落地后槽渲染", view._card_blocks[1].has(4))
+	view.queue_free()
+
+## 私人交换/隐藏槽的飞牌不得显示点数标签（含牌面数据也必须按可见面门控）——防泄漏。
+func _test_swap_label_leak() -> void:
+	var view = load("res://scenes/ui/table3d.tscn").instantiate()
+	add_child(view)
+	await get_tree().process_frame
+	view.render(_base_state())
+	await get_tree().process_frame
+	# 隐藏槽交换：事件带牌面，但两张源槽都不可见 → 飞牌不得显示点数标签
+	view.animate_exchange({"kind": "swap", "a": 0, "a_slot": 3, "b": 1, "b_slot": 3,
+		"a_data": {"rank": "K", "suit": "♠"}, "b_data": {"rank": "A", "suit": "♥"}})
+	_check("隐藏槽交换生成 2 飞牌", view._flyers.size() == 2)
+	var hidden_ok := true
+	for f in view._flyers:
+		if f.card_block().label_text() != "":
+			hidden_ok = false
+	_check("隐藏槽交换飞牌不显示点数标签（防泄漏）", hidden_ok)
+	await _wait_flyers(view)
+	# 明牌槽交换：可见面为正面 → 应显示点数标签
+	view.animate_exchange({"kind": "swap", "a": 0, "a_slot": 1, "b": 1, "b_slot": 1,
+		"a_data": {"rank": "A", "suit": "♥"}, "b_data": {"rank": "Q", "suit": "♦"}})
+	var any_label := false
+	for f in view._flyers:
+		if f.card_block().label_text() != "":
+			any_label = true
+	_check("明牌槽交换飞牌显示点数标签", any_label)
+	await _wait_flyers(view)
 	view.queue_free()
 
 ## B37 回归：揭示重放不应把翻牌从头再播（翻完又显示正面 + 重新打炫光）。
