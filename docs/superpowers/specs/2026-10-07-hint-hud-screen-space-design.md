@@ -106,7 +106,7 @@ func show_hud(on: bool) -> void            # 3D 显隐；关时 set_process(fals
 
 - 默认 `HUD_TURN_SECONDS = 30`。
 - **重置判定**：`main` 内字段 `_hud_turn_key`（初值空 `""`）。每次 `_refresh_hint_panel()` 计算 `key = "%d:%d" % [match_number, current_player]`；当 `phase` 属于**胶囊显示集合**（§4 下）且 `key != _hud_turn_key` → `reset_turn(30)` 并 `_hud_turn_key = key`。
-- "第一次来"由此自然覆盖：对局首帧 `_hud_turn_key` 为空，首次进入可行动阶段（`INITIAL_PEEK` 或首回合 `TURN_DRAW`）即触发一次重置与进场动画。
+- "第一次来"由此自然覆盖：对局首帧 `_hud_turn_key` 为空，首次进入可行动阶段（首回合 `TURN_DRAW`）即触发一次重置与进场动画。
 - 同一回合内 hint 子步骤变化（选对方牌→选自己牌等）`key` 不变 → **不重置**，只播换字动画。
 - `_hud_turn_key` **跨 3D 显隐保留**：F10 切出再切回 3D 不重播；仅真正进入新回合（`current_player` 变化）或新一局（`match_number` 变化）才重置。
 - `_process` 每帧 `tick`；显示 `seconds_left()`：`30 → … → 0 → -1 → …`，可为负，**不触发任何规则**。
@@ -115,14 +115,15 @@ func show_hud(on: bool) -> void            # 3D 显隐；关时 set_process(fals
   - `1 ≤ remaining ≤ 10` → 琥珀（如 `Color(1.0,0.78,0.30)`）；
   - `remaining ≤ 0` → 红（如 `Color(1.0,0.36,0.34)`）。
 - **显示范围**（`set_phase_visible`）：
-  - 胶囊显示：`INITIAL_PEEK / TURN_DRAW / TURN_DECISION / Q_DECISION / SLAP_EXCHANGE / SLAP_DUEL`；
-  - 胶囊隐藏：`LOBBY / GAME_OVER / SHOP`（hint 文本在 `GAME_OVER` 仍显示，同现状）。
+  - 胶囊显示：`TURN_DRAW / TURN_DECISION / Q_DECISION / SLAP_EXCHANGE / SLAP_DUEL`；
+  - 胶囊隐藏：`LOBBY / INITIAL_PEEK / GAME_OVER / SHOP`（`INITIAL_PEEK` 即"进房间直到全员 ready"阶段不显示、不计时；hint 文本在 `INITIAL_PEEK`/`GAME_OVER` 仍显示）。
 - 仅 3D：`show_hud(false)` 时 `set_process(false)`，不再计时。
 
 ## 5. 动画行为
 
 统一用 `Tween` 驱动 `position.y` 与 `modulate:a`；**不用 `Control.scale`**（B1 教训）。每次播放前 `kill()` 旧 tween。
 
+- **新回合**：`reset_turn(seconds, text)` 直接把最新文本**提交到单片 label**（不播换字），再播进场——避免"换字 Tween 被进场 `kill` 后旧片残留在顶层、且意图文本已更新导致早退永久遗留"（bugfix）。
 - **进场（`reset_turn`，每回合重播）**：
   1. 胶囊：起点 `base.y - RISE(70)`、`alpha 0` → `base.y`、`alpha 1`，`TRANS_BACK / EASE_OUT`，时长 ≈ 0.30s（回弹）。
   2. hint 片：延迟 ≈ 0.18s，同样 `base.y - RISE → base.y`、`alpha 0 → 1`，时长 ≈ 0.32s。

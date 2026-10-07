@@ -154,12 +154,14 @@ func _ensure_hint_hud() -> void:
 func _update_hint_hud(phase: int, viewer: int, current: int) -> void:
 	if _hint_hud == null or not is_instance_valid(_hint_hud):
 		return
-	_hint_hud.set_hint(_hint_for(phase, viewer == current))
+	var text := _hint_for(phase, viewer == current)
 	_hint_hud.set_phase_visible(phase)
 	var key := "%d:%d" % [int(latest_state.get("match_number", 1)), current]
 	if phase in _HUD_ACTIVE_PHASES and key != _hud_turn_key:
 		_hud_turn_key = key
-		_hint_hud.reset_turn(HintHud.PHASE_TURN_SECONDS)
+		_hint_hud.reset_turn(HintHud.PHASE_TURN_SECONDS, text)
+	else:
+		_hint_hud.set_hint(text)
 
 ## 3D 左下角按键提示（放大 Command / 手册 Tab）：说明纯白 + 圆角白底按键。
 func _ensure_key_hints() -> void:
@@ -589,7 +591,8 @@ const PHASE_SLAP_DUEL := 8
 const PHASE_SHOP := 10
 
 ## HintHud 胶囊显示 + 倒计时重置的阶段（与 HintHud.ACTIVE_PHASES 一致）。
-const _HUD_ACTIVE_PHASES := [PHASE_INITIAL_PEEK, PHASE_TURN_DRAW, PHASE_TURN_DECISION, PHASE_Q_DECISION, PHASE_SLAP_EXCHANGE, PHASE_SLAP_DUEL]
+## 不含 INITIAL_PEEK：进入房间直到全员 ready 后才开始计时。
+const _HUD_ACTIVE_PHASES := [PHASE_TURN_DRAW, PHASE_TURN_DECISION, PHASE_Q_DECISION, PHASE_SLAP_EXCHANGE, PHASE_SLAP_DUEL]
 
 const CORNER_MARGIN := 75.0     # 3D 四个角 HUD 到屏幕边缘的统一边距（目标=屏幕像素）
 const BOARD_DIST := 3.0        # 看板沿"相机→桌心"连线距相机的距离（可调）

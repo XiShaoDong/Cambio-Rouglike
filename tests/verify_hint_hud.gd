@@ -21,6 +21,7 @@ func _run() -> void:
 	_test_turn_timer()
 	_test_hint_text()
 	await _test_hint_hud()
+	await _test_hint_hud_fixes()
 	await _test_main_integration()
 
 func _test_turn_timer() -> void:
@@ -92,6 +93,33 @@ func _test_hint_hud() -> void:
 	_check("show_hud(false) 停止计时", not hud.is_processing())
 	hud.queue_free()
 
+func _test_hint_hud_fixes() -> void:
+	var hud := HintHud.new()
+	add_child(hud)
+	await get_tree().process_frame
+	hud.show_hud(true)
+	# 问题 1：INITIAL_PEEK（大家 ready）阶段不显示胶囊。
+	hud.set_phase_visible(1)
+	_check("ready 阶段隐藏胶囊", not hud.pill().visible)
+	hud.set_phase_visible(2)
+	_check("TURN_DRAW 显示胶囊", hud.pill().visible)
+	# 问题 2：新回合直接提交文本到单片，不做换字遗留。
+	hud.set_hint("A")
+	hud.set_hint("B")  # 启动换字动画：B 在 next
+	_check("换字中 cur 仍 A", hud.cur_label().text == "A")
+	hud.reset_turn(30.0, "B")  # 新回合：提交 B 到单片
+	_check("新回合 cur=B", hud.cur_label().text == "B")
+	_check("新回合 next 隐藏", not hud.next_label().visible)
+	hud.set_hint("B")  # 同文本；不应残留旧文本
+	_check("同文本不残留", hud.cur_label().text == "B")
+	# 连续快速换字最终收敛到最新文本。
+	hud.set_hint("C")
+	hud.set_hint("D")
+	await get_tree().create_timer(0.7).timeout
+	_check("连续换字收敛到最新 D", hud.cur_label().text == "D")
+	_check("收敛后仅一片可见", not hud.next_label().visible)
+	hud.queue_free()
+
 func _main_state() -> Dictionary:
 	return {
 		"phase": 2, "phase_name": "抽牌", "viewer_id": 0, "current_player": 0, "current_name": "A",
@@ -119,6 +147,13 @@ func _test_main_integration() -> void:
 	_check("hint3d 仍有 Ready", main_node._hint_panel.get_node_or_null("VBox/ReadyButton") != null)
 	_check("HintHud 文本=_hint_for", main_node._hint_hud.cur_label().text == main_node._hint_for(2, true))
 	_check("回合 key 记录 1:0", main_node._hud_turn_key == "1:0")
+	# 问题 2（集成）：viewer=0 等待 viewer=1，hint 应为"等待他人"且无换字遗留。
+	main_node.latest_state = _main_state()
+	main_node.latest_state["current_player"] = 1
+	main_node._refresh_hint_panel()
+	await get_tree().process_frame
+	_check("等待他人时 hint 正确", "Waiting" in main_node._hint_hud.cur_label().text)
+	_check("等待他人时 next 隐藏", not main_node._hint_hud.next_label().visible)
 	main_node._set_table3d(false)
 	await get_tree().process_frame
 	_check("退出 3D 后 HintHud 隐藏", not main_node._hint_hud.visible)

@@ -20,8 +20,9 @@ const PHASE_TURN_SECONDS := 30.0
 const COLOR_NORMAL := Color(0.95, 0.97, 1.0)
 const COLOR_WARN := Color(1.0, 0.78, 0.30)
 const COLOR_OVER := Color(1.0, 0.36, 0.34)
-## 胶囊显示阶段（GameState.Phase 数值）：INITIAL_PEEK / TURN_DRAW / TURN_DECISION / Q_DECISION / SLAP_EXCHANGE / SLAP_DUEL。
-const ACTIVE_PHASES := [1, 2, 3, 4, 6, 8]
+## 胶囊显示 / 计时的阶段（GameState.Phase 数值）：TURN_DRAW / TURN_DECISION / Q_DECISION / SLAP_EXCHANGE / SLAP_DUEL。
+## 不含 INITIAL_PEEK：进入房间直到全员 ready 后才开始计时。
+const ACTIVE_PHASES := [2, 3, 4, 6, 8]
 
 var _timer := TurnTimer.new()
 var _pill: PanelContainer
@@ -153,21 +154,52 @@ func set_phase_visible(phase: int) -> void:
 	if _pill != null:
 		_pill.visible = phase in ACTIVE_PHASES
 
+## 把文本直接落到单片 label（吸附到干净状态，不做换字动画）。
+func _commit(text: String) -> void:
+	_kill_tween()
+	_cur.text = text
+	_hint_text = text
+	_cur.visible = true
+	_cur.modulate = Color(1, 1, 1, 1)
+	_next.visible = false
+	_next.text = ""
+	_next.modulate = Color(1, 1, 1, 1)
+	_layout()
+
+## 吸附当前动画到"单片可见"的干净状态（保留当前片文本），供换字重启动画前调用。
+func _snap_current() -> void:
+	_kill_tween()
+	_cur.visible = true
+	_cur.modulate = Color(1, 1, 1, 1)
+	_next.visible = false
+	_next.text = ""
+	_next.modulate = Color(1, 1, 1, 1)
+	_layout()
+
 func set_hint(text: String) -> void:
-	if text == _hint_text:
+	if text == _hint_text and _cur.text == text:
 		return
 	_hint_text = text
-	if not is_visible_in_tree() or _cur.text.is_empty():
-		_cur.text = text
-		_layout()
+	if not is_visible_in_tree():
+		_commit(text)
+		return
+	if _animating:
+		_snap_current()
+	if _cur.text.is_empty():
+		_commit(text)
 		return
 	_play_swap(text)
 
-func reset_turn(seconds := PHASE_TURN_SECONDS) -> void:
+## 新回合：重置计时；直接提交最新文本到单片（不做换字），再播进场掉落。
+## 避免"换字 Tween 被进场 kill 后旧片残留在顶层、且 _hint_text 已更新导致早退永久遗留"。
+func reset_turn(seconds := PHASE_TURN_SECONDS, text := "") -> void:
+	if text != "":
+		_hint_text = text
 	_timer.reset(seconds)
 	_update_pill_text()
 	if not is_visible_in_tree():
 		return
+	_commit(_hint_text)
 	_play_entry()
 
 ## 每回合进场：胶囊先掉落，随后 hint 掉落（TRANS_BACK 回弹）。
