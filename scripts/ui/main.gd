@@ -230,22 +230,34 @@ func _ensure_board() -> void:
 		_hint_panel = _make_hint_panel()
 		hint3d.mount_panel(_hint_panel)
 
-## 把两块看板放到"相机 → 桌心"的连线上（距相机 BOARD_DIST），提示板再抬高 HINT_RISE。
+## 看板定位：模态板锚在本机座位→桌心的 BOARD_DEPTH 深度处、悬浮于桌面上方（贴近玩家）；
+## 提示板沿用"相机→桌心连线"（其"贴准星"逻辑依赖该基准）。
 func _place_boards() -> void:
 	if table3d == null or not is_instance_valid(table3d):
 		return
 	var cam: Camera3D = table3d.camera.camera_node()
-	if cam == null:
-		return
-	var dir := Vector3(0.0, Table3dLayout.TABLE_HEIGHT, 0.0) - cam.global_position
-	if dir.length_squared() < 0.0001:
-		return
-	dir = dir.normalized()
-	var base := cam.global_position + dir * BOARD_DIST
-	var lifted := Vector3(base.x, base.y * (1.0 + BOARD_LIFT), base.z)
+	# 模态大板：锚到本机座位与桌心之间（贴玩家，不靠后）
 	if board3d != null and is_instance_valid(board3d):
-		board3d.global_position = lifted
+		var viewer := int(latest_state.get("viewer_id", 0))
+		var seat_pos: Vector3 = table3d.seat_world(viewer)
+		if seat_pos.length_squared() > 0.0001:
+			var anchor := Table3dLayout.board_depth_pos(seat_pos, BOARD_DEPTH, BOARD_TABLE_HALF)
+			var bh: float = board3d.world_size().y
+			board3d.global_position = Vector3(anchor.x, Table3dLayout.TABLE_HEIGHT + BOARD_FLOAT_H + bh * 0.5, anchor.z)
+		elif cam != null:
+			var dir0 := Vector3(0.0, Table3dLayout.TABLE_HEIGHT, 0.0) - cam.global_position
+			if dir0.length_squared() > 0.0001:
+				board3d.global_position = cam.global_position + dir0.normalized() * BOARD_DIST
+	# 提示板：沿用旧的相机→桌心连线（贴准星 / 抬高）
 	if hint3d != null and is_instance_valid(hint3d):
+		if cam == null:
+			return
+		var dir := Vector3(0.0, Table3dLayout.TABLE_HEIGHT, 0.0) - cam.global_position
+		if dir.length_squared() < 0.0001:
+			return
+		dir = dir.normalized()
+		var base := cam.global_position + dir * BOARD_DIST
+		var lifted := Vector3(base.x, base.y * (1.0 + BOARD_LIFT), base.z)
 		# 当"下一步是点看板按钮"（Ready / Q 决策 / J 已选齐待确认）时贴到准星（base 在相机→桌心射线上，
 		# 默认准星即命中）——否则默认准星落在其上方空白，玩家必须抬头才够得到（"3D 点不到 Ready"）。
 		# 其余情况（纯提示 / 需要点卡选牌）仍抬高，避免挡住牌桌与卡牌。
@@ -601,9 +613,13 @@ const PHASE_SHOP := 10
 const _HUD_ACTIVE_PHASES := [PHASE_TURN_DRAW, PHASE_TURN_DECISION, PHASE_Q_DECISION, PHASE_SLAP_EXCHANGE, PHASE_SLAP_DUEL]
 
 const CORNER_MARGIN := 75.0     # 3D 四个角 HUD 到屏幕边缘的统一边距（目标=屏幕像素）
-const BOARD_DIST := 3.0        # 看板沿"相机→桌心"连线距相机的距离（可调）
+const BOARD_DIST := 3.0        # 回退用：看板沿"相机→桌心"连线距相机的距离（可调）
 const HINT_RISE := 0.5         # 提示板相对大板的世界 Y 抬升（gap，已缩小 1/2）
 const BOARD_LIFT := 0.8        # 面板高度抬升比例（y *= 1 + BOARD_LIFT；比上次降低 1/5）
+## 模态看板锚点（贴玩家、不靠后）：本机座位→桌心的 0..1 深度（用户 0-10 标度的 4/10）。
+const BOARD_DEPTH := 0.4
+const BOARD_TABLE_HALF := 3.8  # 牌桌半宽（scenes/ui/table3d.tscn 桌面 7.6）
+const BOARD_FLOAT_H := 0.6     # 看板底部距桌面的悬浮高度
 
 const PEEK_GLOW_COLOR := Color("3ef0f7ff")  # 查看牌蓝色光晕
 const PEEK_GLOW_DURATION := 1.5

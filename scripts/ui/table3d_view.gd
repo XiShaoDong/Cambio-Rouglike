@@ -760,6 +760,13 @@ func animate_exchange(data: Dictionary) -> void:
 		"slap_gift":
 			_anim_slap_gift(data)
 
+## 座位世界坐标（render 登记；未渲染返回 ZERO）。用于把浮空面板锚到本机座位。
+func seat_world(seat_id: int) -> Vector3:
+	var node: Node3D = _seat_node_by_id.get(seat_id)
+	if node == null or not is_instance_valid(node):
+		return Vector3.ZERO
+	return node.global_position
+
 ## 槽位世界变换（未渲染时按布局计算）。
 ## 基准必须是 **HandAnchor**（卡牌实际挂载点，已抬到桌面高度），不能用座位根节点
 ## （座位根在 y=0 地面）——否则未渲染槽（追加的第 5+/空槽）的目标会落到地面，

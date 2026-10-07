@@ -228,14 +228,15 @@ func _test_main_routing() -> void:
 	_check("无模态时点击落到牌桌", main._click_route(false) == "table")
 	_check("命中看板时点击给看板", main._click_route(true) == "board")
 
-	# 看板：XZ 在"相机→桌心"连线上、Y 抬高 1/3；面板竖直；提示板在大板上方
-	var cam: Camera3D = main.table3d.camera.camera_node()
+	# 看板定位：模态板锚在本机座位→桌心的深度锚点、悬浮于桌面上方；面板竖直；提示板在大板上方
 	var cm: Dictionary = main.get_script().get_script_constant_map()
-	var bdist: float = cm.get("BOARD_DIST", 0.0)
-	var base: Vector3 = cam.global_position + (Vector3(0.0, Table3dLayout.TABLE_HEIGHT, 0.0) - cam.global_position).normalized() * bdist
+	var viewer: int = int(main.latest_state.get("viewer_id", 0))
+	var seat_pos: Vector3 = main.table3d.seat_world(viewer)
+	var anchor: Vector3 = Table3dLayout.board_depth_pos(seat_pos, float(cm.get("BOARD_DEPTH", 0.0)), float(cm.get("BOARD_TABLE_HALF", 0.0)))
 	var bp: Vector3 = main.board3d.global_position
-	_check("模态板 XZ 在相机→桌心连线上", absf(bp.x - base.x) < 0.05 and absf(bp.z - base.z) < 0.05)
-	_check("模态板高度已抬升", bp.y > base.y + 0.1)
+	var bh: float = main.board3d.world_size().y
+	_check("模态板 XZ 在手牌/座位深度锚点", anchor.length_squared() > 0.0001 and absf(bp.x - anchor.x) < 0.05 and absf(bp.z - anchor.z) < 0.05)
+	_check("模态板悬浮于桌面上方", is_equal_approx(bp.y, Table3dLayout.TABLE_HEIGHT + float(cm.get("BOARD_FLOAT_H", 0.0)) + bh * 0.5))
 	_check("面板完全竖直（+Y=世界 up）",
 		main.board3d.global_transform.basis.y.normalized().dot(Vector3.UP) > 0.99)
 	_check("提示板在大板上方", main.hint3d.global_position.y > bp.y + 0.1)

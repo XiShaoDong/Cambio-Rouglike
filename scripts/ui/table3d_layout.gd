@@ -61,6 +61,15 @@ static func slot_grid_pos(slot_index: int) -> Vector2:
 	var idx := slot_index - 4
 	return Vector2(float(2 + idx / 2), float(idx % 2))
 
+## 看板锚点：以本机座位位置为基准，沿"座位→桌心"水平方向、按 0..1 深度取点
+## （0 = 本机近端桌边，1 = 对端桌边；用户 0-10 标度即 ×10）。用于把浮空面板锚在玩家与桌心之间。
+static func board_depth_pos(seat_pos: Vector3, depth_01: float, table_half: float) -> Vector3:
+	var fwd := Vector3(-seat_pos.x, 0.0, -seat_pos.z)
+	if fwd.length_squared() < 0.000001:
+		return Vector3.ZERO
+	fwd = fwd.normalized()
+	return fwd * (depth_01 * table_half * 2.0 - table_half)
+
 ## 已知牌分类色（仅展示区分）。
 static func known_color_for_rank(rank: String) -> Color:
 	if COLOR_BY_RANK.has(rank):

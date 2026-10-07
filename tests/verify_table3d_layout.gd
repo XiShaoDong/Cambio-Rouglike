@@ -50,3 +50,10 @@ func _run() -> void:
 	_check("slot_color 未知空", Table3dLayout.slot_color({}) == Table3dLayout.UNKNOWN_COLOR)
 	_check("slot_color 只有 card_id 视为未知", Table3dLayout.slot_color({"card_id": "x"}) == Table3dLayout.UNKNOWN_COLOR)
 	_check("方块 5:7 比例", is_equal_approx(Table3dLayout.BLOCK_SIZE.x / Table3dLayout.BLOCK_SIZE.z, 0.7))
+	# 看板深度锚点：本机座位(0,0,3) 前向 = 朝桌心
+	var seat := Vector3(0.0, 0.0, 3.0)
+	_check("board_depth_pos 0=近端桌边", Table3dLayout.board_depth_pos(seat, 0.0, 3.8).is_equal_approx(Vector3(0.0, 0.0, 3.8)))
+	_check("board_depth_pos 0.5=桌心", Table3dLayout.board_depth_pos(seat, 0.5, 3.8).is_equal_approx(Vector3.ZERO))
+	_check("board_depth_pos 1=对端桌边", Table3dLayout.board_depth_pos(seat, 1.0, 3.8).is_equal_approx(Vector3(0.0, 0.0, -3.8)))
+	_check("board_depth_pos 0.4 在玩家侧", Table3dLayout.board_depth_pos(seat, 0.4, 3.8).is_equal_approx(Vector3(0.0, 0.0, 0.76)))
+	_check("board_depth_pos 退化安全", Table3dLayout.board_depth_pos(Vector3.ZERO, 0.4, 3.8) == Vector3.ZERO)
