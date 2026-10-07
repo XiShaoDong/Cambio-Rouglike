@@ -215,6 +215,7 @@ UI 层已拆分（main.gd 是组合根）：
 - **B43（3D peek 蓝光看不到）**：其他玩家看不到当前玩家 peek 的蓝色光晕——3D `Table3dView.flash_slot` 只临时染色、不登记，紧随的 `_broadcast_state` 重建卡牌即冲掉。修复：增 `_flashes`（`"seat_slot" -> {color, until_ms}`）登记，`render` 重建后按剩余时间重放（同 `_reveals` 模式），过期清除。详见 `BUG档案.md`。
 - **B42（Q 看牌不保持正面 + 释放动画/交换飞牌衔接）**：Q 的两张揭示 **hold** 到玩家确认交换/不交换：2D `RevealController._held_peek`/`release_held_peeks`，3D `Table3dView.reveal_slot_held`/`release_held_reveals`；`main` 用本地标志 `_hold_next_reveal`（`game_interaction` 在 `queen_target`/`q_view_own` 置位）。**不交换**：`release_held_peeks(true)` 播翻回动画（2D overlay / 3D `releasing` 跨 render 续播 `CardBlock.reveal_from_to`）后才清理，不再瞬切。**交换**：`q_exchange` 不预释放，保留正面由交换飞牌 `consume_held`/`take_held_reveal` 取牌面 → 从正面起飞、背面落地。纯展示层。详见 `BUG档案.md`。
 - **B44（3D 罚牌飞牌飞到一半消失后瞬间出现在手牌）**：`Table3dView.slot_xform` 对**未渲染槽**（罚牌追加的第 5/6 张、或回填空槽）用**座位根节点**（`y=0` 地面）而非 `HandAnchor`（`y≈1.03`）计算，罚牌飞牌朝桌面下方扎、穿桌消失，随后槽位才在正确高度出现。修复：登记 `_hand_node_by_id`，`slot_xform` 未渲染分支改用 `HandAnchor.global_transform * _slot_local(slot)`。详见 `BUG档案.md`。
+- **B45（3D 交换飞牌泄漏牌面）**：`swap` 事件把两张牌面广播给所有客户端，3D `CardFly` 又无条件 `body.setup({card})`——点数标签是 billboard，翻到背面仍显示 → 私人交换泄漏。修复：`CardFly` 按"当前可见面"（起/终面 + 翻转中点）刷新 `body.setup({card}/{})`，起终面都非正面时全程不显牌面/标签（与 2D 一致，零协议改动）。另：抽牌堆 `DeckCount` 改为 `剩余/总数`（`draw_count/KongRules.DECK_SIZE`）。详见 `BUG档案.md`。
 
 ## 8. 验证命令（headless 单元测试，不启动 GUI）
 

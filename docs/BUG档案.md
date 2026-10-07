@@ -542,3 +542,17 @@ at: Board3d.detach_all (board3d.gd) ← _set_table3d(false)
 **修复**：`_bind`/`render` 登记每席 `HandAnchor`（`_hand_node_by_id`）；`slot_xform` 未渲染分支改用 `HandAnchor.global_transform * _slot_local(slot)`。
 
 **诊断方法**：`verify_table3d_exchange`「未渲染槽 xform 高度=手牌高度（防穿桌）」（`slot_xform(seat, 未渲染槽).origin.y ≈ 已渲染块 global_position.y`）。
+
+## B45：3D 交换飞牌泄漏牌面（点数标签在背面也显示）
+
+**现象**：3D 下私人交换（J/Q 盲换）时，换入/换出的牌面对其他玩家可见——卡牌上方浮动的点数/花色标签暴露了牌面。
+
+**根因**：`card_exchange_animated` 的 `swap` 事件把两张牌面 `a_data/b_data`（`public_card`）广播给**所有**客户端；3D `CardFly` 无条件 `body.setup({"card": card_data})`。`CardBlock` 的点数标签是 `Label3D`（billboard），**翻转只作用于几何（roll），标签始终浮在卡上**——故即使背面朝上，点数标签仍显示 → 泄漏。2D 因 `_fly` 按 `start_face_up/end_face_up` 门控 `data`（背面传 `{}`）而不泄漏。
+
+**修复**：`CardFly` 按"当前可见面"（`_roll_delta==0` 取起面；否则按 `flip_t` 在翻转中点切换起/终面）刷新 `body.setup({card}/{})`：起/终面都非正面（私人交换、罚牌）时全程不显牌面与标签；翻转类在建面时才显。与 2D 语义一致，零协议改动。
+
+**诊断方法**：`verify_table3d_exchange`「隐藏槽交换飞牌不显示点数标签（防泄漏）/ 明牌槽交换飞牌显示点数标签」。
+
+## 附：抽牌堆显示 剩余/总数
+
+3D `Center/DeckCount` 由仅显示 `draw_count` 改为 `剩余/总数`（`"%d/%d" % [draw_count, KongRules.DECK_SIZE]`，`DECK_SIZE=54`）。测试 `verify_table3d`「抽牌堆显示 剩余/总数（30/54）」。
