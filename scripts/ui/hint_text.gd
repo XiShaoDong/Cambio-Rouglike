@@ -8,12 +8,9 @@ static func hint(state: Dictionary, phase: int, is_current: bool, action_mode: S
 		GameState.Phase.INITIAL_PEEK:
 			return "Remember your two bottom cards, then click Ready"
 		GameState.Phase.TURN_DRAW:
-			var slap_note := ""
-			if bool(state.get("slap_open", false)):
-				slap_note = " · SLAP open: click matching card"
 			if is_current:
-				return "Draw from the deck or the discard pile (discard top only replaces)" + slap_note
-			return "Waiting for %s to draw a card" % name + slap_note
+				return "Draw from the deck or the discard pile (discard top only replaces)"
+			return "Waiting for %s to draw a card" % name
 		GameState.Phase.TURN_DECISION:
 			return decision(state, is_current, name, action_mode)
 		GameState.Phase.Q_DECISION:

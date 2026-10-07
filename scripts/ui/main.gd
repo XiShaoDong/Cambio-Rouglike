@@ -156,6 +156,12 @@ func _update_hint_hud(phase: int, viewer: int, current: int) -> void:
 		return
 	var text := _hint_for(phase, viewer == current)
 	_hint_hud.set_phase_visible(phase)
+	var slap_state := HintHud.SLAP_HIDDEN
+	if phase == PHASE_SLAP_EXCHANGE or phase == PHASE_SLAP_DUEL:
+		slap_state = HintHud.SLAP_CLOSE
+	elif bool(latest_state.get("slap_open", false)):
+		slap_state = HintHud.SLAP_OPEN
+	_hint_hud.set_slap_state(slap_state)
 	var key := "%d:%d" % [int(latest_state.get("match_number", 1)), current]
 	if phase in _HUD_ACTIVE_PHASES and key != _hud_turn_key:
 		_hud_turn_key = key

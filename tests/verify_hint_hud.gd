@@ -176,6 +176,17 @@ func _test_main_integration() -> void:
 	await get_tree().process_frame
 	_check("main 已建 HintHud", main_node._hint_hud != null and is_instance_valid(main_node._hint_hud))
 	_check("3D 下 HintHud 可见", main_node._hint_hud.visible)
+	_check("slap_open=false → HUD slap HIDDEN", main_node._hint_hud.slap_state() == HintHud.SLAP_HIDDEN)
+	main_node.latest_state = _main_state()
+	main_node.latest_state["slap_open"] = true
+	main_node._refresh_hint_panel()
+	await get_tree().process_frame
+	_check("slap_open=true → HUD slap OPEN", main_node._hint_hud.slap_state() == HintHud.SLAP_OPEN)
+	main_node.latest_state["phase"] = 6
+	main_node.latest_state["slap_open"] = false
+	main_node._refresh_hint_panel()
+	await get_tree().process_frame
+	_check("SLAP_EXCHANGE → HUD slap CLOSE", main_node._hint_hud.slap_state() == HintHud.SLAP_CLOSE)
 	_check("hint3d 不再有 HintLabel", main_node._hint_panel.get_node_or_null("VBox/HintLabel") == null)
 	_check("hint3d 仍有 Ready", main_node._hint_panel.get_node_or_null("VBox/ReadyButton") != null)
 	_check("HintHud 文本=_hint_for", main_node._hint_hud.cur_label().text == main_node._hint_for(2, true))
