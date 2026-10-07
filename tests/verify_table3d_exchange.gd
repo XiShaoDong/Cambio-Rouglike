@@ -19,6 +19,7 @@ func _check(name: String, ok: bool) -> void:
 
 func _run() -> void:
 	await _test_exchange()
+	await _test_penalty_render_midflight()
 	await _test_reveal_replay_no_restart()
 	await _test_held_reveal()
 	_test_reveal_glow_priority()
@@ -87,6 +88,7 @@ func _test_exchange() -> void:
 	_check("penalty 生成 1 张飞牌", view._flyers.size() == 1)
 	_check("penalty 背面无标签", view._flyers[0].card_block().label_text() == "")
 	_check("未渲染槽 xform 非零", not view.slot_xform(1, 4).origin.is_zero_approx())
+	_check("未渲染槽 xform 高度=手牌高度（防穿桌）", is_equal_approx(view.slot_xform(1, 4).origin.y, view._find_block(1, 0).global_position.y))
 	await _wait_flyers(view)
 	_check("penalty 落地清标记", not view._has_anim_slot(1, 4))
 
@@ -120,6 +122,27 @@ func _test_exchange() -> void:
 	bare.animate_exchange({"kind": "discard", "actor": 0, "big_data": {}})
 	_check("无状态时安全跳过", bare._flyers.is_empty())
 	bare.queue_free()
+	view.queue_free()
+
+## 罚牌飞行中途插入状态广播（含新槽）——飞牌应继续、槽应保持占位、落地后才显示。
+func _test_penalty_render_midflight() -> void:
+	var view = load("res://scenes/ui/table3d.tscn").instantiate()
+	add_child(view)
+	await get_tree().process_frame
+	view.render(_base_state())
+	await get_tree().process_frame
+	view.animate_exchange({"kind": "slap_penalty", "peer": 1, "slot": 4})
+	_check("罚牌飞牌生成", view._flyers.size() == 1)
+	var s := _base_state()
+	s["players"][1]["slots"].append({"card_id": "pen"})
+	s["players"][1]["count"] = 5
+	view.render(s)
+	await get_tree().process_frame
+	_check("罚牌中途 render 后飞牌仍在飞", view._flyers.size() == 1 and view._flyers[0].is_flying())
+	_check("罚牌中途 render 后槽仍标记", view._has_anim_slot(1, 4))
+	_check("罚牌中途 render 槽不渲染", not view._card_blocks[1].has(4))
+	await _wait_flyers(view)
+	_check("罚牌落地后槽渲染", view._card_blocks[1].has(4))
 	view.queue_free()
 
 ## B37 回归：揭示重放不应把翻牌从头再播（翻完又显示正面 + 重新打炫光）。

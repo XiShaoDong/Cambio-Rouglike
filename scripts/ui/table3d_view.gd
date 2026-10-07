@@ -58,6 +58,7 @@ var _deck_block = null  # CardBlock（场景 Center/Deck）
 var _discard_node: Node3D = null
 var _pending_node: Node3D = null
 var _seat_node_by_id := {}     # seat -> Node3D（render 登记）
+var _hand_node_by_id := {}     # seat -> HandAnchor Node3D（render 登记；未渲染槽的槽位变换基准）
 var _slot_cards := {}          # {seat: {slot: card}}（render 登记，供 slap_gift 自身视角取牌面）
 var _anim_slots := {}          # "seat_slot" -> true（在途动画槽位，render 跳过）
 var _flyers: Array = []        # 在途 CardFly
@@ -172,6 +173,7 @@ func render(state: Dictionary, actionable := Callable()) -> void:
 	_last_state = state
 	_last_actionable = actionable
 	_seat_node_by_id.clear()
+	_hand_node_by_id.clear()
 	_slot_cards.clear()
 	# 固定座位角度（按 seat_id，与观看者无关）→ 所有客户端共享同一世界坐标，
 	# 这样同步来的世界注视方向才能被一致解释（否则各客户端座位相对位置不同 → 镜像）。
@@ -190,6 +192,7 @@ func render(state: Dictionary, actionable := Callable()) -> void:
 		var seat := int(p.id)
 		var a := Table3dLayout.seat_angle(seat)
 		_seat_node_by_id[seat] = node
+		_hand_node_by_id[seat] = node.get_node_or_null("HandAnchor")
 		_slot_cards[seat] = {}
 		node.visible = true
 		node.position = _seat_world(a)
@@ -757,14 +760,17 @@ func animate_exchange(data: Dictionary) -> void:
 			_anim_slap_gift(data)
 
 ## 槽位世界变换（未渲染时按布局计算）。
+## 基准必须是 **HandAnchor**（卡牌实际挂载点，已抬到桌面高度），不能用座位根节点
+## （座位根在 y=0 地面）——否则未渲染槽（追加的第 5+/空槽）的目标会落到地面，
+## 飞牌朝桌面下方扎、穿桌消失（罚牌飞牌"飞到一半消失"的根因）。
 func slot_xform(seat_id: int, slot: int) -> Transform3D:
 	var b = _find_block(seat_id, slot)
 	if b != null and is_instance_valid(b):
 		return (b as Node3D).global_transform
-	var node: Node3D = _seat_node_by_id.get(seat_id)
-	if node == null or not is_instance_valid(node):
+	var hand: Node3D = _hand_node_by_id.get(seat_id)
+	if hand == null or not is_instance_valid(hand):
 		return Transform3D.IDENTITY
-	return node.global_transform * _slot_local(slot)
+	return hand.global_transform * _slot_local(slot)
 
 ## 座位本地槽位变换（与 _render_seat 定位一致：列关于座位中轴居中、行 (1-行) +Z）。
 ## 主牌 2 列（grid.x 0/1）以列中点对齐座位 x 中轴（x=0），故两列落在 ±半个列距。
