@@ -619,7 +619,7 @@ const BOARD_LIFT := 0.8        # 面板高度抬升比例（y *= 1 + BOARD_LIFT�
 ## 模态看板锚点（贴玩家、不靠后）：本机座位→桌心的 0..1 深度（用户 0-10 标度的 2/10）。
 const BOARD_DEPTH := 0.2
 const BOARD_TABLE_HALF := 3.8  # 牌桌半宽（scenes/ui/table3d.tscn 桌面 7.6）
-const BOARD_FLOAT_H := 4.2     # 看板底部距桌面的悬浮高度（抬高，避免贴桌面）
+const BOARD_FLOAT_H := 1.9     # 看板底部距桌面的悬浮高度（抬高，避免贴桌面）
 
 const PEEK_GLOW_COLOR := Color("3ef0f7ff")  # 查看牌蓝色光晕
 const PEEK_GLOW_DURATION := 1.5
