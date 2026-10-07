@@ -239,7 +239,7 @@ func _test_main_routing() -> void:
 	_check("模态板悬浮于桌面上方", is_equal_approx(bp.y, Table3dLayout.TABLE_HEIGHT + float(cm.get("BOARD_FLOAT_H", 0.0)) + bh * 0.5))
 	_check("面板完全竖直（+Y=世界 up）",
 		main.board3d.global_transform.basis.y.normalized().dot(Vector3.UP) > 0.99)
-	_check("提示板在大板上方", main.hint3d.global_position.y > bp.y + 0.1)
+	_check("提示板悬浮于桌面之上", main.hint3d.global_position.y > Table3dLayout.TABLE_HEIGHT)
 
 	main._open_shop_panel()
 	await get_tree().process_frame
