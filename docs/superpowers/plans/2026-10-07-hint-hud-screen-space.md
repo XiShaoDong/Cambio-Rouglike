@@ -17,6 +17,7 @@
 - hint 文案英文逐字不变（只集中，不翻译），保证 `verify_hint` / `verify_j_swap` 继续通过。
 - 倒计时为纯展示：不联网、不写快照、不触发任何规则。
 - 提交信息按 `feat:` / `fix:` / `doc:` 分类；每个 Task 末尾单独提交。
+- **仓库跟踪 `.gd.uid` 文件**（Godot 4 自动生成）：新增/修改脚本时，其 `.gd.uid` 必须一并 `git add`。
 - 项目内绝对路径用于文档/交接；代码内用 `res://`。
 
 ---
@@ -134,7 +135,7 @@ Expected: `=== HINT_HUD RESULT: 7/7 passed ===`，退出码 0。
 
 ```bash
 /Applications/Godot.app/Contents/MacOS/Godot --headless --path . --quit-after 5
-git add scripts/ui/turn_timer.gd tests/verify_hint_hud.gd tests/verify_hint_hud.tscn
+git add scripts/ui/turn_timer.gd scripts/ui/turn_timer.gd.uid tests/verify_hint_hud.gd tests/verify_hint_hud.gd.uid tests/verify_hint_hud.tscn
 git commit -m "feat: TurnTimer 回合倒计时纯模型 + headless 测试脚手架"
 ```
 
@@ -294,7 +295,7 @@ Expected: `=== J_SWAP RESULT: 11/11 passed ===`（或该测试既有通过数）
 - [ ] **Step 6: 提交**
 
 ```bash
-git add scripts/ui/hint_text.gd scripts/ui/main.gd tests/verify_hint_hud.gd
+git add scripts/ui/hint_text.gd scripts/ui/hint_text.gd.uid scripts/ui/main.gd scripts/ui/main.gd.uid tests/verify_hint_hud.gd
 git commit -m "feat: HintText 集中 hint 文案表，main._hint_for 改为委托"
 ```
 
@@ -612,7 +613,7 @@ Expected: `=== HINT_HUD RESULT: 26/26 passed ===`（Task 1+2 的 13 + 本 Task 1
 - [ ] **Step 5: 提交**
 
 ```bash
-git add scripts/ui/hint_hud.gd tests/verify_hint_hud.gd
+git add scripts/ui/hint_hud.gd scripts/ui/hint_hud.gd.uid tests/verify_hint_hud.gd
 git commit -m "feat: HintHud 屏幕空间提示面板（倒计时胶囊 + 掉落回弹动画）"
 ```
 
