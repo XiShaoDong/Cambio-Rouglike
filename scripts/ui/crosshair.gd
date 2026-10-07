@@ -5,7 +5,7 @@ extends Control
 var active := false
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_CENTER)
+	set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 func set_active(on: bool) -> void:

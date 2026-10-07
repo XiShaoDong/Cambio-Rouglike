@@ -9,3 +9,6 @@ docs/修改日志.md
 
 # Table3D Tuner 写回备份（本地对照，不纳入版本）
 *.bak
+
+# Blender 自动备份
+*.blend1

@@ -81,6 +81,9 @@ var state_revision := 0
 var action_history: Dictionary = {}
 var last_seen_revision := -1
 var _registered_token := ""
+var remote_looks: Dictionary = {}  # {seat: Vector3} 各玩家世界注视点（gaze target，纯表现层，不入快照）
+var remote_zoom: Dictionary = {}   # {seat: bool} 各玩家是否处于放大（眼睛小眼），纯表现层
+var remote_talk: Dictionary = {}   # {seat: bool} 各玩家是否在说话（嘴开合），纯表现层
 
 var peek: PeekSystem
 var effects: EffectSystem
@@ -139,6 +142,9 @@ func _on_peer_left(peer_id: int) -> void:
 	# 阶段一/二：标记离线 + 条件暂停，不中止对局；保留 token 供断线重连认领
 	players[seat].offline = true
 	players[seat].peer_id = 0
+	remote_looks.erase(seat)
+	remote_zoom.erase(seat)
+	remote_talk.erase(seat)
 	_add_log("%s 断线，对局暂停等待重连（轮到其回合时冻结）。" % left_name)
 	_broadcast_state()
 
@@ -174,6 +180,9 @@ func _reset_match() -> void:
 	state_revision = 0
 	last_seen_revision = -1
 	action_history.clear()
+	remote_looks.clear()
+	remote_zoom.clear()
+	remote_talk.clear()
 
 func _new_match_id() -> String:
 	return "m_%08x_%s" % [randi(), Time.get_unix_time_from_system()]
@@ -254,11 +263,15 @@ func _add_player(peer_id: int, display_name: String) -> void:
 	var safe_name := display_name.strip_edges().left(16)
 	if safe_name.is_empty():
 		safe_name = "玩家 %d" % (seat + 1)
+	var used_colors: Array = []
+	for s in players:
+		used_colors.append(str(players[s].get("color", "")))
 	players[seat] = {
 		"seat": seat,
 		"peer_id": peer_id,
 		"token": _new_token(),
 		"name": safe_name,
+		"color": KongRules.pick_color(used_colors),
 		"cards": [],
 		"has_acted": false,
 		"offline": false,
@@ -1554,3 +1567,33 @@ func receive_match_aborted(code: int, message: String) -> void:
 	# 否则新一局所有快照（revision 从 1 起）都会被误判为旧包丢弃，UI 卡在大厅。
 	last_seen_revision = -1
 	match_aborted.emit(code, message)
+
+## ===== 注视（纯表现层，不入快照）=====
+## 客户端把本机相机的世界注视点（gaze target，相机射线固定距离处）上报服务器；服务器校验
+## 发送者后广播给其他客户端，使每席机器人眼睛跟随其“主人”自己的鼠标/相机（而非本机）。
+## 低频率、允许丢弃无妨；不参与规则/判定。
+
+@rpc("any_peer", "call_remote", "reliable")
+func server_look(target: Vector3, zoom: bool, talking: bool) -> void:
+	var seat := _peer_to_seat(multiplayer.get_remote_sender_id())
+	if seat < 0:
+		return
+	_apply_look(seat, target, zoom, talking)
+
+## 服务器权威应用注视：记录本机 remote_looks/remote_zoom/remote_talk 并转发（房主本人经此路径）。
+func _apply_look(seat: int, target: Vector3, zoom := false, talking := false) -> void:
+	if not target.is_finite():
+		return
+	remote_looks[seat] = target
+	remote_zoom[seat] = zoom
+	remote_talk[seat] = talking
+	for s in players.keys():
+		var peer := int(players[s].peer_id)
+		if peer > 1:
+			receive_look.rpc_id(peer, seat, target, zoom, talking)
+
+@rpc("authority", "call_remote", "reliable")
+func receive_look(seat: int, target: Vector3, zoom: bool, talking: bool) -> void:
+	remote_looks[seat] = target
+	remote_zoom[seat] = zoom
+	remote_talk[seat] = talking

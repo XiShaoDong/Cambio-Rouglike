@@ -232,7 +232,7 @@ func _test_main_routing() -> void:
 	var cam: Camera3D = main.table3d.camera.camera_node()
 	var cm: Dictionary = main.get_script().get_script_constant_map()
 	var bdist: float = cm.get("BOARD_DIST", 0.0)
-	var base: Vector3 = cam.global_position + (Vector3.ZERO - cam.global_position).normalized() * bdist
+	var base: Vector3 = cam.global_position + (Vector3(0.0, Table3dLayout.TABLE_HEIGHT, 0.0) - cam.global_position).normalized() * bdist
 	var bp: Vector3 = main.board3d.global_position
 	_check("模态板 XZ 在相机→桌心连线上", absf(bp.x - base.x) < 0.05 and absf(bp.z - base.z) < 0.05)
 	_check("模态板高度已抬升", bp.y > base.y + 0.1)

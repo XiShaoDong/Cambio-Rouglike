@@ -21,6 +21,7 @@ static func aim_pitch_deg(eye_height: float, horizontal_distance: float) -> floa
 var base_yaw := 0.0
 var yaw := 0.0
 var pitch := 0.0
+var zoomed := false  # 是否按住 Command/Alt 拉近视场（供角色等联动，如放大时眼睛换 Eye2）
 
 var _built := false
 var _framed := false
@@ -52,7 +53,7 @@ func camera_node() -> Camera3D:
 
 ## 把相机摆到角度 seat_angle_deg 对应的座位后方，基准朝向桌心。
 ## 座位在圆上角度 a（0°=近侧 +Z），rig +Z 沿径向外，故 -Z（相机视线）朝桌心。
-func frame_for_seat(seat_angle_deg: float) -> void:
+func frame_for_seat(seat_angle_deg: float, target_height := 0.0) -> void:
 	_build()
 	var a := deg_to_rad(seat_angle_deg)
 	var dir := Vector3(sin(a), 0.0, cos(a))
@@ -65,7 +66,7 @@ func frame_for_seat(seat_angle_deg: float) -> void:
 	_framed_angle = new_base
 	base_yaw = new_base
 	yaw = base_yaw
-	pitch = aim_pitch_deg(EYE_HEIGHT, Table3dLayout.SEAT_RADIUS + CAMERA_BACK)
+	pitch = aim_pitch_deg(EYE_HEIGHT - target_height, Table3dLayout.SEAT_RADIUS + CAMERA_BACK)
 	_apply()
 
 ## 鼠标相对位移（像素）驱动环视：鼠标右移 → 视角右转（yaw 递减；
@@ -85,6 +86,7 @@ func _apply() -> void:
 ## 按住 Command/Alt 拉近视场（FOV 变小 = 放大）；松开恢复。纯观察者视角，不影响拾取/规则。
 func set_zoom(on: bool) -> void:
 	_build()
+	zoomed = on
 	if _camera == null:
 		return
 	var target := ZOOM_FOV if on else _base_fov
@@ -97,6 +99,7 @@ func set_zoom(on: bool) -> void:
 ## 立即复位视场（退出 3D 等，不播动画）。
 func reset_zoom() -> void:
 	_build()
+	zoomed = false
 	if _zoom_tween != null and _zoom_tween.is_valid():
 		_zoom_tween.kill()
 	_zoom_tween = null

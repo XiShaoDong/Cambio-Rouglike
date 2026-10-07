@@ -6,6 +6,7 @@ extends Node
 ## 验证：建房→加入→注册→开局→抽牌→替换→贴牌窗口（下一玩家抽牌关闭）→轮转，共 4 次行动。
 
 var role := ""
+var port := 7007
 var latest_state: Dictionary = {}
 var lobby_count := 0
 var turn_draw_count := 0
@@ -18,8 +19,16 @@ var done := false
 
 func _ready() -> void:
 	var args := OS.get_cmdline_user_args()
+	var expect_port := false
 	for arg in args:
 		if arg == "-role":
+			continue
+		if arg == "-port":
+			expect_port = true
+			continue
+		if expect_port:
+			port = int(arg)
+			expect_port = false
 			continue
 		if arg == "host" or arg == "client":
 			role = arg
@@ -31,9 +40,9 @@ func _ready() -> void:
 	GameState.lobby_updated.connect(_on_lobby)
 	GameState.toast_received.connect(func(m): print("[%s] toast: %s" % [role, m]))
 	if role == "host":
-		Network.host_game({"name": "房主A"})
+		Network.host_game({"name": "房主A"}, port)
 	else:
-		Network.join_game("127.0.0.1", {"name": "玩家B"})
+		Network.join_game("127.0.0.1", {"name": "玩家B"}, port)
 	print("[%s] starting" % role)
 
 func _process(delta: float) -> void:
