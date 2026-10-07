@@ -19,6 +19,7 @@ func _check(name: String, ok: bool) -> void:
 
 func _run() -> void:
 	_test_turn_timer()
+	_test_hint_text()
 
 func _test_turn_timer() -> void:
 	var t := TurnTimer.new()
@@ -38,3 +39,20 @@ func _test_turn_timer() -> void:
 	n.reset(0.0)
 	n.tick(0.3)
 	_check("TurnTimer floor 负数 -1", n.seconds_left() == -1)
+
+func _hint_state(phase: int, viewer: int, current: int, pending: Dictionary = {}) -> Dictionary:
+	return {
+		"phase": phase, "viewer_id": viewer, "current_player": current, "current_name": "Bob",
+		"players": [], "discard": {}, "pending": pending, "event_log": [], "match_number": 1,
+		"slap_rank": "", "slap_open": false, "slap_exchange_actor": 0, "kong_caller": -1,
+		"ready_count": 0, "result": {}, "run": {}, "q_decision": {},
+	}
+
+func _test_hint_text() -> void:
+	_check("HintText INITIAL_PEEK", HintText.hint(_hint_state(1, 0, 0), 1, true, "") == "Remember your two bottom cards, then click Ready")
+	_check("HintText TURN_DRAW 当前", "discard pile" in HintText.hint(_hint_state(2, 0, 0), 2, true, ""))
+	_check("HintText TURN_DRAW 他人含 Bob", "Bob" in HintText.hint(_hint_state(2, 1, 0), 2, false, ""))
+	var replace_state := _hint_state(3, 0, 0, {"rank": "9", "source": "draw"})
+	_check("HintText decision replace 含 replace", "replace" in HintText.hint(replace_state, 3, true, "replace").to_lower())
+	_check("HintText decision 他人含 Bob", "Bob" in HintText.hint(replace_state, 3, false, ""))
+	_check("HintText GAME_OVER 非空", not HintText.hint(_hint_state(7, 0, 0), 7, true, "").is_empty())
