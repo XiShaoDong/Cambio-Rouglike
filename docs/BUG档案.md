@@ -532,3 +532,13 @@ at: Board3d.detach_all (board3d.gd) ← _set_table3d(false)
 **修复**：`Table3dView` 增 `_flashes`（`"seat_slot" -> {color, until_ms}`）登记；`flash_slot` 登记并应用；`render` 重建后对每个未过期条目 `_apply_flash`（按剩余时间 `block.flash`，过期清除），与 `_reveals` 同款跨 render 重放。
 
 **诊断方法**：`verify_table3d_exchange`「flash_slot 立即显示蓝光 / render 后蓝光保持 / 过期后蓝光清除」。
+
+## B44：3D 罚牌飞牌"飞到一半消失、随后瞬间出现在手牌"
+
+**现象**：3D 桌面贴牌失败时，从抽牌堆飞向贴错者手牌的罚牌，飞到接近手牌位置时消失，随后卡牌瞬间出现在正确槽位（其他交换飞牌到**已渲染槽**不触发）。
+
+**根因**：`Table3dView.slot_xform(seat, slot)` 计算**未渲染槽**（罚牌追加的第 5/6 张、或 `add_penalty` 回填的空槽）时，用 `_seat_node_by_id[seat]`（座位根节点，`y=0` 地面）乘 `_slot_local(slot)`；但卡牌实际挂在 `HandAnchor`（`_bind` 里已抬到 `TABLE_HEIGHT + 0.03 ≈ 1.03`）。故未渲染槽的目标高度算成 `y=0`，罚牌飞牌从抽牌堆（`y≈1.03`）朝桌面**下方**扎，穿过桌面后消失；飞牌结束 `_refresh()` 重渲染，槽位才在正确高度（`y≈1.03`）出现。（沙盒 `card_fly_sandbox` 用自己的 `_seat_slot_xform`，基准即手牌高度，故不触发。）
+
+**修复**：`_bind`/`render` 登记每席 `HandAnchor`（`_hand_node_by_id`）；`slot_xform` 未渲染分支改用 `HandAnchor.global_transform * _slot_local(slot)`。
+
+**诊断方法**：`verify_table3d_exchange`「未渲染槽 xform 高度=手牌高度（防穿桌）」（`slot_xform(seat, 未渲染槽).origin.y ≈ 已渲染块 global_position.y`）。
