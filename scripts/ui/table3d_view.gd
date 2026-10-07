@@ -10,13 +10,14 @@ const CardBlockScript := preload("res://scripts/ui/card_block.gd")
 const SEAT_COUNT := 4
 const HUD_OFFSET := 0.55
 const HUD_HEIGHT := 0.5
-const AVATAR_GLOW_COLOR := Color(1.0, 0.85, 0.35, 0.30)  # 当前回合高亮
 const AVATAR_DIM_COLOR := Color(0.0, 0.0, 0.0, 0.55)     # 出局/离线变暗
 const HOVER_COLOR := Color(0.7, 0.95, 1.0, 0.35)         # 准星悬停目标高亮
 const STAT_VIEWPORT_SIZE := Vector2i(320, 120)
 const STAT_PANEL_OFFSET := Vector3(0.0, 0.75, 0.0)
 const STAT_PANEL_PIXEL_SIZE := 0.005
 const PENDING_Y := 0.95  # 大牌竖立悬浮中心离桌高度（牌高 1.0 → 底≈0.45、顶≈1.45）
+const STAT_PANEL_ABOVE := 0.45   # 状态面板相对机器人头顶的上方间隙
+const MARKER_ABOVE_PANEL := 0.5  # 回合标识相对状态面板的上方间隙
 
 # 回合标识：当前行动者名字面板上方的红色倒三角（黑色描边，billboard，纯展示），顶部提示「看牌」
 const TURN_MARKER_COLOR := Color(0.92, 0.15, 0.15)         # 填充：红色
@@ -41,7 +42,6 @@ var _card_blocks := {}  # {seat: {slot: CardBlock}}
 var _viewer := 0
 var _hover_slot := {}
 var _hover_ray_local := Vector2.ZERO
-var _avatar_glow_mat: StandardMaterial3D = null
 var _avatar_dim_mat: StandardMaterial3D = null
 var _hover_collider: Object = null
 var _hover_mat: StandardMaterial3D = null
@@ -117,6 +117,11 @@ func _bind() -> void:
 			push_error("[Table3dView] 场景缺少 Seats/SeatN 节点")
 			return
 		var avatar = seat.get_node_or_null("Avatar")
+		_attach_robot(avatar)
+		# 手牌区抬到桌面高度（机器人脚仍在 y=0，桌子在腰间）。
+		var hand = seat.get_node_or_null("HandAnchor")
+		if hand != null and hand is Node3D:
+			(hand as Node3D).position.y = Table3dLayout.TABLE_HEIGHT + 0.03
 		var sub := SubViewport.new()
 		sub.name = "StatViewport%d" % i
 		sub.size = STAT_VIEWPORT_SIZE
@@ -168,18 +173,11 @@ func render(state: Dictionary, actionable := Callable()) -> void:
 	_last_actionable = actionable
 	_seat_node_by_id.clear()
 	_slot_cards.clear()
-	var angles := Table3dLayout.seat_angles(players.size())
-	var others: Array = []
-	for p in players:
-		if int(p.id) != viewer:
-			others.append(int(p.id))
-	others.sort()
-	var seat_angle := {viewer: float(angles[0])}
-	for i in others.size():
-		seat_angle[int(others[i])] = float(angles[i + 1])
+	# 固定座位角度（按 seat_id，与观看者无关）→ 所有客户端共享同一世界坐标，
+	# 这样同步来的世界注视方向才能被一致解释（否则各客户端座位相对位置不同 → 镜像）。
 	# 相机取景
 	if camera != null:
-		camera.frame_for_seat(float(seat_angle.get(viewer, 0.0)))
+		camera.frame_for_seat(Table3dLayout.seat_angle(viewer), Table3dLayout.TABLE_HEIGHT)
 	# 座位
 	_card_blocks.clear()
 	for i in SEAT_COUNT:
@@ -190,7 +188,7 @@ func render(state: Dictionary, actionable := Callable()) -> void:
 			break
 		var node: Node3D = _seat_nodes[slot_i]
 		var seat := int(p.id)
-		var a := float(seat_angle.get(seat, 0.0))
+		var a := Table3dLayout.seat_angle(seat)
 		_seat_node_by_id[seat] = node
 		_slot_cards[seat] = {}
 		node.visible = true
@@ -245,7 +243,7 @@ func render(state: Dictionary, actionable := Callable()) -> void:
 	if not pending.is_empty():
 		_pending_block.setup({"card": pending} if pending.has("rank") else {})
 	# HUD 放在 viewer 座位内侧、朝向 viewer
-	var v_angle := float(seat_angle.get(viewer, 0.0))
+	var v_angle := Table3dLayout.seat_angle(viewer)
 	var v_dir := Vector3(sin(deg_to_rad(v_angle)), 0.0, cos(deg_to_rad(v_angle)))
 	_hud.position = v_dir * (Table3dLayout.SEAT_RADIUS - HUD_OFFSET) + Vector3(0.0, HUD_HEIGHT, 0.0)
 	_hud.rotation_degrees = Vector3(0.0, v_angle + 180.0, 0.0)
@@ -315,8 +313,8 @@ func _render_seat(node: Node3D, p: Dictionary) -> void:
 			_card_blocks[int(p.id)] = {}
 		_card_blocks[int(p.id)][i] = block
 
-## 角色（场景 Avatar/Head+Body）：放到「眼睛」位置（径向外移 CAMERA_BACK、头心抬到
-## EYE_HEIGHT，相机即在头心）；隐藏自己脑袋（身体在其正下方）；出局/离线变暗、当前回合金色高亮。
+## 角色（Robot 模型）：放到「眼睛」位置（径向外移 CAMERA_BACK、头心抬到
+## EYE_HEIGHT，相机即在头心）；隐藏自己那席；出局/离线变暗、当前回合金色高亮。
 func _apply_avatar(seat_node: Node3D, p: Dictionary, viewer: int, state: Dictionary) -> void:
 	var avatar := seat_node.get_node_or_null("Avatar")
 	if avatar == null:
@@ -331,32 +329,89 @@ func _apply_avatar(seat_node: Node3D, p: Dictionary, viewer: int, state: Diction
 		if back_v != null:
 			back = float(back_v)
 	avatar.position = Vector3(0.0, eye, -back)
-	var head := avatar.get_node_or_null("Head")
-	var body := avatar.get_node_or_null("Body")
 	var seat := int(p.id)
-	# 自己那席整个角色隐藏（脑袋+身体都不出现在自己视角）
+	# 自己那席整个角色隐藏（机器人也不出现在自己视角）
 	avatar.visible = seat != viewer
-	if head != null:
-		head.visible = true
+	# 机器人原点在脚：avatar 原点在眼高 → 局部 y=-eye 让脚落在桌面。
+	var robot := avatar.get_node_or_null("RobotAvatar")
+	var head_top_local := RobotAvatar.MODEL_HEAD_TOP * RobotAvatar.SCALE - eye
+	if robot != null:
+		robot.position.y = -eye
 	var overlay: StandardMaterial3D = null
 	var offline: Array = state.get("offline_players", [])
 	if bool(p.get("eliminated", false)) or offline.has(seat):
 		overlay = _avatar_dim()
-	elif seat == int(state.get("current_player", -1)):
-		overlay = _avatar_glow()
-	if head != null:
-		head.material_overlay = overlay
-	if body != null:
-		body.material_overlay = overlay
-	# 回合标识：仅当前行动者、且自己那席因角色隐藏而不显示
+	if robot != null:
+		var col := str(p.get("color", ""))
+		if not col.is_empty() and Color.html_is_valid(col):
+			robot.set_body_color(Color.html(col))
+		robot.set_overlay(overlay)
+	# 头顶状态面板与回合标识随机器人高度定位（占位 Head/Body 已在 _attach_robot 隐藏）。
+	var sprite := avatar.get_node_or_null("StatPanel")
+	if sprite != null:
+		sprite.position.y = head_top_local + STAT_PANEL_ABOVE
 	var marker := avatar.get_node_or_null("TurnMarker")
 	if marker != null:
+		marker.position.y = head_top_local + STAT_PANEL_ABOVE + MARKER_ABOVE_PANEL
 		marker.visible = avatar.visible and _is_current_turn(state, seat)
 
-func _avatar_glow() -> StandardMaterial3D:
-	if _avatar_glow_mat == null:
-		_avatar_glow_mat = _make_overlay(AVATAR_GLOW_COLOR)
-	return _avatar_glow_mat
+## 在座位 Avatar 下挂 Robot 角色（替代原 Body/Head 占位），并隐藏占位节点
+## （保留节点供 tuner/测试定位；节点名/路径契约不变）。
+func _attach_robot(avatar) -> void:
+	if avatar == null or not (avatar is Node3D):
+		return
+	if avatar.has_node("RobotAvatar"):
+		return
+	var robot := RobotAvatar.new()
+	robot.name = "RobotAvatar"
+	avatar.add_child(robot)
+	for n in ["Head", "Body"]:
+		var m = avatar.get_node_or_null(n)
+		if m is Node3D:
+			(m as Node3D).visible = false
+
+## 每帧更新各席机器人眼睛：
+##  - 有该席玩家同步来的注视方向（remote_looks[seat]）+ 放大状态（remote_zoom[seat]）→ 跟随其主人；
+##  - 无同步（离线 / 2D 玩家 / 旧客户端）→ 稳定看向本机相机 + 用本机放大状态。
+## 注意：环视只改相机朝向、位置基本不动，故本地目标不能直接用相机位置。
+func update_avatars(cam: Camera3D, remote_looks := {}, remote_zoom := {}, local_zoom := false, remote_talk := {}, local_talk := false) -> void:
+	_bind()
+	if not _bound or cam == null:
+		return
+	for seat in _seat_node_by_id.keys():
+		var node = _seat_node_by_id[seat]
+		if node == null or not is_instance_valid(node) or not (node as Node3D).visible:
+			continue
+		var avatar = node.get_node_or_null("Avatar")
+		if avatar == null or not (avatar as Node3D).visible:
+			continue
+		var robot = avatar.get_node_or_null("RobotAvatar")
+		if robot == null:
+			continue
+		if remote_looks.has(seat) and remote_looks[seat] is Vector3:
+			robot.set_gaze_target_world(remote_looks[seat])
+			robot.set_eye_zoom(bool(remote_zoom.get(seat, false)))
+			robot.set_talking(bool(remote_talk.get(seat, false)))
+		else:
+			robot.set_gaze_target_world(cam.global_position)
+			robot.set_eye_zoom(local_zoom)
+			robot.set_talking(local_talk)
+
+## 本机放大状态联动（所有可见机器人眼睛用小眼）；主路径由 update_avatars 逐席下发。
+func set_eye_zoom(on: bool) -> void:
+	_bind()
+	if not _bound:
+		return
+	for seat in _seat_node_by_id.keys():
+		var node = _seat_node_by_id[seat]
+		if node == null or not is_instance_valid(node) or not (node as Node3D).visible:
+			continue
+		var avatar = node.get_node_or_null("Avatar")
+		if avatar == null or not (avatar as Node3D).visible:
+			continue
+		var robot = avatar.get_node_or_null("RobotAvatar")
+		if robot != null and robot.has_method("set_eye_zoom"):
+			robot.set_eye_zoom(on)
 
 func _avatar_dim() -> StandardMaterial3D:
 	if _avatar_dim_mat == null:

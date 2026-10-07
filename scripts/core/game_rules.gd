@@ -7,6 +7,22 @@ extends RefCounted
 const MAX_PLAYERS := 4
 const MIN_PLAYERS := 2
 const HAND_SIZE := 4
+## 玩家机器人配色（进入游戏时随机分配、保证不重复；末位为原默认色）。
+const PLAYER_COLORS := ["#3ABA64", "#BD414B", "#A36DE9", "#7158FE", "#A0D45D", "#B18C3E", "#63CBEA", "#496AFE"]
+
+## 从调色板随机取一个未被占用的颜色（existing 为已占用颜色字符串列表）；
+## 调色板取尽时退回随机（当前 8 色 ≥ MAX_PLAYERS，正常不会发生）。
+static func pick_color(existing: Array) -> String:
+	var used := {}
+	for c in existing:
+		used[str(c)] = true
+	var free: Array = []
+	for c in PLAYER_COLORS:
+		if not used.has(c):
+			free.append(c)
+	if free.is_empty():
+		return PLAYER_COLORS[randi() % PLAYER_COLORS.size()]
+	return str(free[randi() % free.size()])
 ## 手牌数上限：玩家总牌数超过该值（> MAX_HAND_CARDS）时对局立即结算，该玩家判定失败。
 const MAX_HAND_CARDS := 6
 

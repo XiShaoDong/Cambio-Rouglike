@@ -229,7 +229,7 @@ func _place_boards() -> void:
 	var cam: Camera3D = table3d.camera.camera_node()
 	if cam == null:
 		return
-	var dir := Vector3.ZERO - cam.global_position
+	var dir := Vector3(0.0, Table3dLayout.TABLE_HEIGHT, 0.0) - cam.global_position
 	if dir.length_squared() < 0.0001:
 		return
 	dir = dir.normalized()
@@ -473,6 +473,11 @@ func _input(event: InputEvent) -> void:
 			_toggle_manual()
 			get_viewport().set_input_as_handled()
 			return
+		# M：切换说话（嘴开合，同步给其他玩家看你的角色）
+		if event.keycode == KEY_M:
+			_talking_local = not _talking_local
+			get_viewport().set_input_as_handled()
+			return
 		# 手册打开时 Esc 先关手册（优先于退出 3D）
 		if event.keycode == KEY_ESCAPE and manual_panel != null and is_instance_valid(manual_panel):
 			_close_manual()
@@ -498,7 +503,7 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 ## 3D 悬停指示：每帧按准星命中更新目标高亮与准星状态。
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	if not _table3d_active:
 		return
 	if table3d == null or not is_instance_valid(table3d):
@@ -510,6 +515,8 @@ func _process(_delta: float) -> void:
 	if hint3d != null and is_instance_valid(hint3d):
 		hint3d.set_facing(cam)
 	table3d.update_facing()
+	_update_look_send(delta, cam)
+	table3d.update_avatars(cam, GameState.remote_looks, GameState.remote_zoom, bool(table3d.camera.zoomed), GameState.remote_talk, _talking_local)
 	var on_board := _update_board_hover()
 	if _board_has_panel():
 		table3d.clear_hover()
@@ -524,6 +531,36 @@ func _process(_delta: float) -> void:
 	var on_target: bool = table3d.update_hover()
 	if _crosshair != null and is_instance_valid(_crosshair):
 		_crosshair.set_active(on_target)
+
+## 3D 下按固定频率把本机相机注视方向上报服务器（转发给其他玩家），
+## 使每席机器人眼睛跟随其“主人”自己的鼠标/相机（而非本机）。方向无变化则不发送。
+func _update_look_send(delta: float, cam: Camera3D) -> void:
+	if cam == null:
+		return
+	_look_send_timer += delta
+	if _look_send_timer < LOOK_SEND_INTERVAL:
+		return
+	_look_send_timer = 0.0
+	var dir := -cam.global_transform.basis.z
+	if dir.length_squared() < 0.000001:
+		return
+	dir = dir.normalized()
+	var zoomed := bool(table3d.camera.zoomed)
+	var talking := _talking_local
+	var dir_changed := _last_look_dir == Vector3.ZERO or _last_look_dir.dot(dir) <= LOOK_SEND_EPS_DOT
+	if not dir_changed and zoomed == _last_look_zoom and talking == _last_look_talk:
+		return
+	_last_look_dir = dir
+	_last_look_zoom = zoomed
+	_last_look_talk = talking
+	var seat := int(latest_state.get("viewer_id", -1))
+	if seat < 0:
+		return
+	var target := cam.global_position + dir * LOOK_TARGET_DISTANCE
+	if multiplayer.is_server():
+		GameState._apply_look(seat, target, zoomed, talking)
+	else:
+		GameState.server_look.rpc_id(1, target, zoomed, talking)
 
 func _unhandled_input(event: InputEvent) -> void:
 	# 比拼中按空格 = 停止（与 STOP 按钮等效）
@@ -562,6 +599,9 @@ const BOARD_LIFT := 0.8        # 面板高度抬升比例（y *= 1 + BOARD_LIFT�
 const PEEK_GLOW_COLOR := Color("3ef0f7ff")  # 查看牌蓝色光晕
 const PEEK_GLOW_DURATION := 1.5
 const PEEK_GLOW_SIZE := 14
+const LOOK_SEND_INTERVAL := 1.0 / 12.0   # 注视方向上报间隔（秒）
+const LOOK_SEND_EPS_DOT := 0.999         # 方向变化小于该阈值（≈2.6°）不重复发送
+const LOOK_TARGET_DISTANCE := 12.0       # 相机射线固定距离生成"世界注视点"（gaze target）
 const SLAP_CORRECT_GLOW := Color("87d9a1")  # 贴对绿色炫光（同 UITheme success）
 const SLAP_WRONG_GLOW := Color("ff7b7b")  # 贴错红色炫光（同 UITheme danger）
 const SLAP_GLOW_SIZE := 14
@@ -609,6 +649,11 @@ var hint3d: Board3d = null
 var _hint_panel: Control = null
 var table3d: Node3D = null
 var _table3d_active := false
+var _look_send_timer := 0.0
+var _last_look_dir := Vector3.ZERO
+var _last_look_zoom := false
+var _last_look_talk := false
+var _talking_local := false
 var _crosshair: Control = null
 var _self_panel: PlayerStatPanel = null
 var is_dev_join := false
