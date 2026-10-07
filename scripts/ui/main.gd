@@ -463,6 +463,9 @@ func _set_table3d(on: bool) -> void:
 			_round_badge.visible = false
 		if _hint_hud != null and is_instance_valid(_hint_hud):
 			_hint_hud.show_hud(false)
+		if _slap_burst != null and is_instance_valid(_slap_burst):
+			_slap_burst.queue_free()
+			_slap_burst = null
 		if board3d != null and is_instance_valid(board3d):
 			for c in board3d.detach_all():
 				if c != null and is_instance_valid(c):
@@ -706,6 +709,7 @@ var _discard_local_display: Dictionary = {}
 var _peek_glow_slots: Dictionary = {}
 var _slap_reveal_lock := false
 var _duel_panel: Control = null
+var _slap_burst: Control = null
 var settings_menu: Control = null
 var _my_token := ""
 var _rejoin_addr := ""
@@ -795,6 +799,8 @@ func _ready() -> void:
 	# 2D 走 CardAnimator（原逻辑逐字不动）；3D 走 table3d 的飞牌编排。
 	GameState.card_exchange_animated.connect(func(data: Dictionary):
 		if _table3d_active:
+			if str(data.get("kind", "")) == "slap_resolved":
+				_show_slap_success(data)
 			if table3d != null and is_instance_valid(table3d):
 				table3d.animate_exchange(data)
 		else:
@@ -1366,6 +1372,24 @@ func _show_private_reveal(title: String, revealed_cards: Array, target: Dictiona
 
 ## 其他玩家查看某张牌时，在被查看的牌上标蓝色光晕 1 秒（不含牌面）。
 ## 记录槽位到 _peek_glow_slots，render 重建卡牌后仍可恢复光晕。
+## 贴牌成功爆炸弹层（仅 3D）：屏幕空间齿状爆炸 + 卡面 + 「贴牌成功」 + 贴中者名字。
+func _show_slap_success(data: Dictionary) -> void:
+	if _slap_burst != null and is_instance_valid(_slap_burst):
+		_slap_burst.queue_free()
+		_slap_burst = null
+	var actor := int(data.get("actor", -1))
+	var player_name := ""
+	for p in latest_state.get("players", []):
+		if int(p.id) == actor:
+			player_name = str(p.get("name", ""))
+			break
+	var burst := SlapSuccessBurst.new()
+	burst.name = "SlapSuccessBurst"
+	burst.z_index = 90
+	add_child(burst)
+	_slap_burst = burst
+	burst.setup(data.get("card", {}), player_name)
+
 func _on_peek_highlight(data: Dictionary) -> void:
 	if _table3d_active and table3d != null and is_instance_valid(table3d):
 		# 3D：翻到"黑底闭眼"占位面 + 蓝光（比单纯蓝光更明显），到时翻回

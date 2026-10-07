@@ -175,7 +175,7 @@ func _resolve_correct_slap(sender: int, target_player: int, slot: int, target_ca
 	if target_player == sender:
 		game.players[sender].cards[slot] = ""
 		game.discard_pile.append(target_card)
-		game._broadcast_exchange({"kind": "slap_resolved", "target": target_player, "target_slot": slot, "card": game.peek.public_card(target_card)})
+		game._broadcast_exchange({"kind": "slap_resolved", "actor": sender, "target": target_player, "target_slot": slot, "card": game.peek.public_card(target_card)})
 		game._add_log("%s 成功贴出自己的 %s。" % [game.players[sender].name, game.slap_rank])
 		finish_slap()
 		return
