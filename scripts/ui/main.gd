@@ -141,6 +141,26 @@ func _corner_margin() -> float:
 	var scale := win_size.x / base.x
 	return CORNER_MARGIN / maxf(scale, 0.0001)
 
+## 3D action hint 屏幕面板：顶部居中的「倒计时 + 提示文本」。
+func _ensure_hint_hud() -> void:
+	if _hint_hud != null and is_instance_valid(_hint_hud):
+		return
+	_hint_hud = HintHud.new()
+	_hint_hud.name = "HintHud"
+	_hint_hud.z_index = 80
+	add_child(_hint_hud)
+
+## 驱动 HintHud：文本随 hint 变化，进入新回合（key 变化）时重置 30 并播进场。
+func _update_hint_hud(phase: int, viewer: int, current: int) -> void:
+	if _hint_hud == null or not is_instance_valid(_hint_hud):
+		return
+	_hint_hud.set_hint(_hint_for(phase, viewer == current))
+	_hint_hud.set_phase_visible(phase)
+	var key := "%d:%d" % [int(latest_state.get("match_number", 1)), current]
+	if phase in _HUD_ACTIVE_PHASES and key != _hud_turn_key:
+		_hud_turn_key = key
+		_hint_hud.reset_turn(HintHud.PHASE_TURN_SECONDS)
+
 ## 3D 左下角按键提示（放大 Command / 手册 Tab）：说明纯白 + 圆角白底按键。
 func _ensure_key_hints() -> void:
 	if _key_hints != null and is_instance_valid(_key_hints):
@@ -272,12 +292,6 @@ func _make_hint_panel() -> Control:
 	vb.name = "VBox"
 	vb.add_theme_constant_override("separation", 8)
 	panel.add_child(vb)
-	var lbl := Label.new()
-	lbl.name = "HintLabel"
-	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	lbl.add_theme_font_size_override("font_size", 20)
-	lbl.add_theme_color_override("font_color", Color(0.92, 0.95, 1.0))
-	vb.add_child(lbl)
 	# Ready：醒目 accent 底 + 大尺寸（3D 板上尺寸即世界尺寸，越大越好点/越明显）
 	var ready := Button.new()
 	ready.name = "ReadyButton"
@@ -334,9 +348,7 @@ func _refresh_hint_panel() -> void:
 		hint3d.visible = true
 	var viewer := int(latest_state.get("viewer_id", 0))
 	var current := int(latest_state.get("current_player", -1))
-	var lbl: Label = _hint_panel.get_node_or_null("VBox/HintLabel")
-	if lbl != null:
-		lbl.text = _hint_for(phase, viewer == current)
+	_update_hint_hud(phase, viewer, current)
 	var ready: Button = _hint_panel.get_node_or_null("VBox/ReadyButton")
 	if ready != null:
 		ready.visible = phase == PHASE_INITIAL_PEEK
@@ -402,6 +414,8 @@ func _set_table3d(on: bool) -> void:
 		table3d.render(latest_state, interaction.card_actionable)
 		_place_boards()
 		_sync_table3d_pointer()
+		_ensure_hint_hud()
+		_hint_hud.show_hud(true)
 		_refresh_hint_panel()
 		_ensure_self_panel()
 		_self_panel.visible = true
@@ -427,6 +441,8 @@ func _set_table3d(on: bool) -> void:
 			_key_hints.visible = false
 		if _round_badge != null and is_instance_valid(_round_badge):
 			_round_badge.visible = false
+		if _hint_hud != null and is_instance_valid(_hint_hud):
+			_hint_hud.show_hud(false)
 		if board3d != null and is_instance_valid(board3d):
 			for c in board3d.detach_all():
 				if c != null and is_instance_valid(c):
@@ -535,6 +551,9 @@ const PHASE_GAME_OVER := 7
 const PHASE_SLAP_DUEL := 8
 const PHASE_SHOP := 10
 
+## HintHud 胶囊显示 + 倒计时重置的阶段（与 HintHud.ACTIVE_PHASES 一致）。
+const _HUD_ACTIVE_PHASES := [PHASE_INITIAL_PEEK, PHASE_TURN_DRAW, PHASE_TURN_DECISION, PHASE_Q_DECISION, PHASE_SLAP_EXCHANGE, PHASE_SLAP_DUEL]
+
 const CORNER_MARGIN := 75.0     # 3D 四个角 HUD 到屏幕边缘的统一边距（目标=屏幕像素）
 const BOARD_DIST := 3.0        # 看板沿"相机→桌心"连线距相机的距离（可调）
 const HINT_RISE := 0.5         # 提示板相对大板的世界 Y 抬升（gap，已缩小 1/2）
@@ -630,6 +649,8 @@ var joker_panel: Control = null
 var manual_panel: Control = null
 var _key_hints: KeyHintPanel = null
 var _round_badge: Control = null
+var _hint_hud: HintHud = null
+var _hud_turn_key := ""
 var _shop_result_shown := ""
 var _pending_winner_sfx := false
 # Q 能力：下一次收到的看牌揭示保持正面（不自动翻回），直到玩家确认交换/不交换。

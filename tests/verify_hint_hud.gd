@@ -21,6 +21,7 @@ func _run() -> void:
 	_test_turn_timer()
 	_test_hint_text()
 	await _test_hint_hud()
+	await _test_main_integration()
 
 func _test_turn_timer() -> void:
 	var t := TurnTimer.new()
@@ -90,3 +91,35 @@ func _test_hint_hud() -> void:
 	_check("show_hud(false) 不可见", not hud.visible)
 	_check("show_hud(false) 停止计时", not hud.is_processing())
 	hud.queue_free()
+
+func _main_state() -> Dictionary:
+	return {
+		"phase": 2, "phase_name": "抽牌", "viewer_id": 0, "current_player": 0, "current_name": "A",
+		"players": [
+			{"id": 0, "name": "A", "slots": [{}, {}, {}, {}], "health": 2, "currency": 100, "count": 4, "eliminated": false},
+			{"id": 1, "name": "B", "slots": [{}, {}, {}, {}], "health": 2, "currency": 100, "count": 4, "eliminated": false},
+		],
+		"draw_count": 40, "discard": {}, "pending": {}, "event_log": [], "match_number": 1,
+		"slap_rank": "", "slap_open": false, "slap_exchange_actor": 0, "kong_caller": -1,
+		"ready_count": 0, "result": {}, "run": {"match_limit": 5}, "q_decision": {},
+	}
+
+func _test_main_integration() -> void:
+	var scene: PackedScene = load("res://scenes/main.tscn")
+	var main_node: Node = scene.instantiate()
+	add_child(main_node)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	main_node.latest_state = _main_state()
+	main_node._set_table3d(true)
+	await get_tree().process_frame
+	_check("main 已建 HintHud", main_node._hint_hud != null and is_instance_valid(main_node._hint_hud))
+	_check("3D 下 HintHud 可见", main_node._hint_hud.visible)
+	_check("hint3d 不再有 HintLabel", main_node._hint_panel.get_node_or_null("VBox/HintLabel") == null)
+	_check("hint3d 仍有 Ready", main_node._hint_panel.get_node_or_null("VBox/ReadyButton") != null)
+	_check("HintHud 文本=_hint_for", main_node._hint_hud.cur_label().text == main_node._hint_for(2, true))
+	_check("回合 key 记录 1:0", main_node._hud_turn_key == "1:0")
+	main_node._set_table3d(false)
+	await get_tree().process_frame
+	_check("退出 3D 后 HintHud 隐藏", not main_node._hint_hud.visible)
+	main_node.queue_free()
