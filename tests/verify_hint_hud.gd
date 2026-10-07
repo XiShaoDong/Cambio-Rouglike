@@ -22,6 +22,7 @@ func _run() -> void:
 	_test_hint_text()
 	await _test_hint_hud()
 	await _test_hint_hud_fixes()
+	await _test_slap_row()
 	await _test_main_integration()
 
 func _test_turn_timer() -> void:
@@ -118,6 +119,38 @@ func _test_hint_hud_fixes() -> void:
 	await get_tree().create_timer(0.7).timeout
 	_check("连续换字收敛到最新 D", hud.cur_label().text == "D")
 	_check("收敛后仅一片可见", not hud.next_label().visible)
+	hud.queue_free()
+
+func _test_slap_row() -> void:
+	var hud := HintHud.new()
+	add_child(hud)
+	await get_tree().process_frame
+	hud.show_hud(true)
+	hud.set_hint("Draw")
+	_check("SLAP 初始隐藏", not hud.slap_row_visible())
+	hud.set_slap_state(HintHud.SLAP_OPEN)
+	_check("OPEN：行可见", hud.slap_row_visible())
+	_check("OPEN：绿 SLAP OPEN", hud.slap_label().text == "SLAP OPEN" and hud.slap_label().get_theme_color("font_color") == HintHud.SLAP_OPEN_COLOR)
+	_check("OPEN：条可见 value≈1", hud.slap_bar().visible and is_equal_approx(hud.slap_bar().value, 1.0))
+	_check("状态行水平居中", hud.slap_label().horizontal_alignment == HORIZONTAL_ALIGNMENT_CENTER)
+	hud._process(3.0)
+	var v_mid: float = hud.slap_bar().value
+	hud.set_slap_state(HintHud.SLAP_OPEN)
+	_check("同状态重发不重置条", is_equal_approx(hud.slap_bar().value, v_mid) and v_mid < 1.0)
+	hud.set_slap_state(HintHud.SLAP_CLOSE)
+	_check("CLOSE：红 SLAP CLOSE", hud.slap_label().text == "SLAP CLOSE" and hud.slap_label().get_theme_color("font_color") == HintHud.SLAP_CLOSE_COLOR)
+	_check("CLOSE：条隐藏", not hud.slap_bar().visible)
+	hud.set_slap_state(HintHud.SLAP_HIDDEN)
+	_check("HIDDEN：整行隐藏", not hud.slap_row_visible())
+	hud.set_slap_state(HintHud.SLAP_OPEN)
+	_check("重开窗口条重置满", is_equal_approx(hud.slap_bar().value, 1.0) and not hud.slap_exhausted())
+	hud._process(HintHud.SLAP_BAR_SECONDS + 0.1)
+	_check("走空：整行消失", not hud.slap_row_visible() and hud.slap_exhausted())
+	hud.set_slap_state(HintHud.SLAP_HIDDEN)
+	hud.set_slap_state(HintHud.SLAP_OPEN)
+	await get_tree().process_frame
+	var w: float = maxf(maxf(hud.pill().get_combined_minimum_size().x, HintHud.HINT_MAX_W), HintHud.SLAP_BAR_W)
+	_check("条水平居中", is_equal_approx(hud.slap_bar().position.x, (w - HintHud.SLAP_BAR_W) * 0.5))
 	hud.queue_free()
 
 func _main_state() -> Dictionary:

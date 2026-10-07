@@ -24,6 +24,20 @@ const COLOR_OVER := Color(1.0, 0.36, 0.34)
 ## 不含 INITIAL_PEEK：进入房间直到全员 ready 后才开始计时。
 const ACTIVE_PHASES := [2, 3, 4, 6, 8]
 
+## SLAP 状态行 + 装饰条（纯展示，固定时长不对应真实窗口）。
+const SLAP_HIDDEN := 0
+const SLAP_OPEN := 1
+const SLAP_CLOSE := 2
+const SLAP_BAR_SECONDS := 10.0
+const SLAP_BAR_W := 260.0
+const SLAP_BAR_H := 8.0
+const SLAP_FONT := 16
+const SLAP_GAP := 6.0
+const SLAP_OPEN_COLOR := Color("87d9a1")
+const SLAP_CLOSE_COLOR := Color("ff7b7b")
+const SLAP_TEXT_OPEN := "SLAP OPEN"
+const SLAP_TEXT_CLOSE := "SLAP CLOSE"
+
 var _timer := TurnTimer.new()
 var _pill: PanelContainer
 var _pill_label: Label
@@ -36,6 +50,13 @@ var _pill_x := 0.0
 var _hint_base_y := 0.0
 var _animating := false
 var _tween: Tween = null
+var _slap_label: Label
+var _slap_bar: ProgressBar
+var _slap_state := SLAP_HIDDEN
+var _slap_left := 0.0
+var _slap_exhausted := false
+var _slap_base_y := 0.0
+var _slap_bar_y := 0.0
 
 func _ready() -> void:
 	_build()
@@ -46,6 +67,15 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	_timer.tick(delta)
 	_update_pill_text()
+	if _slap_state == SLAP_OPEN and not _slap_exhausted:
+		_slap_left -= delta
+		if _slap_left <= 0.0:
+			_slap_left = 0.0
+			_slap_exhausted = true
+			_update_slap_visuals()
+			_layout()
+		elif _slap_bar != null and _slap_bar.visible:
+			_slap_bar.value = clampf(_slap_left / SLAP_BAR_SECONDS, 0.0, 1.0)
 
 func _build() -> void:
 	if _pill != null:
@@ -71,6 +101,34 @@ func _build() -> void:
 	_cur = _hint_a
 	_next = _hint_b
 	_next.visible = false
+	_slap_label = Label.new()
+	_slap_label.name = "SlapLabel"
+	_slap_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_slap_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_slap_label.custom_minimum_size = Vector2(HINT_MAX_W, 0.0)
+	_slap_label.add_theme_font_size_override("font_size", SLAP_FONT)
+	_slap_label.add_theme_color_override("font_color", SLAP_OPEN_COLOR)
+	_slap_label.visible = false
+	add_child(_slap_label)
+	_slap_bar = ProgressBar.new()
+	_slap_bar.name = "SlapBar"
+	_slap_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_slap_bar.min_value = 0.0
+	_slap_bar.max_value = 1.0
+	_slap_bar.value = 1.0
+	_slap_bar.show_percentage = false
+	_slap_bar.custom_minimum_size = Vector2(SLAP_BAR_W, SLAP_BAR_H)
+	_slap_bar.size = Vector2(SLAP_BAR_W, SLAP_BAR_H)
+	var bar_bg := StyleBoxFlat.new()
+	bar_bg.bg_color = Color(1, 1, 1, 0.18)
+	bar_bg.set_corner_radius_all(int(SLAP_BAR_H * 0.5))
+	var bar_fill := StyleBoxFlat.new()
+	bar_fill.bg_color = SLAP_OPEN_COLOR
+	bar_fill.set_corner_radius_all(int(SLAP_BAR_H * 0.5))
+	_slap_bar.add_theme_stylebox_override("background", bar_bg)
+	_slap_bar.add_theme_stylebox_override("fill", bar_fill)
+	_slap_bar.visible = false
+	add_child(_slap_bar)
 
 func _pill_style() -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
@@ -102,8 +160,11 @@ func _layout() -> void:
 		return
 	var pill_size := _pill.get_combined_minimum_size()
 	var hint_h := _cur.get_combined_minimum_size().y
-	var w := maxf(pill_size.x, HINT_MAX_W)
-	var h := PILL_H + SEP + hint_h
+	var slap_h := 0.0
+	if _slap_row_visible():
+		slap_h = SEP + _slap_label.get_combined_minimum_size().y + SLAP_GAP + SLAP_BAR_H
+	var w := maxf(maxf(pill_size.x, HINT_MAX_W), SLAP_BAR_W)
+	var h := PILL_H + SEP + hint_h + slap_h
 	anchor_left = 0.5
 	anchor_right = 0.5
 	anchor_top = 0.0
@@ -114,6 +175,8 @@ func _layout() -> void:
 	offset_bottom = TOP_MARGIN + h
 	_pill_x = (w - pill_size.x) * 0.5
 	_hint_base_y = PILL_H + SEP
+	_slap_base_y = _hint_base_y + hint_h + SEP
+	_slap_bar_y = _slap_base_y + _slap_label.get_combined_minimum_size().y + SLAP_GAP
 	if not _animating:
 		_place_all()
 
@@ -121,6 +184,9 @@ func _place_all() -> void:
 	_pill.position = Vector2(_pill_x, 0.0)
 	_hint_a.position = Vector2(0.0, _hint_base_y)
 	_hint_b.position = Vector2(0.0, _hint_base_y)
+	var w := maxf(maxf(_pill.get_combined_minimum_size().x, HINT_MAX_W), SLAP_BAR_W)
+	_slap_label.position = Vector2(0.0, _slap_base_y)
+	_slap_bar.position = Vector2((w - SLAP_BAR_W) * 0.5, _slap_bar_y)
 
 func _update_pill_text() -> void:
 	if _pill_label == null:
@@ -250,6 +316,40 @@ func _on_swap_done(old: Label, inc: Label) -> void:
 	_animating = false
 	_layout()
 
+## SLAP 行是否可见：CLOSE 恒可见；OPEN 且未走空可见；其余隐藏。
+func _slap_row_visible() -> bool:
+	if _slap_state == SLAP_CLOSE:
+		return true
+	return _slap_state == SLAP_OPEN and not _slap_exhausted
+
+## 由 main 喂入状态；HIDDEN/CLOSE → OPEN 视为"新窗口"，重置装饰条。
+func set_slap_state(state: int) -> void:
+	if state == _slap_state:
+		return
+	var entering_open := state == SLAP_OPEN and _slap_state != SLAP_OPEN
+	_slap_state = state
+	if entering_open:
+		_slap_left = SLAP_BAR_SECONDS
+		_slap_exhausted = false
+	_update_slap_visuals()
+	_layout()
+
+func _update_slap_visuals() -> void:
+	if _slap_label == null:
+		return
+	var vis := _slap_row_visible()
+	_slap_label.visible = vis
+	_slap_bar.visible = vis and _slap_state == SLAP_OPEN
+	if not vis:
+		return
+	if _slap_state == SLAP_CLOSE:
+		_slap_label.text = SLAP_TEXT_CLOSE
+		_slap_label.add_theme_color_override("font_color", SLAP_CLOSE_COLOR)
+	else:
+		_slap_label.text = SLAP_TEXT_OPEN
+		_slap_label.add_theme_color_override("font_color", SLAP_OPEN_COLOR)
+		_slap_bar.value = clampf(_slap_left / SLAP_BAR_SECONDS, 0.0, 1.0)
+
 ## 测试/调试访问器。
 func pill() -> PanelContainer:
 	return _pill
@@ -268,3 +368,18 @@ func next_label() -> Label:
 
 func hint_base_y() -> float:
 	return _hint_base_y
+
+func slap_label() -> Label:
+	return _slap_label
+
+func slap_bar() -> ProgressBar:
+	return _slap_bar
+
+func slap_state() -> int:
+	return _slap_state
+
+func slap_exhausted() -> bool:
+	return _slap_exhausted
+
+func slap_row_visible() -> bool:
+	return _slap_row_visible()
