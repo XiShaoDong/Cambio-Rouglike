@@ -24,7 +24,7 @@ func _run() -> void:
 	await _test_ready_click()
 	await _test_main_routing()
 
-## 3D 开局记忆：Ready 在提示板上，且默认准星（相机→桌心连线）能直接落到它上面 → 可直接点到。
+## 3D 开局记忆：Ready 在提示板上；提示板与模态板同锚点（贴手牌上方），对准后准星可点到。
 func _test_ready_click() -> void:
 	Network.is_host = true
 	var main: Node = preload("res://scenes/main.tscn").instantiate()
@@ -47,13 +47,15 @@ func _test_ready_click() -> void:
 	_check("3D 开局记忆显示 Ready", ready != null and ready.visible)
 	_check("Ready 已加大高度（易点）", ready != null and ready.custom_minimum_size.y >= 60.0)
 	_check("Ready 有明显 hover 样式", ready != null and ready.has_theme_stylebox_override("hover"))
-	# 有可点元素时提示板贴准星：默认准星（相机→桌心）应直接落在 Ready 内（无需抬头）
+	# 提示板与模态板同锚点（贴玩家手牌上方）；把相机对准提示板 → 准星命中 Ready
 	var cam: Camera3D = main.table3d.camera.camera_node()
+	_check("提示板与模态板同 XZ 锚点", is_equal_approx(main.hint3d.global_position.x, main.board3d.global_position.x) and is_equal_approx(main.hint3d.global_position.z, main.board3d.global_position.z))
+	cam.look_at(main.hint3d.global_position, Vector3.UP)
 	for i in 3:
 		await get_tree().physics_frame
 	var coord: Vector2i = main.hint3d.hit_viewport_coord(cam)
 	var rr: Rect2 = ready.get_global_rect() if ready != null else Rect2()
-	_check("默认准星即落在 Ready 内（3D 可直接点）", coord.x >= 0 and rr.has_point(Vector2(coord)))
+	_check("对准提示板后准星落在 Ready 内（可点）", coord.x >= 0 and rr.has_point(Vector2(coord)))
 	# 让 main._process 推送 hover motion，检查 Ready 是否真的进入 hover 态
 	await get_tree().process_frame
 	await get_tree().process_frame

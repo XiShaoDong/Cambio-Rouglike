@@ -236,48 +236,24 @@ func _place_boards() -> void:
 	if table3d == null or not is_instance_valid(table3d):
 		return
 	var cam: Camera3D = table3d.camera.camera_node()
-	# 模态大板：锚到本机座位与桌心之间（贴玩家，不靠后）
+	var viewer := int(latest_state.get("viewer_id", 0))
+	var seat_pos: Vector3 = table3d.seat_world(viewer)
+	# 模态大板 + 提示板（Ready/条件按钮）：统一锚到本机座位与桌心之间的深度、悬浮桌面上方（贴玩家、不靠后）
 	if board3d != null and is_instance_valid(board3d):
-		var viewer := int(latest_state.get("viewer_id", 0))
-		var seat_pos: Vector3 = table3d.seat_world(viewer)
-		if seat_pos.length_squared() > 0.0001:
-			var anchor := Table3dLayout.board_depth_pos(seat_pos, BOARD_DEPTH, BOARD_TABLE_HALF)
-			var bh: float = board3d.world_size().y
-			board3d.global_position = Vector3(anchor.x, Table3dLayout.TABLE_HEIGHT + BOARD_FLOAT_H + bh * 0.5, anchor.z)
-		elif cam != null:
-			var dir0 := Vector3(0.0, Table3dLayout.TABLE_HEIGHT, 0.0) - cam.global_position
-			if dir0.length_squared() > 0.0001:
-				board3d.global_position = cam.global_position + dir0.normalized() * BOARD_DIST
-	# 提示板：沿用旧的相机→桌心连线（贴准星 / 抬高）
+		board3d.global_position = _board_anchor_world(seat_pos, cam, board3d.world_size().y)
 	if hint3d != null and is_instance_valid(hint3d):
-		if cam == null:
-			return
-		var dir := Vector3(0.0, Table3dLayout.TABLE_HEIGHT, 0.0) - cam.global_position
-		if dir.length_squared() < 0.0001:
-			return
-		dir = dir.normalized()
-		var base := cam.global_position + dir * BOARD_DIST
-		var lifted := Vector3(base.x, base.y * (1.0 + BOARD_LIFT), base.z)
-		# 当"下一步是点看板按钮"（Ready / Q 决策 / J 已选齐待确认）时贴到准星（base 在相机→桌心射线上，
-		# 默认准星即命中）——否则默认准星落在其上方空白，玩家必须抬头才够得到（"3D 点不到 Ready"）。
-		# 其余情况（纯提示 / 需要点卡选牌）仍抬高，避免挡住牌桌与卡牌。
-		hint3d.global_position = base if _hint_center_on_crosshair() else lifted + Vector3(0.0, HINT_RISE, 0.0)
+		hint3d.global_position = _board_anchor_world(seat_pos, cam, hint3d.world_size().y)
 
-## 提示板是否应贴准星：下一步动作为看板按钮（而非点牌）。
-func _hint_center_on_crosshair() -> bool:
-	if _hint_panel == null or not is_instance_valid(_hint_panel):
-		return false
-	var phase := int(latest_state.get("phase", PHASE_LOBBY))
-	if phase == PHASE_INITIAL_PEEK:
-		var ready: Button = _hint_panel.get_node_or_null("VBox/ReadyButton")
-		return ready != null and ready.visible
-	if phase == PHASE_Q_DECISION:
-		var acts: HBoxContainer = _hint_panel.get_node_or_null("VBox/HintActions")
-		return acts != null and acts.get_child_count() > 0
-	# J 已选齐两人牌 → 只剩「交换/不交换」按钮
-	if str(interaction.action_mode) == "jack_ready":
-		return true
-	return false
+## 看板/提示板统一锚点：本机座位→桌心 BOARD_DEPTH 深度、悬浮桌面上方；无座位时回退相机→桌心连线。
+func _board_anchor_world(seat_pos: Vector3, cam: Camera3D, board_h: float) -> Vector3:
+	if seat_pos.length_squared() > 0.0001:
+		var anchor := Table3dLayout.board_depth_pos(seat_pos, BOARD_DEPTH, BOARD_TABLE_HALF)
+		return Vector3(anchor.x, Table3dLayout.TABLE_HEIGHT + BOARD_FLOAT_H + board_h * 0.5, anchor.z)
+	if cam != null:
+		var dir := Vector3(0.0, Table3dLayout.TABLE_HEIGHT, 0.0) - cam.global_position
+		if dir.length_squared() > 0.0001:
+			return cam.global_position + dir.normalized() * BOARD_DIST
+	return Vector3.ZERO
 
 ## 模态挂载：3D 激活挂到模态大板，否则沿用 2D 父节点（默认 main）。
 func _mount_modal(control: Control, parent_2d: Node = null) -> void:
@@ -622,9 +598,7 @@ const PHASE_SHOP := 10
 const _HUD_ACTIVE_PHASES := [PHASE_TURN_DRAW, PHASE_TURN_DECISION, PHASE_Q_DECISION, PHASE_SLAP_EXCHANGE, PHASE_SLAP_DUEL]
 
 const CORNER_MARGIN := 75.0     # 3D 四个角 HUD 到屏幕边缘的统一边距（目标=屏幕像素）
-const BOARD_DIST := 3.0        # 回退用：看板沿"相机→桌心"连线距相机的距离（可调）
-const HINT_RISE := 0.5         # 提示板相对大板的世界 Y 抬升（gap，已缩小 1/2）
-const BOARD_LIFT := 0.8        # 面板高度抬升比例（y *= 1 + BOARD_LIFT；比上次降低 1/5）
+const BOARD_DIST := 3.0        # 回退用：看板沿"相机→桌心"连线距相机的距离（无座位锚点时）
 ## 模态看板锚点（贴玩家、不靠后）：本机座位→桌心的 0..1 深度（用户 0-10 标度的 2/10）。
 const BOARD_DEPTH := 0.2
 const BOARD_TABLE_HALF := 3.8  # 牌桌半宽（scenes/ui/table3d.tscn 桌面 7.6）
