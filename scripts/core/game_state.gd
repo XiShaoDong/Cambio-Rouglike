@@ -1382,8 +1382,15 @@ func _finish_game_over_hand(failed_seat: int) -> void:
 		"failed_hand": failed_seat,
 		"rewards": rewards,
 	}
+	for entry in winners:
+		players[entry].wins = int(players[entry].get("wins", 0)) + 1
+	if _series_finished():
+		last_result["series"] = {"finished": true, "ranking": SeriesRanking.final_ranking(players, turn_order)}
 	_broadcast_sfx("winner")
 	_broadcast_state()
+	# R-07 超限结束同样要启动"结算→商店"自动推进，否则会卡在结算进不了商店。
+	if not last_result.get("ranking", []).is_empty() and not _series_finished():
+		_start_series_timer()
 
 func _player_snapshot(seat: int, reveal_all: bool, viewer_id := 0, peek_slots: Array[int] = []) -> Dictionary:
 	return HiddenInfo._player_snapshot(self, seat, reveal_all, viewer_id, peek_slots)

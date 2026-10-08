@@ -14,6 +14,7 @@ func _ready() -> void:
 	await _test_buy_invalid()
 	await _test_sold_first_come()
 	await _test_all_done_advance()
+	_test_over_hand_advance()
 	var status: String = " (FAILURES!)" if failures > 0 else ""
 	print("=== SHOP RESULT: %d/%d passed%s ===" % [checks - failures, checks, status])
 	get_tree().quit(1 if failures > 0 else 0)
@@ -47,6 +48,32 @@ func _test_relic_defs() -> void:
 	_check("遗物字段齐全", str(pool[0].get("id", "")) != "" and str(pool[0].get("name", "")) != "")
 	_check("遗物固定价 50", int(pool[0].get("price", 0)) == 50 and int(pool[1].get("price", 0)) == 50)
 	_check("def_by_id 反查", Relics.def_by_id(Relics.JOKER_TRANSFORM_ID).get("name", "") != "")
+
+## R-07 手牌超限结束（另一条 GAME_OVER 入口）也必须启动"结算→商店"自动推进，否则卡结算。
+func _test_over_hand_advance() -> void:
+	GameState._reset_match()
+	_rejections = 0
+	GameState._add_player(1, "A")
+	GameState._add_player(2, "B")
+	GameState._server_start_match(0, 5)
+	GameState._server_initial_ready(0)
+	GameState._server_initial_ready(1)
+	GameState._finish_game_over_hand(0)
+	_check("R-07 超限结束停在 GAME_OVER", GameState.phase == GameState.Phase.GAME_OVER)
+	_check("R-07 结束时衔接 Timer 已启动", not GameState.series_timer.is_stopped())
+	GameState._on_series_auto_advance()
+	_check("R-07 结束后可进入商店", GameState.phase == GameState.Phase.SHOP)
+	# 把末用 R-07 结束：应有系列赛总结、不启动商店 timer
+	GameState._reset_match()
+	GameState._add_player(1, "A")
+	GameState._add_player(2, "B")
+	GameState._server_start_match(0, 5)
+	GameState._server_initial_ready(0)
+	GameState._server_initial_ready(1)
+	GameState.match_number = int(GameState.run_state.get("match_limit", 5))
+	GameState._finish_game_over_hand(0)
+	_check("把末 R-07 带系列赛总结", not (GameState.last_result.get("series", {}) as Dictionary).is_empty())
+	_check("把末 R-07 不启动商店 timer", GameState.series_timer.is_stopped())
 
 func _test_shop_flow() -> void:
 	_open_with_finish(5)
