@@ -32,7 +32,7 @@ func _run() -> void:
 	var card := burst.get_node_or_null("VBox/CardCenter/Card") as CardView
 	_check("中间有卡牌", card != null)
 	_check("卡面=红桃J", card != null and card.is_face_up and str(card.card_data.get("rank")) == "J" and str(card.card_data.get("suit")) == "♥")
-	_check("右侧垂直居中锚点", is_equal_approx(burst.anchor_left, 1.0) and is_equal_approx(burst.anchor_top, 0.5))
+	_check("中线在屏幕 3/4、垂直居中", is_equal_approx(burst.anchor_left, 0.75) and is_equal_approx(burst.anchor_top, 0.5))
 	_check("非交互（IGNORE）", burst.mouse_filter == Control.MOUSE_FILTER_IGNORE)
 	burst.queue_free()
 

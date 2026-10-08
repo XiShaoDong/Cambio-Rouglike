@@ -6,7 +6,7 @@ extends Control
 
 const BURST_PATH := "res://assets/ui/slap_burst.svg"
 const SIZE := Vector2(360.0, 400.0)
-const RIGHT_MARGIN := 140.0
+const CENTER_X_RATIO := 0.75  # 屏幕横向四等份，容器中线落在 3/4 处
 const CARD_SIZE := Vector2(120.0, 168.0)
 const TITLE_FONT := 34
 const NAME_FONT := 20
@@ -20,13 +20,13 @@ var _cards := CardFactory.new()
 ## 构建并播放。card 为成功贴到的那张牌（含 rank/suit/label），player_name 为贴中者名字。
 func setup(card: Dictionary, player_name: String) -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	# 屏幕右侧、垂直居中
-	anchor_left = 1.0
-	anchor_right = 1.0
+	# 横向：屏幕四等份，容器中线落在 3/4；纵向：垂直居中
+	anchor_left = CENTER_X_RATIO
+	anchor_right = CENTER_X_RATIO
 	anchor_top = 0.5
 	anchor_bottom = 0.5
-	offset_left = -SIZE.x - RIGHT_MARGIN
-	offset_right = -RIGHT_MARGIN
+	offset_left = -SIZE.x * 0.5
+	offset_right = SIZE.x * 0.5
 	offset_top = -SIZE.y * 0.5
 	offset_bottom = SIZE.y * 0.5
 	pivot_offset = SIZE * 0.5
