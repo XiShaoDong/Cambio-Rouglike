@@ -217,6 +217,7 @@ UI 层已拆分（main.gd 是组合根）：
 - **B44（3D 罚牌飞牌飞到一半消失后瞬间出现在手牌）**：`Table3dView.slot_xform` 对**未渲染槽**（罚牌追加的第 5/6 张、或回填空槽）用**座位根节点**（`y=0` 地面）而非 `HandAnchor`（`y≈1.03`）计算，罚牌飞牌朝桌面下方扎、穿桌消失，随后槽位才在正确高度出现。修复：登记 `_hand_node_by_id`，`slot_xform` 未渲染分支改用 `HandAnchor.global_transform * _slot_local(slot)`。详见 `BUG档案.md`。
 - **B45（3D 交换飞牌泄漏牌面）**：`swap` 事件把两张牌面广播给所有客户端，3D `CardFly` 又无条件 `body.setup({card})`——点数标签是 billboard，翻到背面仍显示 → 私人交换泄漏。修复：`CardFly` 按"当前可见面"（起/终面 + 翻转中点）刷新 `body.setup({card}/{})`，起终面都非正面时全程不显牌面/标签（与 2D 一致，零协议改动）。另：抽牌堆 `DeckCount` 改为 `剩余/总数`（`draw_count/KongRules.DECK_SIZE`）。详见 `BUG档案.md`。
 - **B46（3D 看板隐藏后仍抢射线命中）**：`Board3d` 拾取盒不随隐藏禁用，`board3d`/`hint3d` 同锚点时隐藏块的拾取盒抢走射线 → 可见看板 `hit_viewport_coord` 返回 (-1,-1) → 该区域按钮 hover/点击失效（Ready 中间、商店遗物按钮点不了而 skip 能点）。修复：`_sync_visible()` 里 `_pick_shape.disabled = not visible`。另修：`Board3d._process` 内容尺寸变化时自动 `wrap_to_content()`（结算逐轮变高不再被裁）；有模态/按钮时 `main._auto_aim_board()` 自动把视线对准看板（高位看板可点）。详见 `BUG档案.md`。
+- **B47（R-07 超限结束卡结算、进不了商店）**：`GAME_OVER` 两入口中 `_finish_game_over_hand` 漏调 `_start_series_timer()`（及把末 `series` 总结/胜场累加），从超限路径结束的局永久停在结算页。修复：补齐。另：自动对准已改为**结算(GAME_OVER)期间不对准**、模态板**只在打开时对准一次**、提示板按钮变化时才重对准。详见 `BUG档案.md`。
 
 ## 8. 验证命令（headless 单元测试，不启动 GUI）
 
