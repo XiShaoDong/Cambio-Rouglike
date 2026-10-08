@@ -21,7 +21,7 @@ var _panels: Array = []
 var _pending_release: InputEventMouseButton = null
 var _world_size := Vector2(0.6, 0.3)
 var _viewport_size := MIN_VIEWPORT
-var halo_enabled := true   # 是否显示外圈光晕边框（提示板的纯按钮面板可关）
+var halo_enabled := false  # 是否显示外圈光晕边框（默认关：面板/按钮只显示内容本身，不带外框）
 var pick_pad := PICK_PAD   # 拾取盒相对视觉尺寸的外扩量（提示板可加大，便于对准）
 
 func _ready() -> void:
