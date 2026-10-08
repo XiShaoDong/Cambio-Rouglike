@@ -364,8 +364,6 @@ func _refresh_hint_panel() -> void:
 		if hint3d != null and is_instance_valid(hint3d):
 			hint3d.visible = false
 		return
-	if hint3d != null and is_instance_valid(hint3d):
-		hint3d.visible = true
 	var viewer := int(latest_state.get("viewer_id", 0))
 	var current := int(latest_state.get("current_player", -1))
 	_update_hint_hud(phase, viewer, current)
@@ -376,16 +374,23 @@ func _refresh_hint_panel() -> void:
 		ready.disabled = not ActionModel.ready_enabled(latest_state, game_view._ready_clicked)
 	# 条件动作按钮（Q 交换/不交换、变换 Joker）重建：紧贴提示文本下方
 	var acts: HBoxContainer = _hint_panel.get_node_or_null("VBox/HintActions")
+	var has_actions := false
 	if acts != null:
 		for child in acts.get_children():
+			acts.remove_child(child)
 			child.queue_free()
 		for entry in ActionModel.conditional_actions(latest_state, _interaction_ctx()):
+			has_actions = true
 			var act_btn := _decision_button(str(entry.get("text", "")))
 			act_btn.disabled = not bool(entry.get("enabled", true))
 			act_btn.pressed.connect(_on_action.bind(str(entry.get("action", ""))))
 			acts.add_child(act_btn)
+	# 提示板只承载 Ready / 条件动作按钮：无按钮时隐藏，避免遗留空面板浮在牌桌上
 	if hint3d != null and is_instance_valid(hint3d):
-		hint3d.wrap_to_content()
+		var has_buttons := (ready != null and ready.visible) or has_actions
+		hint3d.visible = has_buttons
+		if has_buttons:
+			hint3d.wrap_to_content()
 
 ## 准星射线命中哪块看板（模态板 / 提示板）→ {host, coord}；未命中 {}。
 func _board_hit() -> Dictionary:

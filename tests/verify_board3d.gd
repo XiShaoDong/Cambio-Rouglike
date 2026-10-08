@@ -224,6 +224,7 @@ func _test_main_routing() -> void:
 	_check("3D 下有 board3d 节点", main.board3d != null and is_instance_valid(main.board3d))
 	_check("3D 下有 hint3d 节点", main.hint3d != null and is_instance_valid(main.hint3d))
 	_check("提示板已挂常驻提示面板", main.hint3d.has_panel())
+	_check("无按钮时提示板隐藏（不留空面板）", not main.hint3d.visible)
 	_check("无模态时模态大板不显示", not main.board3d.visible)
 	_check("无模态时点击落到牌桌", main._click_route(false) == "table")
 	_check("命中看板时点击给看板", main._click_route(true) == "board")
@@ -257,6 +258,7 @@ func _test_main_routing() -> void:
 	await get_tree().process_frame
 	var ready: Button = main._hint_panel.get_node_or_null("VBox/ReadyButton")
 	_check("开局记忆阶段提示板显示 Ready", ready != null and ready.visible)
+	_check("Ready 阶段提示板可见", main.hint3d.visible)
 
 	# Q_DECISION 已看自己牌：交换/不交换按钮出现在提示板下方（与 2D HintActions 一致）
 	var qst := _tournament_state()
