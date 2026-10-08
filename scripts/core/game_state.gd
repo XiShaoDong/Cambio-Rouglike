@@ -867,7 +867,7 @@ func _server_q_view_own(sender: int, own_slot: int, action_id := "") -> void:
 	q_context["own_slot"] = own_slot
 	q_context["own_viewed"] = true
 	_send_reveal(sender, "Q：查看自己的牌", [_card_public(players[sender].cards[own_slot])], {"player_id": sender, "slot": own_slot})
-	_broadcast_peek_highlight(sender, {"player_id": sender, "slot": own_slot})
+	_broadcast_peek_highlight(sender, {"player_id": sender, "slot": own_slot, "hold": true})
 	_add_log("%s 查看了自己的一张牌。" % players[sender].name)
 	_broadcast_state()
 

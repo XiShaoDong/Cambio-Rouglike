@@ -22,6 +22,7 @@ func _run() -> void:
 	await _test_penalty_render_midflight()
 	await _test_swap_label_leak()
 	await _test_peek_hidden_flip()
+	await _test_peek_hidden_hold()
 	await _test_reveal_replay_no_restart()
 	await _test_held_reveal()
 	_test_reveal_glow_priority()
@@ -198,6 +199,27 @@ func _test_peek_hidden_flip() -> void:
 	# 到时翻回背面
 	await get_tree().create_timer(1.0).timeout
 	_check("peek 到时翻回背面", not view._card_blocks[0][2].is_peek_hidden() and is_equal_approx(view._card_blocks[0][2].reveal_progress(), 0.0))
+	view.queue_free()
+
+## Q 的两张看牌：他人视角闭眼占位翻转 hold 到决策（超时不自动翻回），release 才翻回。
+func _test_peek_hidden_hold() -> void:
+	var view = load("res://scenes/ui/table3d.tscn").instantiate()
+	add_child(view)
+	await get_tree().process_frame
+	view.render(_base_state())
+	await get_tree().process_frame
+	var blue := Color(0.2, 0.9, 1.0)
+	view.reveal_hidden_slot(1, 2, blue, 0.3, true)
+	_check("Q hold 揭示登记（hold=true）", view._reveals.has("1_2") and bool(view._reveals["1_2"].get("hold", false)))
+	await get_tree().create_timer(CardBlock.FLIP_DURATION + 0.12).timeout
+	_check("Q hold 翻到闭眼面", view._card_blocks[1][2].is_peek_hidden())
+	# 超过普通揭示时长仍不自动翻回
+	await get_tree().create_timer(1.0).timeout
+	_check("Q hold 超时不自动翻回", view._card_blocks[1][2].is_peek_hidden() and view._reveals.has("1_2"))
+	# 决策结束释放 → 翻回背面
+	view.release_hidden_reveals()
+	await get_tree().create_timer(CardBlock.FLIP_DURATION + 0.12).timeout
+	_check("Q hold 释放后翻回背面", not view._card_blocks[1][2].is_peek_hidden() and not view._reveals.has("1_2"))
 	view.queue_free()
 
 ## B37 回归：揭示重放不应把翻牌从头再播（翻完又显示正面 + 重新打炫光）。

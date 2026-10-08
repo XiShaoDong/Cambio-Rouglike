@@ -560,12 +560,18 @@ func reveal_slot(seat_id: int, slot: int, card: Dictionary, color := Color(0, 0,
 			b.restore())
 
 ## 他人 peek 占位揭示：翻到"黑底闭眼"面 + 颜色光晕，到时翻回。跨 render 重放（同 reveal_slot）。
-func reveal_hidden_slot(seat_id: int, slot: int, color := Color(0, 0, 0, 0), dur := 1.5) -> void:
+## hold=true 时不自动翻回（用于 Q 的两张看牌：保持到本次决策），由 release_hidden_reveals() 释放。
+func reveal_hidden_slot(seat_id: int, slot: int, color := Color(0, 0, 0, 0), dur := 1.5, hold := false) -> void:
 	var key := "%d_%d" % [seat_id, slot]
 	_reveal_seq += 1
 	var token := _reveal_seq
-	_reveals[key] = {"hidden": true, "color": color, "token": token, "start_ms": Time.get_ticks_msec()}
+	var entry := {"hidden": true, "color": color, "token": token, "start_ms": Time.get_ticks_msec()}
+	if hold:
+		entry["hold"] = true
+	_reveals[key] = entry
 	_apply_reveal(seat_id, slot)
+	if hold:
+		return
 	get_tree().create_timer(dur).timeout.connect(func():
 		if not _reveals.has(key):
 			return
@@ -575,6 +581,20 @@ func reveal_hidden_slot(seat_id: int, slot: int, color := Color(0, 0, 0, 0), dur
 		var b = _find_block(seat_id, slot)
 		if b != null:
 			b.restore())
+
+## 释放所有 hold 的闭眼占位揭示（Q 决策结束时调用）：翻回背面。
+func release_hidden_reveals() -> void:
+	var keys: Array = []
+	for key in _reveals.keys():
+		var r: Dictionary = _reveals[key]
+		if bool(r.get("hidden", false)) and bool(r.get("hold", false)):
+			keys.append(key)
+	for key in keys:
+		_reveals.erase(key)
+		var parts := str(key).split("_")
+		var b = _find_block(int(parts[0]), int(parts[1]))
+		if b != null:
+			b.restore()
 
 ## 持续揭示某槽位（翻到正面并**保持**，不自动翻回；Q 能力确认交换/不交换前用）。
 ## 同样登记在 `_reveals`，render 重建后 `_apply_reveal` 重放（elapsed 已过翻转时长 → 直接呈现正面）。

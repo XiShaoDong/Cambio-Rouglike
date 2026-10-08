@@ -466,6 +466,7 @@ func _set_table3d(on: bool) -> void:
 		if _slap_burst != null and is_instance_valid(_slap_burst):
 			_slap_burst.queue_free()
 			_slap_burst = null
+		_q_hidden_held = false
 		if board3d != null and is_instance_valid(board3d):
 			for c in board3d.detach_all():
 				if c != null and is_instance_valid(c):
@@ -730,6 +731,7 @@ var _pending_winner_sfx := false
 # Q 能力：下一次收到的看牌揭示保持正面（不自动翻回），直到玩家确认交换/不交换。
 var _hold_next_reveal := false
 var _q_hold_active := false
+var _q_hidden_held := false   # Q 两张看牌：他人视角闭眼翻转 hold 中（决策结束释放）
 
 ## 标记某个玩家槽位正在动画（渲染时该槽位显示虚线占位，不显示原卡）。
 func mark_anim_slot(pid: int, slot: int) -> void:
@@ -1047,6 +1049,11 @@ func _on_state_updated(state: Dictionary) -> void:
 	# 兜底：离开 Q_DECISION 时翻回 hold 的看牌（请求被拒/异常流转），避免牌永久正面。
 	if _q_hold_active and int(state.phase) != PHASE_Q_DECISION:
 		_release_q_holds()
+	# Q 的两张看牌：其他玩家视角的闭眼占位翻转 hold 到决策结束 → 离开 Q_DECISION 时翻回
+	if _q_hidden_held and int(state.phase) != PHASE_Q_DECISION:
+		if _table3d_active and table3d != null and is_instance_valid(table3d):
+			table3d.release_hidden_reveals()
+		_q_hidden_held = false
 	if int(state.phase) == PHASE_GAME_OVER:
 		# 结算接管棋盘：先清残留动画/挂起状态再渲染，
 		# 保证卡牌以真实卡（而非在途揭示的动画占位）出现。
@@ -1392,8 +1399,11 @@ func _show_slap_success(data: Dictionary) -> void:
 
 func _on_peek_highlight(data: Dictionary) -> void:
 	if _table3d_active and table3d != null and is_instance_valid(table3d):
-		# 3D：翻到"黑底闭眼"占位面 + 蓝光（比单纯蓝光更明显），到时翻回
-		table3d.reveal_hidden_slot(int(data.get("player_id", 0)), int(data.get("slot", -1)), PEEK_GLOW_COLOR, PEEK_GLOW_DURATION)
+		# 3D：翻到"黑底闭眼"占位面 + 蓝光（比单纯蓝光更明显），到时翻回；Q 的两张 hold 到决策。
+		var hold := bool(data.get("hold", false))
+		if hold:
+			_q_hidden_held = true
+		table3d.reveal_hidden_slot(int(data.get("player_id", 0)), int(data.get("slot", -1)), PEEK_GLOW_COLOR, PEEK_GLOW_DURATION, hold)
 		return
 	var pid := int(data.get("player_id", 0))
 	var slot := int(data.get("slot", -1))
