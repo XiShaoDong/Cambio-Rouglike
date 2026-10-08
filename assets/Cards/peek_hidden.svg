@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="220" height="308" viewBox="0 0 220 308">
+  <!-- 黑底圆角卡牌（“非法看到”的占位面） -->
+  <rect x="5" y="5" width="210" height="298" rx="18" fill="#0c0c11" stroke="#3c3c46" stroke-width="3"/>
+  <!-- 闭上的眼睛：向下闭合的眼睑弧线 -->
+  <path d="M64 154 Q110 194 156 154" fill="none" stroke="#f3f3f6" stroke-width="11" stroke-linecap="round"/>
+  <!-- 睫毛 -->
+  <g stroke="#f3f3f6" stroke-width="7" stroke-linecap="round">
+    <line x1="82" y1="166" x2="75" y2="184"/>
+    <line x1="110" y1="178" x2="110" y2="197"/>
+    <line x1="138" y1="166" x2="145" y2="184"/>
+  </g>
+</svg>

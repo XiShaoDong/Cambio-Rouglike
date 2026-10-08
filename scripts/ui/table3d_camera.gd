@@ -77,6 +77,16 @@ func look(rel: Vector2) -> void:
 	pitch = clampf(pitch + rel.y * MOUSE_SENSITIVITY, -PITCH_LIMIT, PITCH_LIMIT)
 	_apply()
 
+## 直接把视线对准世界坐标 target（用于自动对准高位看板/按钮，使准星命中）。
+## yaw/pitch 仍夹取在基准 ±限制内（不越界）。对不准时至少朝该方向。
+func aim_at(target: Vector3) -> void:
+	_build()
+	var to := target - global_position
+	var horiz := Vector2(to.x, to.z).length()
+	yaw = clampf(rad_to_deg(atan2(-to.x, -to.z)), base_yaw - YAW_LIMIT, base_yaw + YAW_LIMIT)
+	pitch = clampf(rad_to_deg(atan2(-to.y, maxf(horiz, 0.0001))), -PITCH_LIMIT, PITCH_LIMIT)
+	_apply()
+
 func _apply() -> void:
 	if _pivot == null:
 		return
