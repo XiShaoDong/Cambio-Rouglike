@@ -258,17 +258,20 @@ func _board_anchor_world(seat_pos: Vector3, cam: Camera3D, board_h: float) -> Ve
 	return Vector3.ZERO
 
 ## 有模态面板 / 提示按钮时，自动把相机视线对准看板——看板锚在高位，默认准星落在桌面会打不到。
-## 仅在看板（位置/尺寸）变化时对准一次，之后允许玩家自由环视。
+## 模态板：仅在**打开时**对准一次（商店/结算内容或高度变化不再重对准，避免相机跳动打断点击）。
+## 提示板（Ready/Q/J）：按钮集合变化时重新对准，保证新出现的按钮落在准星上。
 func _auto_aim_board() -> void:
 	var host: Node3D = null
+	var key := ""
 	if _board_has_panel() and board3d != null and is_instance_valid(board3d) and board3d.visible:
 		host = board3d
+		key = "modal"
 	elif hint3d != null and is_instance_valid(hint3d) and hint3d.visible:
 		host = hint3d
+		key = "hint|%s" % str(hint3d.world_size())
 	if host == null:
 		_board_aim_key = ""
 		return
-	var key := "%s|%s" % [str(host.global_position), str(host.world_size())]
 	if key == _board_aim_key:
 		return
 	_board_aim_key = key
