@@ -22,6 +22,7 @@ var _pending_release: InputEventMouseButton = null
 var _world_size := Vector2(0.6, 0.3)
 var _viewport_size := MIN_VIEWPORT
 var halo_enabled := true   # 是否显示外圈光晕边框（提示板的纯按钮面板可关）
+var pick_pad := PICK_PAD   # 拾取盒相对视觉尺寸的外扩量（提示板可加大，便于对准）
 
 func _ready() -> void:
 	_build()
@@ -176,7 +177,7 @@ func _apply_size() -> void:
 	(_screen.mesh as QuadMesh).size = _world_size
 	(_halo.mesh as QuadMesh).size = _world_size + Vector2(HALO_MARGIN, HALO_MARGIN) * 2.0
 	_halo.visible = halo_enabled
-	_pick_box.size = Vector3(_world_size.x + PICK_PAD.x, _world_size.y + PICK_PAD.y, 0.02)
+	_pick_box.size = Vector3(_world_size.x + pick_pad.x, _world_size.y + pick_pad.y, 0.02)
 
 func _sync_visible() -> void:
 	visible = _panels.size() > 0
@@ -186,6 +187,12 @@ func set_halo_enabled(on: bool) -> void:
 	halo_enabled = on
 	if _halo != null and is_instance_valid(_halo):
 		_halo.visible = on
+
+## 设置拾取盒外扩量（提示板可加大，让准星略偏也能命中按钮）。
+func set_pick_pad(p: Vector2) -> void:
+	pick_pad = p
+	if _pick_box != null:
+		_apply_size()
 
 ## 只绕世界 Y 朝向相机（**完全竖直**，不含俯仰）。+Y = 世界 up，+Z 水平指向相机，贴图不镜像。
 func set_facing(cam: Camera3D) -> void:

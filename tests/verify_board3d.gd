@@ -45,7 +45,8 @@ func _test_ready_click() -> void:
 	await get_tree().physics_frame
 	var ready: Button = main._hint_panel.get_node_or_null("VBox/ReadyButton")
 	_check("3D 开局记忆显示 Ready", ready != null and ready.visible)
-	_check("Ready 已加大高度（易点）", ready != null and ready.custom_minimum_size.y >= 60.0)
+	_check("Ready 已加大高度（易点）", ready != null and ready.custom_minimum_size.y >= 90.0)
+	_check("提示板拾取盒已放宽（准星略偏可命中）", main.hint3d.pick_pad.x >= 0.4)
 	_check("Ready 有明显 hover 样式", ready != null and ready.has_theme_stylebox_override("hover"))
 	# 提示板与模态板同锚点（贴玩家手牌上方）；把相机对准提示板 → 准星命中 Ready
 	var cam: Camera3D = main.table3d.camera.camera_node()

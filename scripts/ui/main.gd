@@ -228,6 +228,7 @@ func _ensure_board() -> void:
 		hint3d.name = "HintBoard"
 		table3d.add_child(hint3d)
 		hint3d.set_halo_enabled(false)   # 提示板只显示按钮本身，不要外圈光晕边框
+		hint3d.set_pick_pad(Vector2(0.5, 0.5))   # 放宽拾取盒：准星略偏也能命中 Ready/按钮
 		_hint_panel = _make_hint_panel()
 		hint3d.mount_panel(_hint_panel)
 
@@ -288,8 +289,8 @@ func _make_hint_panel() -> Control:
 	var ready := Button.new()
 	ready.name = "ReadyButton"
 	ready.text = "Ready"
-	ready.custom_minimum_size = Vector2(260.0, 66.0)
-	ready.add_theme_font_size_override("font_size", 26)
+	ready.custom_minimum_size = Vector2(340.0, 96.0)
+	ready.add_theme_font_size_override("font_size", 32)
 	ready.add_theme_color_override("font_color", Color(0.08, 0.09, 0.12))
 	ready.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	var acc := UITheme.color("accent")
