@@ -17,6 +17,7 @@ var _screen: MeshInstance3D
 var _halo: MeshInstance3D
 var _pick: Area3D
 var _pick_box: BoxShape3D
+var _pick_shape: CollisionShape3D
 var _panels: Array = []
 var _pending_release: InputEventMouseButton = null
 var _world_size := Vector2(0.6, 0.3)
@@ -78,6 +79,8 @@ func _build() -> void:
 	var shape := CollisionShape3D.new()
 	_pick_box = BoxShape3D.new()
 	shape.shape = _pick_box
+	shape.disabled = true   # 初始无面板 → 隐藏：拾取盒禁用
+	_pick_shape = shape
 	_pick.add_child(shape)
 	add_child(_pick)
 
@@ -181,6 +184,10 @@ func _apply_size() -> void:
 
 func _sync_visible() -> void:
 	visible = _panels.size() > 0
+	# 隐藏时禁用拾取盒：否则隐藏看板仍参与射线，会抢走其他看板（同锚点）的命中
+	#（表现为"看得到按钮但 hover/点击不生效"，B46）。
+	if _pick_shape != null:
+		_pick_shape.disabled = not visible
 
 ## 面板内容尺寸变化（如结算页逐轮新增排名行）时自动重新 wrap，避免内容被裁。
 func _process(_delta: float) -> void:

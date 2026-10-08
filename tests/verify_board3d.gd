@@ -21,6 +21,7 @@ func _run() -> void:
 	await _test_board_input()
 	await _test_board3d()
 	await _test_board_rewrap()
+	await _test_hidden_board_pick()
 	await _test_modals_dim()
 	await _test_ready_click()
 	await _test_main_routing()
@@ -58,6 +59,7 @@ func _test_ready_click() -> void:
 	var coord: Vector2i = main.hint3d.hit_viewport_coord(cam)
 	var rr: Rect2 = ready.get_global_rect() if ready != null else Rect2()
 	_check("对准提示板后准星落在 Ready 内（可点）", coord.x >= 0 and rr.has_point(Vector2(coord)))
+	_check("board3d 隐藏时不抢命中（提示板可命中）", not main._board_hit().is_empty())
 	# 让 main._process 推送 hover motion，检查 Ready 是否真的进入 hover 态
 	await get_tree().process_frame
 	await get_tree().process_frame
@@ -81,6 +83,22 @@ func _test_board_rewrap() -> void:
 	for i in 3:
 		await get_tree().process_frame
 	_check("内容变高后看板自动重 wrap（不被裁）", b.viewport_size().y > h1)
+	panel.queue_free()
+	b.queue_free()
+
+## 隐藏看板必须禁用拾取盒，否则会抢走同锚点其他看板的射线命中（B46）。
+func _test_hidden_board_pick() -> void:
+	var b := Board3d.new()
+	add_child(b)
+	await get_tree().process_frame
+	_check("无面板时拾取盒禁用", b._pick_shape.disabled)
+	var panel := PanelContainer.new()
+	b.mount_panel(panel)
+	await get_tree().process_frame
+	_check("有面板时拾取盒启用", not b._pick_shape.disabled)
+	b.unmount_panel(panel)
+	await get_tree().process_frame
+	_check("卸载后隐藏且拾取盒禁用", not b.visible and b._pick_shape.disabled)
 	panel.queue_free()
 	b.queue_free()
 
