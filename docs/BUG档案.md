@@ -556,3 +556,13 @@ at: Board3d.detach_all (board3d.gd) ← _set_table3d(false)
 ## 附：抽牌堆显示 剩余/总数
 
 3D `Center/DeckCount` 由仅显示 `draw_count` 改为 `剩余/总数`（`"%d/%d" % [draw_count, KongRules.DECK_SIZE]`，`DECK_SIZE=54`）。测试 `verify_table3d`「抽牌堆显示 剩余/总数（30/54）」。
+
+## B46：3D 看板隐藏后仍抢走射线命中（Ready 中间/商店中间按钮点不了）
+
+**现象**：3D 下 Ready 按钮"中间区域的文字那里 hover/点击不生效，但周围一圈可以"；商店页遗物按钮点不了，但底部"跳过购买"可以点。
+
+**根因**：`Board3d` 的拾取盒 `Area3D`（`_pick`）**只看 `visible` 不参与碰撞开关**——看板隐藏（无面板）时拾取盒仍启用。`board3d` 与 `hint3d` 如今**同锚点**（都在本机手牌上方），隐藏看板的拾取盒与可见看的叠加，`Table3dPicker` 的射线可能命中**隐藏**那块 → 可见看板的 `hit_viewport_coord` 判定 `collider != _pick` 返回 (-1,-1) → `main._board_hit()` 为空 → 每帧 `push_motion_out` 清掉 hover → 该区域按钮点不了。表现与"拾取盒覆盖范围"一致：被隐藏大盒覆盖的中间区域失效，未被覆盖的边缘/底部（如 skip）正常。
+
+**修复**：`Board3d` 保存 `_pick_shape`，`_sync_visible()` 里 `_pick_shape.disabled = not visible`（初始 `_build` 也置 disabled）。
+
+**诊断方法**：`verify_board3d`「无面板时拾取盒禁用 / 有面板时启用 / 卸载后禁用」「board3d 隐藏时不抢命中（提示板可命中）」。
