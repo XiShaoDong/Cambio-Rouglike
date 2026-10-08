@@ -566,3 +566,13 @@ at: Board3d.detach_all (board3d.gd) ← _set_table3d(false)
 **修复**：`Board3d` 保存 `_pick_shape`，`_sync_visible()` 里 `_pick_shape.disabled = not visible`（初始 `_build` 也置 disabled）。
 
 **诊断方法**：`verify_board3d`「无面板时拾取盒禁用 / 有面板时启用 / 卸载后禁用」「board3d 隐藏时不抢命中（提示板可命中）」。
+
+## B47：手牌超限（R-07）结束的局卡在结算、进不了商店
+
+**现象**：结算页弹出后一直停着，等多久都不进商店（无规律，取决于是否有人手牌超限）。
+
+**根因**：`GAME_OVER` 有两个入口——`_finish_game()`（正常结束）与 `_finish_game_over_hand()`（R-07 手牌超限立即结束）。`_finish_game` 在非把末会调用 `_start_series_timer()` 启动"结算→商店"的 10s 自动推进；**`_finish_game_over_hand` 漏了这一句**，导致从超限路径结束的局 `series_timer` 从不启动 → 结算页永久停留。它还漏了把末的 `last_result["series"]` 总结与胜场 `wins` 累加（与 `_finish_game` 不一致）。
+
+**修复**：`_finish_game_over_hand` 补齐：胜场累加、把末 `series` 总结、非把末 `_start_series_timer()`。
+
+**诊断方法**：`verify_shop`「R-07 超限结束停在 GAME_OVER / 结束时衔接 Timer 已启动 / R-07 结束后可进入商店 / 把末 R-07 带系列赛总结 / 把末 R-07 不启动商店 timer」。
