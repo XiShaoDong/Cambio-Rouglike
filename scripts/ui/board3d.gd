@@ -21,6 +21,7 @@ var _panels: Array = []
 var _pending_release: InputEventMouseButton = null
 var _world_size := Vector2(0.6, 0.3)
 var _viewport_size := MIN_VIEWPORT
+var halo_enabled := true   # 是否显示外圈光晕边框（提示板的纯按钮面板可关）
 
 func _ready() -> void:
 	_build()
@@ -50,6 +51,7 @@ func _build() -> void:
 	halo_mat.no_depth_test = true
 	_halo.material_override = halo_mat
 	_halo.position = Vector3(0.0, 0.0, -0.01)
+	_halo.visible = halo_enabled
 	add_child(_halo)
 
 	# 屏幕
@@ -173,10 +175,17 @@ func _apply_size() -> void:
 	_world_size = Vector2(_viewport_size) * PIXEL_SCALE
 	(_screen.mesh as QuadMesh).size = _world_size
 	(_halo.mesh as QuadMesh).size = _world_size + Vector2(HALO_MARGIN, HALO_MARGIN) * 2.0
+	_halo.visible = halo_enabled
 	_pick_box.size = Vector3(_world_size.x + PICK_PAD.x, _world_size.y + PICK_PAD.y, 0.02)
 
 func _sync_visible() -> void:
 	visible = _panels.size() > 0
+
+## 显隐外圈光晕边框（提示板的纯按钮面板可关闭，只显示按钮本身）。
+func set_halo_enabled(on: bool) -> void:
+	halo_enabled = on
+	if _halo != null and is_instance_valid(_halo):
+		_halo.visible = on
 
 ## 只绕世界 Y 朝向相机（**完全竖直**，不含俯仰）。+Y = 世界 up，+Z 水平指向相机，贴图不镜像。
 func set_facing(cam: Camera3D) -> void:

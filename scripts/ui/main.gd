@@ -227,6 +227,7 @@ func _ensure_board() -> void:
 		hint3d = Board3d.new()
 		hint3d.name = "HintBoard"
 		table3d.add_child(hint3d)
+		hint3d.set_halo_enabled(false)   # 提示板只显示按钮本身，不要外圈光晕边框
 		_hint_panel = _make_hint_panel()
 		hint3d.mount_panel(_hint_panel)
 
@@ -277,13 +278,8 @@ func _board_has_panel() -> bool:
 func _make_hint_panel() -> Control:
 	var panel := PanelContainer.new()
 	panel.name = "HintPanel"
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.08, 0.09, 0.12, 0.75)
-	style.set_corner_radius_all(10)
-	style.set_content_margin_all(12)
-	style.border_color = Color(0.42, 0.72, 0.95, 0.6)
-	style.set_border_width_all(1)
-	panel.add_theme_stylebox_override("panel", style)
+	# 透明容器：不再加面板边框/底色（3D 下只显示按钮本身，去除从 2D 迁移来的那层边框）
+	panel.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
 	var vb := VBoxContainer.new()
 	vb.name = "VBox"
 	vb.add_theme_constant_override("separation", 8)
