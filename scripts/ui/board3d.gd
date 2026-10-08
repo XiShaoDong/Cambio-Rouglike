@@ -182,6 +182,20 @@ func _apply_size() -> void:
 func _sync_visible() -> void:
 	visible = _panels.size() > 0
 
+## 面板内容尺寸变化（如结算页逐轮新增排名行）时自动重新 wrap，避免内容被裁。
+func _process(_delta: float) -> void:
+	if _panels.is_empty():
+		return
+	var control: Control = _panels[_panels.size() - 1]
+	if control == null or not is_instance_valid(control):
+		return
+	var content := _content_min_size(control)
+	var want := Vector2i(
+		int(ceil(content.x)) + WRAP_PADDING.x,
+		int(ceil(content.y)) + WRAP_PADDING.y).max(MIN_VIEWPORT)
+	if want != _viewport_size:
+		wrap_to_content()
+
 ## 显隐外圈光晕边框（提示板的纯按钮面板可关闭，只显示按钮本身）。
 func set_halo_enabled(on: bool) -> void:
 	halo_enabled = on

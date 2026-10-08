@@ -257,6 +257,24 @@ func _board_anchor_world(seat_pos: Vector3, cam: Camera3D, board_h: float) -> Ve
 			return cam.global_position + dir.normalized() * BOARD_DIST
 	return Vector3.ZERO
 
+## 有模态面板 / 提示按钮时，自动把相机视线对准看板——看板锚在高位，默认准星落在桌面会打不到。
+## 仅在看板（位置/尺寸）变化时对准一次，之后允许玩家自由环视。
+func _auto_aim_board() -> void:
+	var host: Node3D = null
+	if _board_has_panel() and board3d != null and is_instance_valid(board3d) and board3d.visible:
+		host = board3d
+	elif hint3d != null and is_instance_valid(hint3d) and hint3d.visible:
+		host = hint3d
+	if host == null:
+		_board_aim_key = ""
+		return
+	var key := "%s|%s" % [str(host.global_position), str(host.world_size())]
+	if key == _board_aim_key:
+		return
+	_board_aim_key = key
+	if table3d.camera != null:
+		table3d.camera.aim_at(host.global_position)
+
 ## 模态挂载：3D 激活挂到模态大板，否则沿用 2D 父节点（默认 main）。
 func _mount_modal(control: Control, parent_2d: Node = null) -> void:
 	if _table3d_active:
@@ -511,6 +529,7 @@ func _process(delta: float) -> void:
 	if table3d == null or not is_instance_valid(table3d):
 		return
 	_place_boards()
+	_auto_aim_board()
 	var cam: Camera3D = table3d.camera.camera_node()
 	if board3d != null and is_instance_valid(board3d):
 		board3d.set_facing(cam)
@@ -687,6 +706,7 @@ var _peek_glow_slots: Dictionary = {}
 var _slap_reveal_lock := false
 var _duel_panel: Control = null
 var _slap_burst: Control = null
+var _board_aim_key := ""
 var settings_menu: Control = null
 var _my_token := ""
 var _rejoin_addr := ""

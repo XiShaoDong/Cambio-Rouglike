@@ -20,6 +20,7 @@ func _check(name: String, ok: bool) -> void:
 func _run() -> void:
 	await _test_board_input()
 	await _test_board3d()
+	await _test_board_rewrap()
 	await _test_modals_dim()
 	await _test_ready_click()
 	await _test_main_routing()
@@ -62,6 +63,26 @@ func _test_ready_click() -> void:
 	await get_tree().process_frame
 	_check("准星悬停时 Ready.is_hovered()", ready != null and ready.is_hovered())
 	main.queue_free()
+
+## 面板内容变高（如结算页逐轮新增排名行）后，看板应自动重新 wrap，不被裁。
+func _test_board_rewrap() -> void:
+	var b := Board3d.new()
+	add_child(b)
+	await get_tree().process_frame
+	var panel := PanelContainer.new()
+	var inner := Control.new()
+	inner.custom_minimum_size = Vector2(120, 100)
+	panel.add_child(inner)
+	b.mount_panel(panel)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var h1: int = b.viewport_size().y
+	inner.custom_minimum_size = Vector2(120, 420)
+	for i in 3:
+		await get_tree().process_frame
+	_check("内容变高后看板自动重 wrap（不被裁）", b.viewport_size().y > h1)
+	panel.queue_free()
+	b.queue_free()
 
 func _test_board_input() -> void:
 	var size := Vector2(2.6, 1.8)
@@ -252,6 +273,8 @@ func _test_main_routing() -> void:
 	_check("board3d.has_panel()", main.board3d.has_panel())
 	_check("有模态时模态大板显示", main.board3d.visible)
 	_check("有模态时未命中看板则拦截（不点穿牌桌）", main._click_route(false) == "blocked")
+	await get_tree().physics_frame
+	_check("有模态时自动对准看板 → 准星可命中可点", not main._board_hit().is_empty())
 
 	# 开局记忆阶段：提示板显示 Ready 按钮
 	var st := _tournament_state()
