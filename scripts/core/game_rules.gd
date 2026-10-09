@@ -38,6 +38,14 @@ const SLAP_DUEL_GRACE_MS := 2000
 const SLAP_DUEL_TARGET_MIN := 0.15
 const SLAP_DUEL_TARGET_MAX := 0.85
 
+## 最终轮（Kongbaya）末位玩家行动后的**结算贴牌窗口**（秒）：期间仅可贴牌，到时开始结算。
+## 目的：末位行动后不立即结算，给其他玩家贴牌机会，并让末位动作的在途动画（peek 翻回 / J·Q 换位）放完。
+const SLAP_SETTLE_SECONDS := 10.0
+## 结算前收尾宽限（秒）：贴牌判定 / 罚牌 / 赠牌等发生在窗口内的动画放完后再结算。
+const SLAP_SETTLE_GRACE_SECONDS := 1.2
+## 手牌超限（R-07）：罚牌先飞到玩家手里，之后才开贴牌结算窗口（秒）。
+const SETTLE_OVERFLOW_PENALTY_DELAY := 0.9
+
 const SPECIAL_RANKS := ["7", "8", "9", "10", "J", "Q"]
 
 const START_CURRENCY := 100

@@ -19,7 +19,7 @@ signal sfx_played(kind: String)
 
 enum Phase { LOBBY, INITIAL_PEEK, TURN_DRAW, TURN_DECISION, Q_DECISION, SLAP_WINDOW, SLAP_EXCHANGE, GAME_OVER, SLAP_DUEL, BET, SHOP }
 
-const PROTOCOL_VERSION := 1
+const PROTOCOL_VERSION := 1 
 const MAX_ACTION_HISTORY := 64
 
 enum RejectCode {
@@ -57,6 +57,8 @@ var current_player_id := 0  # seat_id
 var _next_seat := 0
 var deck: Array[String] = []
 var discard_pile: Array[String] = []
+## 弃牌历史：所有曾进入弃牌堆的牌 id（按时间顺序；这些牌当时都公开，属公开信息）。
+var discard_history: Array[String] = []
 var cards: Dictionary = {}
 var pending_draw: Dictionary = {}
 var q_context: Dictionary = {}
@@ -93,6 +95,10 @@ var kongbaya: KongbayaSystem
 var slap_collect_timer := Timer.new()
 var slap_duel_timer := Timer.new()
 var series_timer := Timer.new()
+var settle_timer := Timer.new()  # 最终轮结算贴牌窗口 / 结算前收尾宽限
+var final_settle_pending := false  # 处于最终轮结算窗口（仅可贴牌）
+var final_settle_deadline_ms := 0  # 窗口 deadline（服务器时钟 ms；0=无）
+var _deferred_settle := Callable()  # 到时执行的结算回调
 
 func _ready() -> void:
 	peek = PeekSystem.new(self)
@@ -109,6 +115,9 @@ func _ready() -> void:
 	series_timer.one_shot = true
 	add_child(series_timer)
 	series_timer.timeout.connect(_on_series_auto_advance)
+	settle_timer.one_shot = true
+	add_child(settle_timer)
+	settle_timer.timeout.connect(_on_settle_timeout)
 	Network.host_started.connect(_on_host_started)
 	Network.joined_server.connect(_on_joined_server)
 	Network.peer_left.connect(_on_peer_left)
@@ -155,6 +164,7 @@ func _reset_match() -> void:
 	_next_seat = 0
 	deck.clear()
 	discard_pile.clear()
+	discard_history.clear()
 	cards.clear()
 	pending_draw.clear()
 	q_context.clear()
@@ -170,6 +180,10 @@ func _reset_match() -> void:
 	slap_collect_timer.stop()
 	slap_duel_timer.stop()
 	series_timer.stop()
+	settle_timer.stop()
+	final_settle_pending = false
+	final_settle_deadline_ms = 0
+	_deferred_settle = Callable()
 	last_result.clear()
 	event_log.clear()
 	shop = {}
@@ -468,6 +482,7 @@ func _deal_new_match() -> void:
 	# 清理上一局可能残留的按局状态（弃牌堆/待处理/贴牌/最终轮），
 	# 否则快照引用的旧卡牌 id 在新 cards 字典中不存在 → public_card 报错。
 	discard_pile.clear()
+	discard_history.clear()
 	pending_draw.clear()
 	q_context.clear()
 	final_queue.clear()
@@ -603,6 +618,8 @@ func server_take(source: String, action_id: String) -> void:
 		_server_take(_peer_to_seat(multiplayer.get_remote_sender_id()), source, action_id)
 
 func _server_take(sender: int, source: String, action_id := "") -> void:
+	if _guard_final_settle(sender, action_id):
+		return
 	if phase != Phase.TURN_DRAW:
 		_reject(sender, RejectCode.INVALID_PHASE, action_id)
 		return
@@ -1067,7 +1084,13 @@ func _discard_pending_and_open_slap(_resume: String) -> void:
 
 func _discard(card_id: String) -> void:
 	discard_pile.append(card_id)
+	discard_history.append(card_id)
 	slap_rank = cards[card_id].rank
+
+## 把一张牌放入弃牌堆，并记录到弃牌历史（供 stats 查看曾出现过的牌）。
+func _push_discard(card_id: String) -> void:
+	discard_pile.append(card_id)
+	discard_history.append(card_id)
 
 func _open_slap(_resume: String) -> void:
 	slap_open = true
@@ -1087,7 +1110,13 @@ func _advance_turn(final_mode := false) -> void:
 		decision = TurnSystem.decide(_alive_order(), current_player_id, kong_caller, [])
 	match decision.type:
 		TurnSystem.Decision.FINISH:
-			_finish_game()
+			# 最终轮末位行动后若贴牌窗口仍开启：不立即结算，进入 10s 结算贴牌窗口
+			# （仅可贴牌），到时或贴牌判定结束后再结算。见 _begin_settle_window()。
+			if slap_open:
+				_begin_settle_window(Callable(self, "_finish_game"),
+					"最终轮：贴牌窗口 %.0f 秒后结算。" % KongRules.SLAP_SETTLE_SECONDS)
+			else:
+				_finish_game()
 			return
 		TurnSystem.Decision.FINAL:
 			current_player_id = decision.next_player
@@ -1101,6 +1130,67 @@ func _advance_turn(final_mode := false) -> void:
 			phase = Phase.TURN_DRAW
 			_add_log("轮到 %s 行动。" % players[current_player_id].name)
 			_broadcast_state()
+
+## 进入结算贴牌窗口：不立即结算，保持 slap_open 与 TURN_DRAW，开一个 SLAP_SETTLE_SECONDS 的
+## deadline；期间仅可贴牌（_server_take 守卫），到时执行 finish_callable 结算。
+## 用于最终轮末位行动后，以及手牌超限罚牌落地后。
+func _begin_settle_window(finish_callable: Callable, log_text: String) -> void:
+	final_settle_pending = true
+	final_settle_deadline_ms = Time.get_ticks_msec() + int(KongRules.SLAP_SETTLE_SECONDS * 1000.0)
+	phase = Phase.TURN_DRAW  # 贴牌 attempt 要求 TURN_DRAW
+	slap_open = true
+	slap.open_slap()
+	_schedule_settle(KongRules.SLAP_SETTLE_SECONDS, finish_callable)
+	_add_log(log_text)
+	_broadcast_state()
+
+## 手牌超限（R-07）结算：先广播罚牌动画，等罚牌飞到玩家手里后再开贴牌窗口，最后结算。
+## 已在结束倒计时中（final_settle_pending）时不重制倒计时。
+func _begin_overflow_settle(failed_seat: int) -> void:
+	if final_settle_pending:
+		_broadcast_state()  # 结束倒计时已在进行：不重制
+		return
+	final_settle_pending = true  # 罚牌落地期间阻止普通操作；slap_open 关闭（不接受贴牌）
+	final_settle_deadline_ms = 0
+	slap_open = false
+	slap_collect.clear()
+	slap_duel.clear()
+	slap_collect_timer.stop()
+	slap_duel_timer.stop()
+	phase = Phase.TURN_DRAW
+	_schedule_settle(KongRules.SETTLE_OVERFLOW_PENALTY_DELAY, Callable(self, "_open_overflow_slap_window").bind(failed_seat))
+	var failed_name: String = players.get(failed_seat, {}).get("name", "玩家")
+	_add_log("%s 手牌超过 %d 张，罚牌后结算。" % [failed_name, KongRules.MAX_HAND_CARDS])
+	_broadcast_state()
+
+## 罚牌落地后：开 10s 贴牌窗口，结束后按超限结算。
+func _open_overflow_slap_window(failed_seat: int) -> void:
+	_begin_settle_window(Callable(self, "_finish_game_over_hand").bind(failed_seat),
+		"手牌超限：贴牌窗口 %.0f 秒后结算。" % KongRules.SLAP_SETTLE_SECONDS)
+
+## 安排延迟结算：到 delay 秒后执行 callable（覆盖前一次的安排）。
+func _schedule_settle(delay: float, callable: Callable) -> void:
+	_deferred_settle = callable
+	settle_timer.start(maxf(delay, 0.05))
+
+## 缩短/延长当前延迟结算的剩余时间（保留原 _deferred_settle）。
+func _reschedule_settle(delay: float) -> void:
+	settle_timer.start(maxf(delay, 0.05))
+
+func _on_settle_timeout() -> void:
+	var callable := _deferred_settle
+	_deferred_settle = Callable()
+	final_settle_pending = false
+	final_settle_deadline_ms = 0
+	if callable.is_valid():
+		callable.call()
+
+## 结算贴牌窗口内禁止普通操作（只能贴牌）。返回 true 表示已拒绝。
+func _guard_final_settle(sender: int, action_id := "") -> bool:
+	if not final_settle_pending:
+		return false
+	_reject(sender, RejectCode.INVALID_PHASE, action_id)
+	return true
 
 ## 系列赛是否已结束：赛满局数 或 存活数<=1。
 func _series_finished() -> bool:
@@ -1168,6 +1258,10 @@ func _finish_game(reason := "") -> void:
 	slap_duel.clear()
 	slap_collect_timer.stop()
 	slap_duel_timer.stop()
+	settle_timer.stop()
+	final_settle_pending = false
+	final_settle_deadline_ms = 0
+	_deferred_settle = Callable()
 	phase = Phase.GAME_OVER
 	if not reason.is_empty():
 		last_result = {"reason": reason, "ranking": []}
@@ -1340,12 +1434,8 @@ func _hand_count(seat: int) -> int:
 ## 手牌超限检查：seat 玩家总牌数超过 MAX_HAND_CARDS → 该玩家失败，立即结算。
 ## 触发结算后返回 true，调用方应停止后续流程（不再广播普通状态/动画）。
 func _check_over_hand(seat: int) -> bool:
-	if not players.has(seat):
-		return false
-	if _hand_count(seat) > KongRules.MAX_HAND_CARDS:
-		_finish_game_over_hand(seat)
-		return true
-	return false
+	# 纯判断：是否手牌超限（R-07）。结算时机由调用方决定（罚牌落地后再开贴牌窗口，见 _begin_overflow_settle）。
+	return players.has(seat) and _hand_count(seat) > KongRules.MAX_HAND_CARDS
 
 ## 手牌超限立即结算（R-07）：超限玩家按「最后一名」失去押注（all-in 则出局），
 ## 其余玩家按各自手牌点数结算排名（最低分者胜），失败玩家不参与排名。
@@ -1355,6 +1445,10 @@ func _finish_game_over_hand(failed_seat: int) -> void:
 	slap_duel.clear()
 	slap_collect_timer.stop()
 	slap_duel_timer.stop()
+	settle_timer.stop()
+	final_settle_pending = false
+	final_settle_deadline_ms = 0
+	_deferred_settle = Callable()
 	phase = Phase.GAME_OVER
 	var others: Array[int] = []
 	for seat in _alive_order():

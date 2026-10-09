@@ -51,11 +51,13 @@ var _seat_markers: Array = []     # 回合标识 Node3D per slot（供外部查�
 var _reveals := {}                # "seat_slot" -> {card, color, token}（跨 render 保持揭示/翻牌）
 var _reveal_seq := 0
 var _flashes := {}                # "seat_slot" -> {color, until_ms}（跨 render 保持短暂光晕，如 peek_highlight）
-var _bell_dome: MeshInstance3D = null
-var _bell_mat: StandardMaterial3D = null
+var _bell_model = null  # BellModel（call-bell.glb + 金属着色器；旧占位隐藏）
 var _deck_node: Node3D = null
-var _deck_block = null  # CardBlock（场景 Center/Deck）
+var _deck_block = null  # CardBlock（场景 Center/Deck）＝ 牌堆顶那张（卡背/光晕/拾取）
+var _deck_pile = null  # DeckPile（牌堆视觉：下方叠的卡边薄盒）
 var _discard_node: Node3D = null
+var _discard_pile = null  # DeckPile（弃牌堆视觉：下方叠的卡边薄盒，不画卡背）
+var _discard_shown := {}  # 弃牌顶变换动画期间的"上一张"（保留显示，避免下方为空）
 var _pending_node: Node3D = null
 var _seat_node_by_id := {}     # seat -> Node3D（render 登记）
 var _hand_node_by_id := {}     # seat -> HandAnchor Node3D（render 登记；未渲染槽的槽位变换基准）
@@ -89,9 +91,28 @@ func _bind() -> void:
 	var deck_block := get_node_or_null("Center/Deck")
 	if deck_block != null and deck_block.has_method("set_pick"):
 		deck_block.set_pick({"kind": "deck"})
+	if deck_block != null and deck_block.has_method("setup"):
+		deck_block.setup({})  # 空槽 → 正面显示卡背（否则默认白面盖住卡背）
 	_deck_node = deck_block
 	_deck_block = deck_block
+	# 牌堆视觉（卡边薄盒）挂在桌心 Center 下、与 Deck 同 XZ；最上面那张仍由 Deck 的 CardBlock 充当。
+	if _deck_node != null:
+		_deck_pile = get_node_or_null("Center/DeckPile")
+		if _deck_pile == null:
+			_deck_pile = DeckPile.new()
+			_deck_pile.name = "DeckPile"
+			_deck_node.get_parent().add_child(_deck_pile)
+			_deck_pile.position = Vector3(_deck_node.position.x, 0.0, _deck_node.position.z)
 	_discard_node = _discard_block
+	# 弃牌堆视觉（卡边薄盒，正面朝上 → 不画卡背）挂在桌心 Center 下、与 DiscardTop 同 XZ。
+	if _discard_node != null:
+		_discard_pile = get_node_or_null("Center/DiscardPile")
+		if _discard_pile == null:
+			_discard_pile = DeckPile.new()
+			_discard_pile.name = "DiscardPile"
+			_discard_pile.with_back = false
+			_discard_node.get_parent().add_child(_discard_pile)
+			_discard_pile.position = Vector3(_discard_node.position.x, 0.0, _discard_node.position.z)
 	_pending_node = _pending_block
 	if _pending_node != null and _deck_node != null and _discard_node != null:
 		var mid := (_deck_node.position + _discard_node.position) * 0.5
@@ -100,9 +121,16 @@ func _bind() -> void:
 		_pending_block.set_upright(true)
 	var bell := get_node_or_null("Center/KongBell")
 	if bell != null:
-		_bell_dome = bell.get_node_or_null("Dome")
-		if _bell_dome != null:
-			_bell_mat = _bell_dome.material_override
+		# 旧占位（Base/Dome/Knob）隐藏，改挂 call-bell.glb 模型 + 金属着色器。
+		for old_name in ["Base", "Dome", "Knob"]:
+			var old := bell.get_node_or_null(old_name)
+			if old is Node3D:
+				(old as Node3D).visible = false
+		_bell_model = bell.get_node_or_null("BellModel")
+		if _bell_model == null:
+			_bell_model = BellModel.new()
+			_bell_model.name = "BellModel"
+			bell.add_child(_bell_model)
 		var bell_pick := bell.get_node_or_null("PickArea")
 		if bell_pick != null:
 			bell_pick.collision_layer = Table3dLayout.PICK_MASK
@@ -218,15 +246,31 @@ func render(state: Dictionary, actionable := Callable()) -> void:
 			_apply_flash(int(fparts[0]), int(fparts[1]))
 	# 中央
 	# 抽牌堆剩余/总数（如 45/54）
-	_deck_label.text = "%d/%d" % [int(state.get("draw_count", 0)), KongRules.DECK_SIZE]
+	var draw_n := int(state.get("draw_count", 0))
+	_deck_label.text = "%d/%d" % [draw_n, KongRules.DECK_SIZE]
+	# 牌堆视觉随 draw_count 变矮；顶牌 CardBlock 抬到堆顶
+	if _deck_pile != null and is_instance_valid(_deck_pile):
+		_deck_pile.set_count(maxi(draw_n - 1, 0))
+	if _deck_node != null and is_instance_valid(_deck_node):
+		_deck_node.position.y = draw_n * DeckPile.CARD_THICKNESS
 	# 抽牌堆：轮到自己抽牌（TURN_DRAW）时金色光晕
 	if _deck_block != null and is_instance_valid(_deck_block):
 		_deck_block.set_actionable(ActionModel.draw_available(state))
 	var discard: Dictionary = state.get("discard", {})
+	var discard_count := int(state.get("discard_count", 0))
+	# 弃牌堆视觉随 discard_count 变高；顶牌 CardBlock 抬到堆顶
+	if _discard_pile != null and is_instance_valid(_discard_pile):
+		_discard_pile.set_count(maxi(discard_count - 1, 0))
+	if _discard_node != null and is_instance_valid(_discard_node):
+		_discard_node.position.y = discard_count * DeckPile.CARD_THICKNESS
 	# 弃牌堆可点：取弃牌顶（TURN_DRAW）或 弃掉大牌/用能力（TURN_DECISION）；可点时金色光晕
 	var discard_actionable := ActionModel.discard_pile_actionable(state)
 	if _discard_hold:
-		_discard_block.visible = false
+		# 顶牌变换动画期间：保留显示"上一张"，避免下方为空（无上一张则隐藏）
+		var held: Dictionary = _discard_shown if not _discard_shown.is_empty() else discard
+		_discard_block.visible = not held.is_empty()
+		if not held.is_empty():
+			_discard_block.setup({"card": held})
 		_discard_block.set_pick_enabled(false)
 		_discard_block.set_actionable(false)
 	else:
@@ -276,13 +320,11 @@ func _leave_hover_slot() -> void:
 		b.set_hover_pose(false, Vector2.ZERO)
 	_hover_slot = {}
 
-## 铃铛可用性：金色亮 / 暗。
+## 铃铛可用性：可用时加金色辉光（金属底色不变）。
 func _update_bell(state: Dictionary) -> void:
-	if _bell_mat == null:
+	if _bell_model == null:
 		return
-	var avail := ActionModel.kongbaya_available(state)
-	_bell_mat.emission_enabled = avail
-	_bell_mat.albedo_color = Color(0.96, 0.84, 0.48) if avail else Color(0.42, 0.38, 0.28)
+	_bell_model.set_glow(ActionModel.kongbaya_available(state))
 
 ## 座位世界坐标（与相机基准同一角度约定）。
 func _seat_world(angle_deg: float) -> Vector3:
@@ -901,10 +943,21 @@ func _clear_exchange_anim() -> void:
 	_flyers.clear()
 	_anim_slots.clear()
 	_discard_hold = false
+	_discard_shown = {}
 	_pending_hold = false
 	_pending_seen = false
 	_prev_pending = {}
 	_prev_discard = {}
+
+## 开始弃牌顶变换：记住"上一张"用于动画期间保留显示（避免下方为空）。
+func _begin_discard_hold() -> void:
+	_discard_shown = _prev_discard.duplicate()
+	_discard_hold = true
+
+## 弃牌顶变换结束：恢复显示新顶。
+func _end_discard_hold() -> void:
+	_discard_hold = false
+	_discard_shown = {}
 
 ## 快照检测：pending 由空→非空 = 有人抽牌/取弃牌顶 → 播飞牌（viewer 无关，所有人可见）。
 ## 来源判定（无需协议字段）：弃牌顶未变 = 抽牌堆；弃牌顶变了 = 取弃牌顶。
@@ -938,10 +991,10 @@ func _anim_replace(data: Dictionary) -> void:
 	var from_x := slot_xform(actor, slot)
 	_pending_block.visible = false
 	_mark_anim_slot(actor, slot)
-	_discard_hold = true
+	_begin_discard_hold()
 	# 旧牌 → 弃牌顶
 	_spawn_fly(from_x, center_xform("discard"), data.get("old_data", {}), slot_up, true, func():
-		_discard_hold = false)
+		_end_discard_hold())
 	# 大牌 → 槽位（背面/正面按 viewer 是否行动者）
 	_spawn_fly(center_xform("pending"), from_x, data.get("big_data", {}), _viewer == actor, slot_up, func():
 		_unmark_anim_slot(actor, slot))
@@ -997,10 +1050,10 @@ func _anim_swap(data: Dictionary) -> void:
 func _anim_discard(data: Dictionary) -> void:
 	var actor := int(data.get("actor", 0))
 	_pending_block.visible = false
-	_discard_hold = true
+	_begin_discard_hold()
 	_spawn_fly(center_xform("pending"), center_xform("discard"), data.get("big_data", {}),
 		_viewer == actor, true, func():
-			_discard_hold = false)
+			_end_discard_hold())
 
 func _anim_slap_penalty(data: Dictionary) -> void:
 	var peer := int(data.get("peer", 0))
@@ -1020,11 +1073,11 @@ func _anim_slap_resolved(data: Dictionary) -> void:
 		return
 	var from_x := slot_xform(target, slot)
 	_mark_anim_slot(target, slot)
-	_discard_hold = true
+	_begin_discard_hold()
 	# 被贴的牌已公开 → 正面飞去弃牌堆
 	_spawn_fly(from_x, center_xform("discard"), data.get("card", {}), true, true, func():
 		_unmark_anim_slot(target, slot)
-		_discard_hold = false)
+		_end_discard_hold())
 
 func _anim_slap_gift(data: Dictionary) -> void:
 	var actor := int(data.get("actor", 0))
