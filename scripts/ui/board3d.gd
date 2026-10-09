@@ -102,6 +102,11 @@ func has_panel() -> bool:
 	_prune_panels()
 	return _panels.size() > 0
 
+## 当前挂载的面板数量（供 main 判定"是否只有只读面板"）。
+func panel_count() -> int:
+	_prune_panels()
+	return _panels.size()
+
 ## 清理已释放（queue_free 后）的面板条目，避免后续对已释放对象做类型化调用。
 func _prune_panels() -> void:
 	var live: Array = []
@@ -189,12 +194,20 @@ func _sync_visible() -> void:
 	if _pick_shape != null:
 		_pick_shape.disabled = not visible
 
+## 外部按需显隐（如提示板无按钮时隐藏）：显隐必须同时同步拾取盒，
+## 否则隐藏后拾取盒仍启用（同层），会挡住其他看板（商店等）的命中。
+func set_shown(on: bool) -> void:
+	visible = on
+	if _pick_shape != null:
+		_pick_shape.disabled = not on
+
 ## 面板内容尺寸变化（如结算页逐轮新增排名行）时自动重新 wrap，避免内容被裁。
 func _process(_delta: float) -> void:
 	if _panels.is_empty():
 		return
-	var control: Control = _panels[_panels.size() - 1]
+	var control = _panels[_panels.size() - 1]
 	if control == null or not is_instance_valid(control):
+		_prune_panels()  # 顶部条目已释放：清理，避免下次重复访问
 		return
 	var content := _content_min_size(control)
 	var want := Vector2i(

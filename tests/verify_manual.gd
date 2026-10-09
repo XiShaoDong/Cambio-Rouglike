@@ -103,6 +103,30 @@ func _run() -> void:
 	main_node._toggle_manual()
 	await get_tree().process_frame
 	_check("再按 Tab 关闭手册", main_node.manual_panel == null)
+	# S：打开 Stats 页（复用同一面板）
+	main_node._toggle_manual(ManualPanel.TAB_STATS)
+	await get_tree().process_frame
+	_check("S 打开 Stats 页", main_node.manual_panel != null and is_instance_valid(main_node.manual_panel) and main_node.manual_panel.current_tab() == ManualPanel.TAB_STATS)
+	var stats = main_node.manual_panel.stats_board()
+	_check("Stats 板存在且可见", stats != null and stats.visible)
+	_check("Stats 页时手册网格隐藏", not (main_node.manual_panel.get_node("Center/Panel/VBox/Grid") as Control).visible)
+	_check("Stats 打开时看板对点击透明（可点卡牌）", main_node._manual_transparent() and not main_node._board_has_panel())
+	main_node._toggle_manual(ManualPanel.TAB_STATS)
+	await get_tree().process_frame
+	_check("再按 S 关闭 Stats", main_node.manual_panel == null)
+	# StatsBoard：分组 + 去重
+	var sb := StatsBoard.new()
+	add_child(sb)
+	sb.setup([
+		{"id": "s1", "rank": "A", "suit": "♠"},
+		{"id": "h1", "rank": "K", "suit": "♥"},
+		{"id": "jr", "rank": "JOKER", "suit": "red"},
+		{"id": "jb", "rank": "JOKER", "suit": "black"},
+		{"id": "s1", "rank": "A", "suit": "♠"},
+	])
+	await get_tree().process_frame
+	_check("StatsBoard 去重后 4 张", sb.card_count() == 4)
+	sb.queue_free()
 	main_node._set_table3d(false)
 	await get_tree().process_frame
 	_check("退出 3D 后提示隐藏", not main_node._key_hints.visible)

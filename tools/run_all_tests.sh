@@ -100,6 +100,7 @@ run_single "board3d"    res://tests/verify_board3d.tscn
 run_single "hint"       res://tests/verify_hint.tscn
 run_single "hint_hud"   res://tests/verify_hint_hud.tscn
 run_single "slap_burst" res://tests/verify_slap_burst.tscn
+run_single "deck_back"  res://tests/verify_deck_back.tscn
 
 if [ "$QUICK" -eq 1 ]; then
 	say ""

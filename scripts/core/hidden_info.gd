@@ -32,8 +32,13 @@ static func snapshot_for(state: Node, viewer_id: int) -> Dictionary:
 		"players": snapshot_players,
 		"draw_count": state.deck.size(),
 		"discard": public_card(state, str(state.discard_pile.back())) if not state.discard_pile.is_empty() else {},
+		"discard_count": state.discard_pile.size(),
+		# 弃牌历史（曾出现过的牌，公开信息；供 stats 面板）。
+		"discard_history": _discard_history_snapshot(state),
 		"slap_rank": state.slap_rank,
 		"slap_open": bool(state.slap_open),
+		# 最终轮结算贴牌窗口 deadline（服务器时钟 ms；0=不在窗口）。期间仅可贴牌，到时结算。
+		"settle_deadline_server_ms": int(state.final_settle_deadline_ms) if state.final_settle_pending else 0,
 		"slap_duel": _slap_duel_snapshot(state) if phase == GameState.Phase.SLAP_DUEL else {},
 		"slap_exchange_actor": int(state.slap_exchange.get("actor", 0)),
 		"q_decision": _q_decision_snapshot(state) if phase == GameState.Phase.Q_DECISION else {},
@@ -114,6 +119,15 @@ static func _player_snapshot(state: Node, seat: int, reveal_all: bool, viewer_id
 static func public_card(state: Node, card_id: String) -> Dictionary:
 	var card: Dictionary = state.cards[card_id]
 	return {"id": card.id, "rank": card.rank, "suit": card.suit, "value": card.value, "label": KongRules.display_name(card)}
+
+## 弃牌历史投影：每张曾进入弃牌堆的牌的公开发布（按时间顺序）。
+static func _discard_history_snapshot(state: Node) -> Array:
+	var out: Array = []
+	for cid in state.discard_history:
+		var key := str(cid)
+		if state.cards.has(key):
+			out.append(public_card(state, key))
+	return out
 
 ## Q 决策公开进度：操作者/目标槽位（与 peek_highlight 一致）+ 是否已查看自己的一张牌（不含牌面）。
 static func _q_decision_snapshot(state: Node) -> Dictionary:

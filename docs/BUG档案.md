@@ -576,3 +576,13 @@ at: Board3d.detach_all (board3d.gd) ← _set_table3d(false)
 **修复**：`_finish_game_over_hand` 补齐：胜场累加、把末 `series` 总结、非把末 `_start_series_timer()`。
 
 **诊断方法**：`verify_shop`「R-07 超限结束停在 GAME_OVER / 结束时衔接 Timer 已启动 / R-07 结束后可进入商店 / 把末 R-07 带系列赛总结 / 把末 R-07 不启动商店 timer」。
+
+## B48：商店点不中商品（隐藏的常驻提示板拾取盒仍启用、抢走射线）
+
+**现象**：3D 商店里点不中遗物（"跳过购买"等底部按钮可以点）；有时按 Tab 开关手册后又能点，感觉像"隐藏的 Tab 面板实体还在挡住"。（与 B46 同源，B46 只修了 `_sync_visible` 路径。）
+
+**根因**：`board3d` / `hint3d` 的拾取盒 `Area3D` 同在 `PICK_MASK(2)` 层。**常驻提示板 `hint3d` 的隐藏走 `main._refresh_hint_panel` 里直接 `hint3d.visible = has_buttons`**（无按钮时 false），**没有调用 `_sync_visible()`** → `_pick_shape.disabled` 停留在 false（启用）。于是隐藏的提示板拾取盒仍参与射线，与可见的 `board3d`（商店）同锚点叠加时被射线命中，`board3d.hit_viewport_coord` 拿到 `collider != _pick` → 返回 (-1,-1) → `main._board_hit()` 为空 → `_click_route` 落到 `"blocked"` → 商店点不中。是否命中取决于两块板的位置/尺寸 → 表现为"有时能、有时不能"。
+
+**修复**：`Board3d.set_shown(on)`（**显隐同时**同步 `_pick_shape.disabled`）；`_refresh_hint_panel` 两处 `hint3d.visible = ...` 改用 `set_shown`；`_ensure_board` 创建提示板后默认 `set_shown(false)`（否则挂载瞬间空提示板先挡一帧）。
+
+**诊断方法**：`verify_board3d`「set_shown(false) 隐藏并禁用拾取盒 / set_shown(true) 显示并启用拾取盒」；`verify_manual`「Stats 打开时看板对点击透明（可点卡牌）」。

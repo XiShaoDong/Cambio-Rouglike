@@ -100,6 +100,20 @@ func _test_hidden_board_pick() -> void:
 	await get_tree().process_frame
 	_check("卸载后隐藏且拾取盒禁用", not b.visible and b._pick_shape.disabled)
 	panel.queue_free()
+	# set_shown 外部显隐也必须同步拾取盒（否则隐藏板仍挡同层射线 → 商店点不中）
+	var b2 := Board3d.new()
+	add_child(b2)
+	await get_tree().process_frame
+	var p2 := PanelContainer.new()
+	b2.mount_panel(p2)
+	await get_tree().process_frame
+	_check("挂载后拾取盒启用", not b2._pick_shape.disabled)
+	b2.set_shown(false)
+	_check("set_shown(false) 隐藏并禁用拾取盒", not b2.visible and b2._pick_shape.disabled)
+	b2.set_shown(true)
+	_check("set_shown(true) 显示并启用拾取盒", b2.visible and not b2._pick_shape.disabled)
+	p2.queue_free()
+	b2.queue_free()
 	b.queue_free()
 
 func _test_board_input() -> void:

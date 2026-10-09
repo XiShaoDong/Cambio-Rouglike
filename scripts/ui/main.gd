@@ -231,6 +231,7 @@ func _ensure_board() -> void:
 		hint3d.set_pick_pad(Vector2(0.5, 0.5))   # 放宽拾取盒：准星略偏也能命中 Ready/按钮
 		_hint_panel = _make_hint_panel()
 		hint3d.mount_panel(_hint_panel)
+		hint3d.set_shown(false)  # 默认隐藏（无按钮）；否则空提示板会挡射线
 
 ## 看板定位：模态板锚在本机座位→桌心的 BOARD_DEPTH 深度处、悬浮于桌面上方（贴近玩家）；
 ## 提示板沿用"相机→桌心连线"（其"贴准星"逻辑依赖该基准）。
@@ -298,7 +299,14 @@ func _unmount_modal(control: Control) -> void:
 		board3d.unmount_panel(control)
 
 func _board_has_panel() -> bool:
-	return board3d != null and is_instance_valid(board3d) and board3d.has_panel()
+	if not (board3d != null and is_instance_valid(board3d) and board3d.has_panel()):
+		return false
+	return not _manual_transparent()
+
+## 手册/Stats 为只读参考：仅它挂载时，看板对点击/悬停透明（准星穿透到牌桌，仍可点卡牌）。
+func _manual_transparent() -> bool:
+	return manual_panel != null and is_instance_valid(manual_panel) \
+		and board3d != null and is_instance_valid(board3d) and board3d.panel_count() <= 1
 
 ## 构造常驻提示面板：提示文本 + （开局记忆阶段）Ready 按钮。
 func _make_hint_panel() -> Control:
@@ -360,7 +368,7 @@ func _refresh_hint_panel() -> void:
 	var phase := int(latest_state.get("phase", PHASE_LOBBY))
 	if phase == PHASE_LOBBY:
 		if hint3d != null and is_instance_valid(hint3d):
-			hint3d.visible = false
+			hint3d.set_shown(false)
 		return
 	var viewer := int(latest_state.get("viewer_id", 0))
 	var current := int(latest_state.get("current_player", -1))
@@ -386,7 +394,7 @@ func _refresh_hint_panel() -> void:
 	# 提示板只承载 Ready / 条件动作按钮：无按钮时隐藏，避免遗留空面板浮在牌桌上
 	if hint3d != null and is_instance_valid(hint3d):
 		var has_buttons := (ready != null and ready.visible) or has_actions
-		hint3d.visible = has_buttons
+		hint3d.set_shown(has_buttons)
 		if has_buttons:
 			hint3d.wrap_to_content()
 
@@ -396,6 +404,8 @@ func _board_hit() -> Dictionary:
 		return {}
 	var cam: Camera3D = table3d.camera.camera_node()
 	for host in [board3d, hint3d]:
+		if host == board3d and _manual_transparent():
+			continue  # 手册/Stats 点击穿透
 		if host != null and is_instance_valid(host) and host.visible:
 			var c: Vector2i = host.hit_viewport_coord(cam)
 			if c.x >= 0:
@@ -497,7 +507,12 @@ func _input(event: InputEvent) -> void:
 			return
 		# Tab：开/关手册（3D 全息看板）
 		if event.keycode == KEY_TAB:
-			_toggle_manual()
+			_toggle_manual(ManualPanel.TAB_MANUAL)
+			get_viewport().set_input_as_handled()
+			return
+		# S：开/关 Stats 页（弃牌堆出现过的牌）
+		if event.keycode == KEY_S:
+			_toggle_manual(ManualPanel.TAB_STATS)
 			get_viewport().set_input_as_handled()
 			return
 		# M：切换说话（嘴开合，同步给其他玩家看你的角色）
@@ -1236,20 +1251,28 @@ func _on_joker_confirm(rank: String, suit: String) -> void:
 	_on_joker_cancel()
 
 ## 手册：Tab 开/关（3D 全息看板，弹在面前；三列 牌/能力/分数）。
-func _toggle_manual() -> void:
+func _toggle_manual(tab := ManualPanel.TAB_MANUAL) -> void:
 	if manual_panel != null and is_instance_valid(manual_panel):
-		_close_manual()
+		if manual_panel.current_tab() == tab:
+			_close_manual()
+		else:
+			manual_panel.set_tab(tab)
+			manual_panel.setup_stats(latest_state.get("discard_history", []))
 	else:
-		_open_manual()
+		_open_manual(tab)
 
-func _open_manual() -> void:
+func _open_manual(tab := ManualPanel.TAB_MANUAL) -> void:
 	if manual_panel != null and is_instance_valid(manual_panel):
+		manual_panel.set_tab(tab)
+		manual_panel.setup_stats(latest_state.get("discard_history", []))
 		return
 	var panel := ManualPanelScript.instantiate()
 	panel.name = "ManualPanel"
 	panel.z_index = 92
 	_mount_modal(panel)
 	manual_panel = panel
+	manual_panel.set_tab(tab)
+	manual_panel.setup_stats(latest_state.get("discard_history", []))
 
 func _close_manual() -> void:
 	if manual_panel != null and is_instance_valid(manual_panel):

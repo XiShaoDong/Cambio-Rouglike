@@ -19,6 +19,7 @@ func _check(name: String, ok: bool) -> void:
 
 func _run() -> void:
 	_test_layout_pick()
+	await _test_bell_model()
 	await _test_card_block()
 	_test_camera_accessor()
 	await _test_picker()
@@ -30,6 +31,24 @@ func _run() -> void:
 func _test_layout_pick() -> void:
 	_check("PICK_LAYER == 2", Table3dLayout.PICK_LAYER == 2)
 	_check("PICK_MASK == 2", Table3dLayout.PICK_MASK == 2)
+
+func _test_bell_model() -> void:
+	var bell := BellModel.new()
+	add_child(bell)
+	await get_tree().process_frame
+	_check("BellModel 有网格", bell.mesh_count() >= 1)
+	_check("BellModel 有模型节点", bell.model_node() != null)
+	var mat := bell.material()
+	_check("BellModel 材质为 ShaderMaterial", mat is ShaderMaterial)
+	_check("BellModel 金属着色器可加载", mat.shader != null)
+	_check("BellModel 按目标尺寸缩放", bell.scale.is_equal_approx(Vector3.ONE * BellModel.SCALE))
+	_check("BellModel 分段参数已写入", is_equal_approx(float(mat.get_shader_parameter("base_top")), BellModel.BASE_TOP) and is_equal_approx(float(mat.get_shader_parameter("knob_bottom")), BellModel.KNOB_BOTTOM))
+	_check("BellModel 金属色（金/银/黑）", (mat.get_shader_parameter("dome_color") as Color).is_equal_approx(BellModel.DOME_COLOR) and (mat.get_shader_parameter("knob_color") as Color).is_equal_approx(BellModel.KNOB_COLOR) and (mat.get_shader_parameter("base_color") as Color).is_equal_approx(BellModel.BASE_COLOR))
+	bell.set_glow(true)
+	_check("BellModel set_glow(true) 写 glow=1", is_equal_approx(float(mat.get_shader_parameter("glow")), 1.0))
+	bell.set_glow(false)
+	_check("BellModel set_glow(false) 写 glow=0", is_equal_approx(float(mat.get_shader_parameter("glow")), 0.0))
+	bell.queue_free()
 
 func _test_card_block() -> void:
 	var block := CardBlock.new()
@@ -235,6 +254,16 @@ func _test_view() -> void:
 	var hud_pick: Dictionary = view.pick_center()
 	_check("pick_center 命中 HUD", str(hud_pick.get("kind", "")) == "hud" and str(hud_pick.get("action", "")) == "ready")
 	_check("铃铛拾取标记", view.get_node("Center/KongBell/PickArea").get_meta("pick", {}).get("action", "") == "kongbaya")
+	var bell_node = view.get_node("Center/KongBell")
+	var bell_model = bell_node.get_node_or_null("BellModel")
+	_check("铃铛已挂 BellModel", bell_model != null)
+	_check("铃铛金属材质接入", bell_model != null and bell_model.material() is ShaderMaterial)
+	var old_hidden := true
+	for old_name in ["Base", "Dome", "Knob"]:
+		var old = bell_node.get_node_or_null(old_name)
+		if old == null or old.visible:
+			old_hidden = false
+	_check("旧占位（Base/Dome/Knob）已隐藏", old_hidden)
 	_check("pending 与牌堆同尺寸（scale 1）", view.get_node("Center/Pending").scale.is_equal_approx(Vector3.ONE))
 	# 回合标识：当前行动者名字面板上方的红色倒三角
 	var players := [
