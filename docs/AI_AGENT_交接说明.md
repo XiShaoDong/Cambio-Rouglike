@@ -27,6 +27,7 @@
 
 ## 2. 当前基线
 
+- **本分支 `agent/feature-avatarAnimation` 新增总览（纯客户端展示层；已 `merge origin/main`，PR #13，未改规则/快照）**：① 设置项 **`鼻子点击`（`Settings.gameplay.nose_click`）** 选"标记指针风格"（关=波纹 / 开=鼻子）；② **`Esc` 只开关设置界面**、**`V`/`F10` 开关 3D**；③ **Robot 鼻子**（`scripts/ui/nose_avatar.gd`，鼻根由 Eyes AABB 推出、随头摆动）；④ **Mark v2 桌面标记**（按住 **D** 出四扇区轮盘：眼/问/数/叹；波纹或鼻子指针 + 玩家色；3s；`server_mark`）；⑤ **Emote 表情系统**（按住 **Y** 出六扇区轮盘；头顶数字占位；2.5s；**网络接口 `server_emote` 已预留**）。新增表现层 RPC：`server_mark`/`receive_mark`、`server_emote`/`receive_emote`（不入快照）；`look.nose` 保留但停用。详见本节下列各条与 `3D角色与场景说明.md` §4.9–§4.11。
 - 项目：Godot 4.6，KONG（Cambio + 轻度 Roguelike）LAN MVP。
 - 当前目标：系列赛框架、名次奖励经济（R-12）、商店固定价购买、**遗物效果 v1** 已完成（见下）；基础模式（无遗物）始终可独立运行。
 - 联网：ENet/UDP，房主权威，默认端口 `7007`。
