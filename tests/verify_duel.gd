@@ -163,7 +163,12 @@ func _test_over_hand_fail() -> void:
 	var health_before: int = GameState.players[0].health
 	GameState._server_slap(0, 1, 0, "oh-1")
 	_check("贴错罚牌后手牌 7 张", _count_nonempty(GameState.players[0].cards) == 7)
-	_check("手牌超限立即结算 GAME_OVER", GameState.phase == GameState.Phase.GAME_OVER)
+	# 超限不再立即结算：罚牌先落地（pending，不接受贴牌），再开 10s 贴牌窗口，最后结算
+	_check("超限后不立即结算（罚牌落地阶段）", GameState.final_settle_pending and GameState.phase != GameState.Phase.GAME_OVER and not GameState.slap_open)
+	GameState._on_settle_timeout()  # 罚牌落地 → 开贴牌窗口
+	_check("罚牌落地后开贴牌窗口", GameState.slap_open and GameState.final_settle_pending)
+	GameState._on_settle_timeout()  # 窗口到期 → 超限结算
+	_check("窗口到期后超限结算 GAME_OVER", GameState.phase == GameState.Phase.GAME_OVER)
 	_check("超限玩家被标记失败", int(GameState.last_result.get("failed_hand", -1)) == 0)
 	_check("超限玩家按垫底扣 1 生命", int(GameState.players[0].health) == health_before - 1)
 	_check("其余玩家纳入点数结算", (GameState.last_result.get("ranking", []) as Array).size() == 1)

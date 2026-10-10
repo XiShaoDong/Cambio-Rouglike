@@ -532,3 +532,57 @@ at: Board3d.detach_all (board3d.gd) ← _set_table3d(false)
 **修复**：`Table3dView` 增 `_flashes`（`"seat_slot" -> {color, until_ms}`）登记；`flash_slot` 登记并应用；`render` 重建后对每个未过期条目 `_apply_flash`（按剩余时间 `block.flash`，过期清除），与 `_reveals` 同款跨 render 重放。
 
 **诊断方法**：`verify_table3d_exchange`「flash_slot 立即显示蓝光 / render 后蓝光保持 / 过期后蓝光清除」。
+
+## B44：3D 罚牌飞牌"飞到一半消失、随后瞬间出现在手牌"
+
+**现象**：3D 桌面贴牌失败时，从抽牌堆飞向贴错者手牌的罚牌，飞到接近手牌位置时消失，随后卡牌瞬间出现在正确槽位（其他交换飞牌到**已渲染槽**不触发）。
+
+**根因**：`Table3dView.slot_xform(seat, slot)` 计算**未渲染槽**（罚牌追加的第 5/6 张、或 `add_penalty` 回填的空槽）时，用 `_seat_node_by_id[seat]`（座位根节点，`y=0` 地面）乘 `_slot_local(slot)`；但卡牌实际挂在 `HandAnchor`（`_bind` 里已抬到 `TABLE_HEIGHT + 0.03 ≈ 1.03`）。故未渲染槽的目标高度算成 `y=0`，罚牌飞牌从抽牌堆（`y≈1.03`）朝桌面**下方**扎，穿过桌面后消失；飞牌结束 `_refresh()` 重渲染，槽位才在正确高度（`y≈1.03`）出现。（沙盒 `card_fly_sandbox` 用自己的 `_seat_slot_xform`，基准即手牌高度，故不触发。）
+
+**修复**：`_bind`/`render` 登记每席 `HandAnchor`（`_hand_node_by_id`）；`slot_xform` 未渲染分支改用 `HandAnchor.global_transform * _slot_local(slot)`。
+
+**诊断方法**：`verify_table3d_exchange`「未渲染槽 xform 高度=手牌高度（防穿桌）」（`slot_xform(seat, 未渲染槽).origin.y ≈ 已渲染块 global_position.y`）。
+
+## B45：3D 交换飞牌泄漏牌面（点数标签在背面也显示）
+
+**现象**：3D 下私人交换（J/Q 盲换）时，换入/换出的牌面对其他玩家可见——卡牌上方浮动的点数/花色标签暴露了牌面。
+
+**根因**：`card_exchange_animated` 的 `swap` 事件把两张牌面 `a_data/b_data`（`public_card`）广播给**所有**客户端；3D `CardFly` 无条件 `body.setup({"card": card_data})`。`CardBlock` 的点数标签是 `Label3D`（billboard），**翻转只作用于几何（roll），标签始终浮在卡上**——故即使背面朝上，点数标签仍显示 → 泄漏。2D 因 `_fly` 按 `start_face_up/end_face_up` 门控 `data`（背面传 `{}`）而不泄漏。
+
+**修复**：`CardFly` 按"当前可见面"（`_roll_delta==0` 取起面；否则按 `flip_t` 在翻转中点切换起/终面）刷新 `body.setup({card}/{})`：起/终面都非正面（私人交换、罚牌）时全程不显牌面与标签；翻转类在建面时才显。与 2D 语义一致，零协议改动。
+
+**诊断方法**：`verify_table3d_exchange`「隐藏槽交换飞牌不显示点数标签（防泄漏）/ 明牌槽交换飞牌显示点数标签」。
+
+## 附：抽牌堆显示 剩余/总数
+
+3D `Center/DeckCount` 由仅显示 `draw_count` 改为 `剩余/总数`（`"%d/%d" % [draw_count, KongRules.DECK_SIZE]`，`DECK_SIZE=54`）。测试 `verify_table3d`「抽牌堆显示 剩余/总数（30/54）」。
+
+## B46：3D 看板隐藏后仍抢走射线命中（Ready 中间/商店中间按钮点不了）
+
+**现象**：3D 下 Ready 按钮"中间区域的文字那里 hover/点击不生效，但周围一圈可以"；商店页遗物按钮点不了，但底部"跳过购买"可以点。
+
+**根因**：`Board3d` 的拾取盒 `Area3D`（`_pick`）**只看 `visible` 不参与碰撞开关**——看板隐藏（无面板）时拾取盒仍启用。`board3d` 与 `hint3d` 如今**同锚点**（都在本机手牌上方），隐藏看板的拾取盒与可见看的叠加，`Table3dPicker` 的射线可能命中**隐藏**那块 → 可见看板的 `hit_viewport_coord` 判定 `collider != _pick` 返回 (-1,-1) → `main._board_hit()` 为空 → 每帧 `push_motion_out` 清掉 hover → 该区域按钮点不了。表现与"拾取盒覆盖范围"一致：被隐藏大盒覆盖的中间区域失效，未被覆盖的边缘/底部（如 skip）正常。
+
+**修复**：`Board3d` 保存 `_pick_shape`，`_sync_visible()` 里 `_pick_shape.disabled = not visible`（初始 `_build` 也置 disabled）。
+
+**诊断方法**：`verify_board3d`「无面板时拾取盒禁用 / 有面板时启用 / 卸载后禁用」「board3d 隐藏时不抢命中（提示板可命中）」。
+
+## B47：手牌超限（R-07）结束的局卡在结算、进不了商店
+
+**现象**：结算页弹出后一直停着，等多久都不进商店（无规律，取决于是否有人手牌超限）。
+
+**根因**：`GAME_OVER` 有两个入口——`_finish_game()`（正常结束）与 `_finish_game_over_hand()`（R-07 手牌超限立即结束）。`_finish_game` 在非把末会调用 `_start_series_timer()` 启动"结算→商店"的 10s 自动推进；**`_finish_game_over_hand` 漏了这一句**，导致从超限路径结束的局 `series_timer` 从不启动 → 结算页永久停留。它还漏了把末的 `last_result["series"]` 总结与胜场 `wins` 累加（与 `_finish_game` 不一致）。
+
+**修复**：`_finish_game_over_hand` 补齐：胜场累加、把末 `series` 总结、非把末 `_start_series_timer()`。
+
+**诊断方法**：`verify_shop`「R-07 超限结束停在 GAME_OVER / 结束时衔接 Timer 已启动 / R-07 结束后可进入商店 / 把末 R-07 带系列赛总结 / 把末 R-07 不启动商店 timer」。
+
+## B48：商店点不中商品（隐藏的常驻提示板拾取盒仍启用、抢走射线）
+
+**现象**：3D 商店里点不中遗物（"跳过购买"等底部按钮可以点）；有时按 Tab 开关手册后又能点，感觉像"隐藏的 Tab 面板实体还在挡住"。（与 B46 同源，B46 只修了 `_sync_visible` 路径。）
+
+**根因**：`board3d` / `hint3d` 的拾取盒 `Area3D` 同在 `PICK_MASK(2)` 层。**常驻提示板 `hint3d` 的隐藏走 `main._refresh_hint_panel` 里直接 `hint3d.visible = has_buttons`**（无按钮时 false），**没有调用 `_sync_visible()`** → `_pick_shape.disabled` 停留在 false（启用）。于是隐藏的提示板拾取盒仍参与射线，与可见的 `board3d`（商店）同锚点叠加时被射线命中，`board3d.hit_viewport_coord` 拿到 `collider != _pick` → 返回 (-1,-1) → `main._board_hit()` 为空 → `_click_route` 落到 `"blocked"` → 商店点不中。是否命中取决于两块板的位置/尺寸 → 表现为"有时能、有时不能"。
+
+**修复**：`Board3d.set_shown(on)`（**显隐同时**同步 `_pick_shape.disabled`）；`_refresh_hint_panel` 两处 `hint3d.visible = ...` 改用 `set_shown`；`_ensure_board` 创建提示板后默认 `set_shown(false)`（否则挂载瞬间空提示板先挡一帧）。
+
+**诊断方法**：`verify_board3d`「set_shown(false) 隐藏并禁用拾取盒 / set_shown(true) 显示并启用拾取盒」；`verify_manual`「Stats 打开时看板对点击透明（可点卡牌）」。

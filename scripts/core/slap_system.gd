@@ -48,11 +48,12 @@ func attempt(sender: int, target_player: int, slot: int, action_id := "") -> voi
 	if not correct:
 		var penalty_slot := add_penalty(sender)
 		game._add_log("%s 贴错了，罚抽一张牌。" % game.players[sender].name)
-		# 手牌超限（> MAX_HAND_CARDS）：立即结算，该玩家判定失败，不再广播罚牌动画
-		if game._check_over_hand(sender):
-			return
 		if penalty_slot >= 0:
 			game._broadcast_exchange({"kind": "slap_penalty", "peer": sender, "slot": penalty_slot})
+		# 手牌超限（R-07）：罚牌先飞到玩家手里，再开 10s 贴牌窗口，最后结算
+		if game._check_over_hand(sender):
+			game._begin_overflow_settle(sender)
+			return
 		game._broadcast_state()
 		return
 	_add_to_collection(sender, target_player, slot, target_card)
@@ -64,6 +65,9 @@ func _add_to_collection(sender: int, target_player: int, slot: int, target_card:
 		game.slap_collect = {"correct": {}}
 		var ms := KongRules.SLAP_DUEL_COLLECT_MS if not game.debug_duel else DEBUG_DUEL_COLLECT_MS
 		game.slap_collect_timer.start(ms / 1000.0)
+		# 最终轮结算窗口：判定期间暂停结算 deadline，判定结束后 finish_slap 重新安排。
+		if game.final_settle_pending:
+			game.settle_timer.stop()
 	var correct: Dictionary = game.slap_collect.correct
 	if not correct.has(sender):
 		correct[sender] = {"target": target_player, "target_slot": slot, "target_card": target_card}
@@ -90,6 +94,8 @@ func collection_timeout() -> void:
 func _start_duel(correct: Dictionary) -> void:
 	game.slap_open = false
 	game.phase = game.Phase.SLAP_DUEL
+	if game.final_settle_pending:
+		game.settle_timer.stop()  # 比拼期间暂停结算 deadline，判定结束后 finish_slap 重新安排
 	var target := randf_range(KongRules.SLAP_DUEL_TARGET_MIN, KongRules.SLAP_DUEL_TARGET_MAX)
 	game.slap_duel = {
 		"start_ms": Time.get_ticks_msec(),
@@ -174,15 +180,15 @@ static func _duel_position(elapsed_ms: float, duration_ms: int) -> float:
 func _resolve_correct_slap(sender: int, target_player: int, slot: int, target_card: String) -> void:
 	if target_player == sender:
 		game.players[sender].cards[slot] = ""
-		game.discard_pile.append(target_card)
-		game._broadcast_exchange({"kind": "slap_resolved", "target": target_player, "target_slot": slot, "card": game.peek.public_card(target_card)})
+		game._push_discard(target_card)
+		game._broadcast_exchange({"kind": "slap_resolved", "actor": sender, "target": target_player, "target_slot": slot, "card": game.peek.public_card(target_card)})
 		game._add_log("%s 成功贴出自己的 %s。" % [game.players[sender].name, game.slap_rank])
 		finish_slap()
 		return
 	game.slap_open = false
 	game.phase = game.Phase.SLAP_EXCHANGE
 	game.players[target_player].cards[slot] = ""
-	game.discard_pile.append(target_card)
+	game._push_discard(target_card)
 	game._broadcast_exchange({"kind": "slap_resolved", "target": target_player, "target_slot": slot, "card": game.peek.public_card(target_card)})
 	game.slap_exchange = {"actor": sender, "target": target_player, "target_slot": slot, "target_card": target_card}
 	game._add_log("%s 贴中了 %s 的牌，等待交出一张自己的牌。" % [game.players[sender].name, game.players[target_player].name])
@@ -221,6 +227,9 @@ func finish_slap() -> void:
 	game.slap_collect.clear()
 	game.phase = game.Phase.TURN_DRAW
 	game._broadcast_state()
+	# 结算窗口内贴牌判定结束：等赠送 / 自贴动画放完再结算（保留原延迟回调，仅缩短剩余时间）。
+	if game.final_settle_pending:
+		game._reschedule_settle(KongRules.SLAP_SETTLE_GRACE_SECONDS)
 
 ## 给玩家加一张罚抽牌（优先填入空槽位，保持固定布局；满则追加为新槽）。
 ## 返回罚牌落位槽号；无可抽牌时返回 -1。

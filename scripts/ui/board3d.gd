@@ -17,10 +17,13 @@ var _screen: MeshInstance3D
 var _halo: MeshInstance3D
 var _pick: Area3D
 var _pick_box: BoxShape3D
+var _pick_shape: CollisionShape3D
 var _panels: Array = []
 var _pending_release: InputEventMouseButton = null
 var _world_size := Vector2(0.6, 0.3)
 var _viewport_size := MIN_VIEWPORT
+var halo_enabled := false  # 是否显示外圈光晕边框（默认关：面板/按钮只显示内容本身，不带外框）
+var pick_pad := PICK_PAD   # 拾取盒相对视觉尺寸的外扩量（提示板可加大，便于对准）
 
 func _ready() -> void:
 	_build()
@@ -50,6 +53,7 @@ func _build() -> void:
 	halo_mat.no_depth_test = true
 	_halo.material_override = halo_mat
 	_halo.position = Vector3(0.0, 0.0, -0.01)
+	_halo.visible = halo_enabled
 	add_child(_halo)
 
 	# 屏幕
@@ -75,6 +79,8 @@ func _build() -> void:
 	var shape := CollisionShape3D.new()
 	_pick_box = BoxShape3D.new()
 	shape.shape = _pick_box
+	shape.disabled = true   # 初始无面板 → 隐藏：拾取盒禁用
+	_pick_shape = shape
 	_pick.add_child(shape)
 	add_child(_pick)
 
@@ -95,6 +101,11 @@ func viewport_size() -> Vector2i:
 func has_panel() -> bool:
 	_prune_panels()
 	return _panels.size() > 0
+
+## 当前挂载的面板数量（供 main 判定"是否只有只读面板"）。
+func panel_count() -> int:
+	_prune_panels()
+	return _panels.size()
 
 ## 清理已释放（queue_free 后）的面板条目，避免后续对已释放对象做类型化调用。
 func _prune_panels() -> void:
@@ -173,10 +184,49 @@ func _apply_size() -> void:
 	_world_size = Vector2(_viewport_size) * PIXEL_SCALE
 	(_screen.mesh as QuadMesh).size = _world_size
 	(_halo.mesh as QuadMesh).size = _world_size + Vector2(HALO_MARGIN, HALO_MARGIN) * 2.0
-	_pick_box.size = Vector3(_world_size.x + PICK_PAD.x, _world_size.y + PICK_PAD.y, 0.02)
+	_halo.visible = halo_enabled
+	_pick_box.size = Vector3(_world_size.x + pick_pad.x, _world_size.y + pick_pad.y, 0.02)
 
 func _sync_visible() -> void:
 	visible = _panels.size() > 0
+	# 隐藏时禁用拾取盒：否则隐藏看板仍参与射线，会抢走其他看板（同锚点）的命中
+	#（表现为"看得到按钮但 hover/点击不生效"，B46）。
+	if _pick_shape != null:
+		_pick_shape.disabled = not visible
+
+## 外部按需显隐（如提示板无按钮时隐藏）：显隐必须同时同步拾取盒，
+## 否则隐藏后拾取盒仍启用（同层），会挡住其他看板（商店等）的命中。
+func set_shown(on: bool) -> void:
+	visible = on
+	if _pick_shape != null:
+		_pick_shape.disabled = not on
+
+## 面板内容尺寸变化（如结算页逐轮新增排名行）时自动重新 wrap，避免内容被裁。
+func _process(_delta: float) -> void:
+	if _panels.is_empty():
+		return
+	var control = _panels[_panels.size() - 1]
+	if control == null or not is_instance_valid(control):
+		_prune_panels()  # 顶部条目已释放：清理，避免下次重复访问
+		return
+	var content := _content_min_size(control)
+	var want := Vector2i(
+		int(ceil(content.x)) + WRAP_PADDING.x,
+		int(ceil(content.y)) + WRAP_PADDING.y).max(MIN_VIEWPORT)
+	if want != _viewport_size:
+		wrap_to_content()
+
+## 显隐外圈光晕边框（提示板的纯按钮面板可关闭，只显示按钮本身）。
+func set_halo_enabled(on: bool) -> void:
+	halo_enabled = on
+	if _halo != null and is_instance_valid(_halo):
+		_halo.visible = on
+
+## 设置拾取盒外扩量（提示板可加大，让准星略偏也能命中按钮）。
+func set_pick_pad(p: Vector2) -> void:
+	pick_pad = p
+	if _pick_box != null:
+		_apply_size()
 
 ## 只绕世界 Y 朝向相机（**完全竖直**，不含俯仰）。+Y = 世界 up，+Z 水平指向相机，贴图不镜像。
 func set_facing(cam: Camera3D) -> void:

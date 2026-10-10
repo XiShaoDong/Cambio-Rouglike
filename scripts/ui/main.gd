@@ -200,6 +200,34 @@ func _corner_margin() -> float:
 	var scale := win_size.x / base.x
 	return CORNER_MARGIN / maxf(scale, 0.0001)
 
+## 3D action hint 屏幕面板：顶部居中的「倒计时 + 提示文本」。
+func _ensure_hint_hud() -> void:
+	if _hint_hud != null and is_instance_valid(_hint_hud):
+		return
+	_hint_hud = HintHud.new()
+	_hint_hud.name = "HintHud"
+	_hint_hud.z_index = 80
+	add_child(_hint_hud)
+
+## 驱动 HintHud：文本随 hint 变化，进入新回合（key 变化）时重置 30 并播进场。
+func _update_hint_hud(phase: int, viewer: int, current: int) -> void:
+	if _hint_hud == null or not is_instance_valid(_hint_hud):
+		return
+	var text := _hint_for(phase, viewer == current)
+	_hint_hud.set_phase_visible(phase)
+	var slap_state := HintHud.SLAP_HIDDEN
+	if phase == PHASE_SLAP_EXCHANGE or phase == PHASE_SLAP_DUEL:
+		slap_state = HintHud.SLAP_CLOSE
+	elif bool(latest_state.get("slap_open", false)):
+		slap_state = HintHud.SLAP_OPEN
+	_hint_hud.set_slap_state(slap_state)
+	var key := "%d:%d" % [int(latest_state.get("match_number", 1)), current]
+	if phase in _HUD_ACTIVE_PHASES and key != _hud_turn_key:
+		_hud_turn_key = key
+		_hint_hud.reset_turn(HintHud.PHASE_TURN_SECONDS, text)
+	else:
+		_hint_hud.set_hint(text)
+
 ## 3D 左下角按键提示（放大 Command / 手册 Tab）：说明纯白 + 圆角白底按键。
 func _ensure_key_hints() -> void:
 	if _key_hints != null and is_instance_valid(_key_hints):
@@ -258,45 +286,61 @@ func _ensure_board() -> void:
 		hint3d = Board3d.new()
 		hint3d.name = "HintBoard"
 		table3d.add_child(hint3d)
+		hint3d.set_halo_enabled(false)   # 提示板只显示按钮本身，不要外圈光晕边框
+		hint3d.set_pick_pad(Vector2(0.5, 0.5))   # 放宽拾取盒：准星略偏也能命中 Ready/按钮
 		_hint_panel = _make_hint_panel()
 		hint3d.mount_panel(_hint_panel)
+		hint3d.set_shown(false)  # 默认隐藏（无按钮）；否则空提示板会挡射线
 
-## 把两块看板放到"相机 → 桌心"的连线上（距相机 BOARD_DIST），提示板再抬高 HINT_RISE。
+## 看板定位：模态板锚在本机座位→桌心的 BOARD_DEPTH 深度处、悬浮于桌面上方（贴近玩家）；
+## 提示板沿用"相机→桌心连线"（其"贴准星"逻辑依赖该基准）。
 func _place_boards() -> void:
 	if table3d == null or not is_instance_valid(table3d):
 		return
 	var cam: Camera3D = table3d.camera.camera_node()
-	if cam == null:
-		return
-	var dir := Vector3(0.0, Table3dLayout.TABLE_HEIGHT, 0.0) - cam.global_position
-	if dir.length_squared() < 0.0001:
-		return
-	dir = dir.normalized()
-	var base := cam.global_position + dir * BOARD_DIST
-	var lifted := Vector3(base.x, base.y * (1.0 + BOARD_LIFT), base.z)
+	var viewer := int(latest_state.get("viewer_id", 0))
+	var seat_pos: Vector3 = table3d.seat_world(viewer)
+	# 模态大板 + 提示板（Ready/条件按钮）：统一锚到本机座位与桌心之间的深度、悬浮桌面上方（贴玩家、不靠后）
 	if board3d != null and is_instance_valid(board3d):
-		board3d.global_position = lifted
+		board3d.global_position = _board_anchor_world(seat_pos, cam, board3d.world_size().y)
 	if hint3d != null and is_instance_valid(hint3d):
-		# 当"下一步是点看板按钮"（Ready / Q 决策 / J 已选齐待确认）时贴到准星（base 在相机→桌心射线上，
-		# 默认准星即命中）——否则默认准星落在其上方空白，玩家必须抬头才够得到（"3D 点不到 Ready"）。
-		# 其余情况（纯提示 / 需要点卡选牌）仍抬高，避免挡住牌桌与卡牌。
-		hint3d.global_position = base if _hint_center_on_crosshair() else lifted + Vector3(0.0, HINT_RISE, 0.0)
+		hint3d.global_position = _board_anchor_world(seat_pos, cam, hint3d.world_size().y)
 
-## 提示板是否应贴准星：下一步动作为看板按钮（而非点牌）。
-func _hint_center_on_crosshair() -> bool:
-	if _hint_panel == null or not is_instance_valid(_hint_panel):
-		return false
-	var phase := int(latest_state.get("phase", PHASE_LOBBY))
-	if phase == PHASE_INITIAL_PEEK:
-		var ready: Button = _hint_panel.get_node_or_null("VBox/ReadyButton")
-		return ready != null and ready.visible
-	if phase == PHASE_Q_DECISION:
-		var acts: HBoxContainer = _hint_panel.get_node_or_null("VBox/HintActions")
-		return acts != null and acts.get_child_count() > 0
-	# J 已选齐两人牌 → 只剩「交换/不交换」按钮
-	if str(interaction.action_mode) == "jack_ready":
-		return true
-	return false
+## 看板/提示板统一锚点：本机座位→桌心 BOARD_DEPTH 深度、悬浮桌面上方；无座位时回退相机→桌心连线。
+func _board_anchor_world(seat_pos: Vector3, cam: Camera3D, board_h: float) -> Vector3:
+	if seat_pos.length_squared() > 0.0001:
+		var anchor := Table3dLayout.board_depth_pos(seat_pos, BOARD_DEPTH, BOARD_TABLE_HALF)
+		return Vector3(anchor.x, Table3dLayout.TABLE_HEIGHT + BOARD_FLOAT_H + board_h * 0.5, anchor.z)
+	if cam != null:
+		var dir := Vector3(0.0, Table3dLayout.TABLE_HEIGHT, 0.0) - cam.global_position
+		if dir.length_squared() > 0.0001:
+			return cam.global_position + dir.normalized() * BOARD_DIST
+	return Vector3.ZERO
+
+## 有模态面板 / 提示按钮时，自动把相机视线对准看板——看板锚在高位，默认准星落在桌面会打不到。
+## 模态板：仅在**打开时**对准一次（商店/结算内容或高度变化不再重对准，避免相机跳动打断点击）。
+## 提示板（Ready/Q/J）：按钮集合变化时重新对准，保证新出现的按钮落在准星上。
+func _auto_aim_board() -> void:
+	# 结算（算分/翻牌）期间不要强制调整玩家镜头；也不在此时聚焦，交由玩家自由环视。
+	if int(latest_state.get("phase", -1)) == PHASE_GAME_OVER:
+		_board_aim_key = ""
+		return
+	var host: Node3D = null
+	var key := ""
+	if _board_has_panel() and board3d != null and is_instance_valid(board3d) and board3d.visible:
+		host = board3d
+		key = "modal"
+	elif hint3d != null and is_instance_valid(hint3d) and hint3d.visible:
+		host = hint3d
+		key = "hint|%s" % str(hint3d.world_size())
+	if host == null:
+		_board_aim_key = ""
+		return
+	if key == _board_aim_key:
+		return
+	_board_aim_key = key
+	if table3d.camera != null:
+		table3d.camera.aim_at(host.global_position)
 
 ## 模态挂载：3D 激活挂到模态大板，否则沿用 2D 父节点（默认 main）。
 func _mount_modal(control: Control, parent_2d: Node = null) -> void:
@@ -314,35 +358,31 @@ func _unmount_modal(control: Control) -> void:
 		board3d.unmount_panel(control)
 
 func _board_has_panel() -> bool:
-	return board3d != null and is_instance_valid(board3d) and board3d.has_panel()
+	if not (board3d != null and is_instance_valid(board3d) and board3d.has_panel()):
+		return false
+	return not _manual_transparent()
+
+## 手册/Stats 为只读参考：仅它挂载时，看板对点击/悬停透明（准星穿透到牌桌，仍可点卡牌）。
+func _manual_transparent() -> bool:
+	return manual_panel != null and is_instance_valid(manual_panel) \
+		and board3d != null and is_instance_valid(board3d) and board3d.panel_count() <= 1
 
 ## 构造常驻提示面板：提示文本 + （开局记忆阶段）Ready 按钮。
 func _make_hint_panel() -> Control:
 	var panel := PanelContainer.new()
 	panel.name = "HintPanel"
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.08, 0.09, 0.12, 0.75)
-	style.set_corner_radius_all(10)
-	style.set_content_margin_all(12)
-	style.border_color = Color(0.42, 0.72, 0.95, 0.6)
-	style.set_border_width_all(1)
-	panel.add_theme_stylebox_override("panel", style)
+	# 透明容器：不再加面板边框/底色（3D 下只显示按钮本身，去除从 2D 迁移来的那层边框）
+	panel.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
 	var vb := VBoxContainer.new()
 	vb.name = "VBox"
 	vb.add_theme_constant_override("separation", 8)
 	panel.add_child(vb)
-	var lbl := Label.new()
-	lbl.name = "HintLabel"
-	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	lbl.add_theme_font_size_override("font_size", 20)
-	lbl.add_theme_color_override("font_color", Color(0.92, 0.95, 1.0))
-	vb.add_child(lbl)
 	# Ready：醒目 accent 底 + 大尺寸（3D 板上尺寸即世界尺寸，越大越好点/越明显）
 	var ready := Button.new()
 	ready.name = "ReadyButton"
 	ready.text = "Ready"
-	ready.custom_minimum_size = Vector2(260.0, 66.0)
-	ready.add_theme_font_size_override("font_size", 26)
+	ready.custom_minimum_size = Vector2(340.0, 96.0)
+	ready.add_theme_font_size_override("font_size", 32)
 	ready.add_theme_color_override("font_color", Color(0.08, 0.09, 0.12))
 	ready.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	var acc := UITheme.color("accent")
@@ -387,15 +427,11 @@ func _refresh_hint_panel() -> void:
 	var phase := int(latest_state.get("phase", PHASE_LOBBY))
 	if phase == PHASE_LOBBY:
 		if hint3d != null and is_instance_valid(hint3d):
-			hint3d.visible = false
+			hint3d.set_shown(false)
 		return
-	if hint3d != null and is_instance_valid(hint3d):
-		hint3d.visible = true
 	var viewer := int(latest_state.get("viewer_id", 0))
 	var current := int(latest_state.get("current_player", -1))
-	var lbl: Label = _hint_panel.get_node_or_null("VBox/HintLabel")
-	if lbl != null:
-		lbl.text = _hint_for(phase, viewer == current)
+	_update_hint_hud(phase, viewer, current)
 	var ready: Button = _hint_panel.get_node_or_null("VBox/ReadyButton")
 	if ready != null:
 		ready.visible = phase == PHASE_INITIAL_PEEK
@@ -403,16 +439,23 @@ func _refresh_hint_panel() -> void:
 		ready.disabled = not ActionModel.ready_enabled(latest_state, game_view._ready_clicked)
 	# 条件动作按钮（Q 交换/不交换、变换 Joker）重建：紧贴提示文本下方
 	var acts: HBoxContainer = _hint_panel.get_node_or_null("VBox/HintActions")
+	var has_actions := false
 	if acts != null:
 		for child in acts.get_children():
+			acts.remove_child(child)
 			child.queue_free()
 		for entry in ActionModel.conditional_actions(latest_state, _interaction_ctx()):
+			has_actions = true
 			var act_btn := _decision_button(str(entry.get("text", "")))
 			act_btn.disabled = not bool(entry.get("enabled", true))
 			act_btn.pressed.connect(_on_action.bind(str(entry.get("action", ""))))
 			acts.add_child(act_btn)
+	# 提示板只承载 Ready / 条件动作按钮：无按钮时隐藏，避免遗留空面板浮在牌桌上
 	if hint3d != null and is_instance_valid(hint3d):
-		hint3d.wrap_to_content()
+		var has_buttons := (ready != null and ready.visible) or has_actions
+		hint3d.set_shown(has_buttons)
+		if has_buttons:
+			hint3d.wrap_to_content()
 
 ## 准星射线命中哪块看板（模态板 / 提示板）→ {host, coord}；未命中 {}。
 func _board_hit() -> Dictionary:
@@ -420,6 +463,8 @@ func _board_hit() -> Dictionary:
 		return {}
 	var cam: Camera3D = table3d.camera.camera_node()
 	for host in [board3d, hint3d]:
+		if host == board3d and _manual_transparent():
+			continue  # 手册/Stats 点击穿透
 		if host != null and is_instance_valid(host) and host.visible:
 			var c: Vector2i = host.hit_viewport_coord(cam)
 			if c.x >= 0:
@@ -465,6 +510,8 @@ func _set_table3d(on: bool) -> void:
 		table3d.render(latest_state, interaction.card_actionable)
 		_place_boards()
 		_sync_table3d_pointer()
+		_ensure_hint_hud()
+		_hint_hud.show_hud(true)
 		_refresh_hint_panel()
 		_ensure_self_panel()
 		_self_panel.visible = true
@@ -491,6 +538,12 @@ func _set_table3d(on: bool) -> void:
 			_key_hints.visible = false
 		if _round_badge != null and is_instance_valid(_round_badge):
 			_round_badge.visible = false
+		if _hint_hud != null and is_instance_valid(_hint_hud):
+			_hint_hud.show_hud(false)
+		if _slap_burst != null and is_instance_valid(_slap_burst):
+			_slap_burst.queue_free()
+			_slap_burst = null
+		_q_hidden_held = false
 		if board3d != null and is_instance_valid(board3d):
 			for c in board3d.detach_all():
 				if c != null and is_instance_valid(c):
@@ -528,7 +581,12 @@ func _input(event: InputEvent) -> void:
 			return
 		# Tab：开/关手册（3D 全息看板）
 		if event.keycode == KEY_TAB:
-			_toggle_manual()
+			_toggle_manual(ManualPanel.TAB_MANUAL)
+			get_viewport().set_input_as_handled()
+			return
+		# S：开/关 Stats 页（弃牌堆出现过的牌）
+		if event.keycode == KEY_S:
+			_toggle_manual(ManualPanel.TAB_STATS)
 			get_viewport().set_input_as_handled()
 			return
 		# M：切换说话（嘴开合，同步给其他玩家看你的角色）
@@ -567,6 +625,7 @@ func _process(delta: float) -> void:
 		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 		return
 	_place_boards()
+	_auto_aim_board()
 	var cam: Camera3D = table3d.camera.camera_node()
 	if board3d != null and is_instance_valid(board3d):
 		board3d.set_facing(cam)
@@ -649,10 +708,16 @@ const PHASE_GAME_OVER := 7
 const PHASE_SLAP_DUEL := 8
 const PHASE_SHOP := 10
 
+## HintHud 胶囊显示 + 倒计时重置的阶段（与 HintHud.ACTIVE_PHASES 一致）。
+## 不含 INITIAL_PEEK：进入房间直到全员 ready 后才开始计时。
+const _HUD_ACTIVE_PHASES := [PHASE_TURN_DRAW, PHASE_TURN_DECISION, PHASE_Q_DECISION, PHASE_SLAP_EXCHANGE, PHASE_SLAP_DUEL]
+
 const CORNER_MARGIN := 75.0     # 3D 四个角 HUD 到屏幕边缘的统一边距（目标=屏幕像素）
-const BOARD_DIST := 3.0        # 看板沿"相机→桌心"连线距相机的距离（可调）
-const HINT_RISE := 0.5         # 提示板相对大板的世界 Y 抬升（gap，已缩小 1/2）
-const BOARD_LIFT := 0.8        # 面板高度抬升比例（y *= 1 + BOARD_LIFT；比上次降低 1/5）
+const BOARD_DIST := 3.0        # 回退用：看板沿"相机→桌心"连线距相机的距离（无座位锚点时）
+## 模态看板锚点（贴玩家、不靠后）：本机座位→桌心的 0..1 深度（用户 0-10 标度的 2/10）。
+const BOARD_DEPTH := 0.2
+const BOARD_TABLE_HALF := 3.8  # 牌桌半宽（scenes/ui/table3d.tscn 桌面 7.6）
+const BOARD_FLOAT_H := 2.1     # 看板底部距桌面的悬浮高度（抬高，避免贴桌面）
 
 const PEEK_GLOW_COLOR := Color("3ef0f7ff")  # 查看牌蓝色光晕
 const PEEK_GLOW_DURATION := 1.5
@@ -745,6 +810,8 @@ var _discard_local_display: Dictionary = {}
 var _peek_glow_slots: Dictionary = {}
 var _slap_reveal_lock := false
 var _duel_panel: Control = null
+var _slap_burst: Control = null
+var _board_aim_key := ""
 var settings_menu: Control = null
 var _my_token := ""
 var _rejoin_addr := ""
@@ -758,11 +825,14 @@ var joker_panel: Control = null
 var manual_panel: Control = null
 var _key_hints: KeyHintPanel = null
 var _round_badge: Control = null
+var _hint_hud: HintHud = null
+var _hud_turn_key := ""
 var _shop_result_shown := ""
 var _pending_winner_sfx := false
 # Q 能力：下一次收到的看牌揭示保持正面（不自动翻回），直到玩家确认交换/不交换。
 var _hold_next_reveal := false
 var _q_hold_active := false
+var _q_hidden_held := false   # Q 两张看牌：他人视角闭眼翻转 hold 中（决策结束释放）
 
 ## 标记某个玩家槽位正在动画（渲染时该槽位显示虚线占位，不显示原卡）。
 func mark_anim_slot(pid: int, slot: int) -> void:
@@ -832,6 +902,8 @@ func _ready() -> void:
 	# 2D 走 CardAnimator（原逻辑逐字不动）；3D 走 table3d 的飞牌编排。
 	GameState.card_exchange_animated.connect(func(data: Dictionary):
 		if _table3d_active:
+			if str(data.get("kind", "")) == "slap_resolved":
+				_show_slap_success(data)
 			if table3d != null and is_instance_valid(table3d):
 				table3d.animate_exchange(data)
 		else:
@@ -1079,6 +1151,11 @@ func _on_state_updated(state: Dictionary) -> void:
 	# 兜底：离开 Q_DECISION 时翻回 hold 的看牌（请求被拒/异常流转），避免牌永久正面。
 	if _q_hold_active and int(state.phase) != PHASE_Q_DECISION:
 		_release_q_holds()
+	# Q 的两张看牌：其他玩家视角的闭眼占位翻转 hold 到决策结束 → 离开 Q_DECISION 时翻回
+	if _q_hidden_held and int(state.phase) != PHASE_Q_DECISION:
+		if _table3d_active and table3d != null and is_instance_valid(table3d):
+			table3d.release_hidden_reveals()
+		_q_hidden_held = false
 	if int(state.phase) == PHASE_GAME_OVER:
 		# 结算接管棋盘：先清残留动画/挂起状态再渲染，
 		# 保证卡牌以真实卡（而非在途揭示的动画占位）出现。
@@ -1258,20 +1335,28 @@ func _on_joker_confirm(rank: String, suit: String) -> void:
 	_on_joker_cancel()
 
 ## 手册：Tab 开/关（3D 全息看板，弹在面前；三列 牌/能力/分数）。
-func _toggle_manual() -> void:
+func _toggle_manual(tab := ManualPanel.TAB_MANUAL) -> void:
 	if manual_panel != null and is_instance_valid(manual_panel):
-		_close_manual()
+		if manual_panel.current_tab() == tab:
+			_close_manual()
+		else:
+			manual_panel.set_tab(tab)
+			manual_panel.setup_stats(latest_state.get("discard_history", []))
 	else:
-		_open_manual()
+		_open_manual(tab)
 
-func _open_manual() -> void:
+func _open_manual(tab := ManualPanel.TAB_MANUAL) -> void:
 	if manual_panel != null and is_instance_valid(manual_panel):
+		manual_panel.set_tab(tab)
+		manual_panel.setup_stats(latest_state.get("discard_history", []))
 		return
 	var panel := ManualPanelScript.instantiate()
 	panel.name = "ManualPanel"
 	panel.z_index = 92
 	_mount_modal(panel)
 	manual_panel = panel
+	manual_panel.set_tab(tab)
+	manual_panel.setup_stats(latest_state.get("discard_history", []))
 
 func _close_manual() -> void:
 	if manual_panel != null and is_instance_valid(manual_panel):
@@ -1385,83 +1470,7 @@ func _on_card_pressed(player_id: int, slot: int) -> void:
 	interaction.on_card_pressed(player_id, slot)
 
 func _hint_for(phase: int, is_current: bool) -> String:
-	var name := str(latest_state.get("current_name", ""))
-	match phase:
-		PHASE_INITIAL_PEEK:
-			return "Remember your two bottom cards, then click Ready"
-		PHASE_TURN_DRAW:
-			var slap_note := ""
-			if bool(latest_state.get("slap_open", false)):
-				slap_note = " · SLAP open: click matching card"
-			if is_current:
-				return "Draw from the deck or the discard pile (discard top only replaces)" + slap_note
-			return "Waiting for %s to draw a card" % name + slap_note
-		PHASE_TURN_DECISION:
-			return _decision_hint(is_current, name)
-		PHASE_Q_DECISION:
-			var qd: Dictionary = latest_state.get("q_decision", {})
-			if is_current:
-				if not bool(qd.get("own_viewed", false)):
-					return "Peeked their card. Now pick one of your own cards to peek"
-				return "Swap the two viewed cards, or keep yours?"
-			if not bool(qd.get("own_viewed", false)):
-				return "Waiting for %s to peek one of their own cards" % name
-			return "Waiting for %s to decide" % name
-		PHASE_SLAP_WINDOW:
-			return "Slap: click a card of the same rank. Wrong slap draws a penalty"
-		PHASE_SLAP_EXCHANGE:
-			if is_current:
-				return "Choose one of your cards to give to the slapped player"
-			return "Waiting for %s to give a card" % name
-		PHASE_SLAP_DUEL:
-			return "Duel: stop closest to the red mark to win the slap"
-		PHASE_GAME_OVER:
-			return "Ranked by total score, then card count, then highest single card"
-	return "Waiting for %s to act" % name
-
-## 处理抽到的牌阶段的细分 hint（按来源/能力/操作模式，区分当前玩家与其他玩家）。
-func _decision_hint(is_current: bool, name: String) -> String:
-	var pending: Dictionary = latest_state.get("pending", {})
-	var rank := str(pending.get("rank", ""))
-	var source := str(pending.get("source", "draw"))
-	if not is_current:
-		# 其他玩家看到的提示
-		if source == "discard":
-			return "%s took a card from the Discard" % name
-		if rank == "J":
-			return "%s drew a card and is choosing cards to swap" % name
-		if rank in ["7", "8", "9", "10", "Q"]:
-			return "%s drew a card and is choosing a card to look at" % name
-		return "%s drew a card from the Deck" % name
-	# 当前玩家看到的提示
-	if source == "discard":
-		return "Replace one of your cards with the drawn card"
-	match interaction.action_mode:
-		"replace":
-			return "Replace one of your cards, or discard the drawn card"
-		"peek_own":
-			return "Choose one of your own cards to peek"
-		"peek_other":
-			return "Choose another player's card to peek"
-		"queen_target":
-			return "Peek another player's card, then peek one of your own cards"
-		"q_view_own":
-			return "Peek one of your own cards, then decide to swap"
-		"jack_target":
-			return "J: pick an opponent's card to swap"
-		"jack_own":
-			return "J: pick one of your own cards, then confirm"
-		"jack_ready":
-			return "J: two cards picked — click Swap or Keep"
-	if rank == "J":
-		return "Discard to swap two cards, or replace one of your cards"
-	if rank in ["7", "8"]:
-		return "Discard to peek your own card, or replace one of your cards"
-	if rank in ["9", "10"]:
-		return "Discard to peek someone's card, or replace one of your cards"
-	if rank == "Q":
-		return "Discard to peek and decide to swap, or replace one of your cards"
-	return "Discard the drawn card, or replace one of your cards"
+	return HintText.hint(latest_state, phase, is_current, interaction.action_mode)
 
 func _mode_instruction(fallback: String) -> String:
 	return interaction.mode_instruction(fallback)
@@ -1490,9 +1499,31 @@ func _show_private_reveal(title: String, revealed_cards: Array, target: Dictiona
 
 ## 其他玩家查看某张牌时，在被查看的牌上标蓝色光晕 1 秒（不含牌面）。
 ## 记录槽位到 _peek_glow_slots，render 重建卡牌后仍可恢复光晕。
+## 贴牌成功爆炸弹层（仅 3D）：屏幕空间齿状爆炸 + 卡面 + 「贴牌成功」 + 贴中者名字。
+func _show_slap_success(data: Dictionary) -> void:
+	if _slap_burst != null and is_instance_valid(_slap_burst):
+		_slap_burst.queue_free()
+		_slap_burst = null
+	var actor := int(data.get("actor", -1))
+	var player_name := ""
+	for p in latest_state.get("players", []):
+		if int(p.id) == actor:
+			player_name = str(p.get("name", ""))
+			break
+	var burst := SlapSuccessBurst.new()
+	burst.name = "SlapSuccessBurst"
+	burst.z_index = 90
+	add_child(burst)
+	_slap_burst = burst
+	burst.setup(data.get("card", {}), player_name)
+
 func _on_peek_highlight(data: Dictionary) -> void:
 	if _table3d_active and table3d != null and is_instance_valid(table3d):
-		table3d.flash_slot(int(data.get("player_id", 0)), int(data.get("slot", -1)), PEEK_GLOW_COLOR, PEEK_GLOW_DURATION)
+		# 3D：翻到"黑底闭眼"占位面 + 蓝光（比单纯蓝光更明显），到时翻回；Q 的两张 hold 到决策。
+		var hold := bool(data.get("hold", false))
+		if hold:
+			_q_hidden_held = true
+		table3d.reveal_hidden_slot(int(data.get("player_id", 0)), int(data.get("slot", -1)), PEEK_GLOW_COLOR, PEEK_GLOW_DURATION, hold)
 		return
 	var pid := int(data.get("player_id", 0))
 	var slot := int(data.get("slot", -1))

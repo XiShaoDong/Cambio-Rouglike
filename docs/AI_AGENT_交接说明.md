@@ -38,7 +38,7 @@
 - **结算页（同步轮记分，R-08）**：GAME_OVER 后弹出居中浮动排名窗口（`scenes/ui/settlement_page.tscn` 场景实体 + `settlement_page.gd`，不遮挡棋盘卡牌区）；**棋盘卡牌结算时初始为背面**，由算分动画**逐张联动翻面**（`_on_settlement_flip` → `CardView.flip_reveal`，与行内记分同一时刻，每张间隔 `FLIP_STEP`）；行内累计分滚动累加，每轮后排名表整行上移/下移实时重排（数据来自 `settlement_model.gd` 纯计算 `layout_order`/`rounds`/`ranking`）；全部翻完冠军行名字金色脉冲光环 + ★ 徽章，胜利音效（Winner01-04 随机）**延迟到冠军时刻**播放（`main._pending_winner_sfx`）；房主可「再来一局」（`request_next_match`，GAME_OVER 后直接开新局，`match_number` 递增）/「返回大厅」，客户端显示等待提示。reason-only 结算（无 ranking）不弹结算页。
 - **结算页输入约定（B23）**：结算页根节点 `mouse_filter=STOP` 且**直挂 main 末尾 + z100**（不可挂 overlay/IGNORE，否则 4.6 picking 判不可点）；对局进入 GAME_OVER 时先 `_clear_settlement_anim_state()` 清残留动画再渲染；动画完成回调一律走 `_render_game_if_active()`（GAME_OVER 时跳过，防在途揭示延迟重渲染把翻开的牌翻回，见 B26）。
 - **J 盲换 = 与 Q 同款确认流程**：用能力（点弃牌堆）后出现「J：不交换」「J：交换」（`ActionModel.conditional_actions(state, ctx)`，`ctx` 来自本地 `interaction`）；先选对方牌再选自己牌（`jack_target`→`jack_own`→`jack_ready`），**两张都选齐前「交换」禁用**、选齐后**不自动交换**，需点「交换」(`jack_swap_now` → `request_use_ability`) 或「不交换」(`jack_cancel` → `request_discard_draw`，弃掉抽到的 J)，仍可点卡改选；hint 提示选两张牌。与 Q 的唯一区别是 J 需玩家各选一张（Q 是服务器先给看牌再出按钮）。
-- **Kongbaya 最终轮**：一场对局只允许喊一次（`kong_caller != -1` 后任何玩家再喊均拒绝）；喊出者不再行动，其余玩家按顺时针各执行一轮最终行动后统一结算。`kong_caller` 哨兵值为 **-1**（不能用 0，房主座位是 0）。
+- **Kongbaya 最终轮**：一场对局只允许喊一次（`kong_caller != -1` 后任何玩家再喊均拒绝）；喊出者不再行动，其余玩家按顺时针各执行一轮最终行动后统一结算。`kong_caller` 哨兵值为 **-1**（不能用 0，房主座位是 0）。**结算贴牌窗口**：末位最终行动后若 `slap_open`，不立即结算，进入 `SLAP_SETTLE_SECONDS=10s` 窗口（保持 `slap_open`+`TURN_DRAW`、仅可贴牌、普通操作经 `_guard_final_settle` 被拒），deadline 到时或贴牌判定结束后经 `SLAP_SETTLE_GRACE_SECONDS` 收尾再结算（让 peek 翻回/J·Q 换位/罚牌/赠牌在途动画放完）。快照 `settle_deadline_server_ms` 暴露 deadline；`settle_timer`/`final_settle_pending`/`_deferred_settle` 为服务器状态。**手牌超限（R-07）同款延迟**：罚牌先飞到超限玩家手牌（`SETTLE_OVERFLOW_PENALTY_DELAY=0.9s`，期间 `slap_open=false`、deadline=0），随后开 10s 贴牌窗口（`slap_open=true`），到期按超限结算——不再立即 GAME_OVER。**倒计时一经开始不再重置**（`_begin_overflow_settle` 在 `final_settle_pending` 时直接返回，窗口内再次超限只广播状态、不重制）。
 - **系列赛框架（已完成）**：房主开局设定 `match_limit` X（2-10 默认 5）把单局扩展为多局系列赛。`_server_start_match(match_limit)` 存 `run.match_limit`；每局 GAME_OVER 非把末由服务器 Timer 自动开下一局、把末（`_series_finished()`）不启动；`health==0` 者出局观战（`eliminated==true`，保留座位、仅公开信息、不可操作，`_guard_spectator()` 接入全部动作 RPC）；把末总排名 `series_ranking.gd` `SeriesRanking.final_ranking()`（存活者胜场降序→同胜场货币降序，淘汰不入榜），`result.series` 只在把末存在。测试 `verify_series.gd`。
 - **名次奖励经济（R-12，已完成）**：取消开局押注阶段（`Phase.BET`（值 9）**保留为弃用值**，任何流程不再进入），开局记忆全员确认后直接进入 `TURN_DRAW`。起始 **100 货币 + 2 生命**（`health` 默认 2）。每局结算 `_settle_rewards` 按名次由系统发钱：第一 +40、中间 +10、垫底 0（并列组按区间奖励平分，全员同分各 +10、无人扣血）；**垫底（含并列）扣 1 生命**，`health==0` 出局观战；手牌超限（R-07）与首回合 Kongbaya 失败者按垫底处理（0 金钱、−1 生命）；货币不扣、下限 0，出局者保留货币参与把末排名。快照移除 `bet_ready`，`result.economy` 改为 `result.rewards = {SeatId: {money, life_lost}}`，`result.penalized` 为扣血者。局内货币/生命 HUD 在每玩家区域手牌右侧（`coin_icon`/`life_icon`/`stat_hud`），名字标签不再显示货币。测试 `verify_economy.gd`（29/29）。
 - **商店固定价购买（已完成）**：系列赛非把末结算后进入 `Phase.SHOP`（值 10），展示至多 3 件随机遗物（v1 池 2 件，`scripts/core/relics.gd` 数据 + `pool()`/`def_by_id()`，各固定价 `RELIC_PRICE=50`）。每位存活玩家**限购 1 件**：点击遗物且货币 ≥ 售价即 `_server_shop_buy` 扣款、`run_state.relics[relic_id]` 入库并记持有者 `run_state.relic_owners[relic_id]=seat`，同件**先到先得**（`shop.sold[offer]` 售出后他人不可再买）；也可「跳过购买」（`request_shop_skip`）。全员完成（购买或跳过，`shop.done`）→ `_deal_next_match` 开下一局；货币不足只能跳过。把末不进商店。新 RPC：`request_shop_buy(offer)`/`request_shop_skip()`；错误码 `INVALID_OFFER`（越界/已售出）/`INVALID_AMOUNT`（钱不够）。快照 `shop` 公开投影 `offers:[{id,name,price,sold_by}]` + `done`（固定价无密封字段）；`shop_result` 公开（谁以多少购买）。客户端 `scenes/ui/shop_panel.tscn` + `shop_panel.gd`（点击遗物购买 / 已售出·货币不足·已完成状态 / 「跳过购买」按钮，随快照刷新）+ `main.gd`（`_open_shop_panel` 开/刷新、`_on_shop_buy`、`_show_shop_result_toast`）；`settlement_page.gd` 非把末 footer"即将进入商店…"。规则见 `KONG_开发文档.md` §3.7 R-10；测试 `verify_shop.gd`（23/23）。
@@ -58,9 +58,15 @@
 - **3D 左下角按键提示 + Tab 手册（纯客户端展示层，3D only，规则/协议/快照零改动）**：`KeyHintPanel`（`scripts/ui/key_hint_panel.gd`）在 3D 激活时于**左下角**显示两行「说明（纯白无边框）+ 按键 chip（圆角半透明底+细边框）」：`放大 Command`、`手册 Tab`（content-fit）；**右上角**另有同款 chip 回合徽标 **`回合 N/M`**（实时；字号 `ROUND_FONT_SIZE=21` = chip 两倍再缩小 1/3；左右内边距 `ROUND_H_PAD=18` 更宽，`_update_round_badge`）。chip 共用 `KeyHintPanel.make_chip`/`chip_style_box`（`make_chip(text, font_size, h_pad)` 可覆盖左右内边距）。**四角 HUD 统一**：到屏幕边缘目标 **75 屏幕像素**（`main.CORNER_MARGIN=75`，经 `_corner_margin()` 除以 canvas_items 拉伸比例换算成设计坐标，避免窗口大于 1280×760 时被放大）；三个角 = 左下按键提示 / 右上回合徽标 / 右下自身面板；**dark mode** 下这三个角落 UI 背景统一**纯白**（保留各自原透明度：chip 0.45 / 自身面板 0.22）+ 字体纯白（`KeyHintPanel.chip_bg/chip_text_color`、`PlayerStatPanel.set_corner_style`；light 与其它 UI、头顶座位面板不受影响）。Tab 开/关**手册**（`manual_panel.tscn`+`manual_panel.gd`，`_mount_modal` 走 `board3d` 全息看板弹在面前）：透明毛玻璃、三列 **牌 / 能力 / 分数**，数据来自纯函数 `ManualModel.rows()`（顺序 A,2…10,J,Q,K,Joker；分数取 `KongRules.card_value`，K=-1/Joker=0；能力 7/8 看自己、9/10 看别人、J 盲换、Q 看后决定换，其余 —）。输入：`main._input` 3D 分支监听 `KEY_TAB`（开/关手册）；**`V`/`F10` 退出 3D**（退出时关闭手册并隐藏提示）；**`Esc` 不再由 3D 处理，全局只开关设置界面**（`_unhandled_input`；3D 下打开设置释放鼠标、关闭恢复准星）。测试 `verify_manual`（41/41）。
 - **3D 大牌竖立 + 两堆对称 + 手牌两列居中（分支 `feature/3d-hologram-board`，纯客户端展示层，规则/协议/快照零改动）**：`Center/Pending` 大牌由平铺改为**竖立悬浮**——位置取抽牌堆/弃牌堆**中点**（两堆沿 X 关于桌心对称：`Deck`/`DeckCount` `-0.45`、`DiscardTop` `+0.45`，`KongBell` 移到 `-1.2`，中点即桌心），中心 `table3d_view.PENDING_Y=0.95`；每帧 `table3d_view.update_facing()` 把根节点重写为**绕世界 Y 朝向本机相机**（本地 +Y→水平指向相机、本地 +Z→世界上方，保持竖直、不镜像；不用含俯仰的完全 billboard），正/反面沿用快照（行动者正面、其他人背面），`CardBlock.set_upright(true)` 把点数标签从法线方向(+Y)移到牌顶(+Z)。飞牌/拾取沿用同一节点（`center_xform("pending")`）→ 换牌/弃牌飞牌**零改动兼容**（从竖立姿态起飞、落到平铺槽位）；**抽牌飞牌**也以该竖立节点为终点（从抽牌堆/弃牌堆平铺起飞、飞向竖直朝相机的大牌位）。**手牌居中**：`table3d_view._slot_local` 列坐标由 `-列×列距` 改为 `(0.5-列)×列距`，主牌两列关于座位 x 中轴居中（罚牌仍向右追列、主牌不位移）。**默认准星**仍对准桌心（两堆挪开后桌心无牌堆，抽牌需瞄左侧）。测试 `verify_table3d`（39/39）+ `verify_table3d_interaction`（76/76）；设计/计划 `docs/superpowers/specs|plans/2026-09-30-pending-upright-billboard*`。
 - **3D 堆可点 + 光晕（弃牌堆按上下文 / 抽牌堆轮到自己）（分支 `feature/3d-discard-pile-action`，纯客户端展示层，规则/协议/快照零改动）**：① **弃牌/use power 改点弃牌堆**——`main._table3d_click` 的 `"discard"` 分支按上下文路由（`ActionModel.pending_discard_available` → `_on_pending_action()` 弃大牌/用能力；否则 `_on_discard_pressed()` 取弃牌顶）；**大牌本身不再可点**（`_pending_block.set_pick_enabled(false)`）。弃牌堆可点（取弃牌顶 ∨ 弃大牌）时**金色光晕** + 可拾取（`ActionModel.discard_pile_actionable`）。② **抽牌堆**在轮到自己抽牌时（`ActionModel.draw_available` = TURN_DRAW ∧ 当前）**金色光晕**（`_deck_block.set_actionable`，不改拾取）。新增纯函数在 `action_model.gd`（2D/3D 共用；`kongbaya_available` 现复用 `draw_available`）。**悬停确认**：`CardBlock._paint_glow` 优先级调为 `flash > reveal > protected > hover > actionable` —— 可点堆不悬停显金色、**悬停改显浅蓝**（确认准星对准），揭示红绿光仍最高（不冲突）。测试 `verify_actions`（30/30）、`verify_table3d_exchange`（54/54）。
+- **3D action hint 屏幕空间化 + 回合倒计时（分支 `agent/feature-uiboard`，纯客户端展示层，规则/协议/快照零改动）**：3D 提示文本从世界空间看板 `hint3d` 改为**屏幕空间顶部居中面板** `HintHud`（`scripts/ui/hint_hud.gd`）：上方**椭圆胶囊倒计时**（默认 30 递减、可为负、边框、左右留白；>10 白 / 1..10 琥珀 / ≤0 红），下方 **hint 文本**。换 hint 播「旧片上移淡出 + 新片掉落回弹」；每回合（进入可行动阶段且 `match_number:current_player` 变化）重置并重播「胶囊先落、hint 后落」；ready/`INITIAL_PEEK` 阶段不显示胶囊、不计时（全员 ready 进入首回合才开始）。文案集中到 `HintText`（`scripts/ui/hint_text.gd`，英文不变，`main._hint_for` 委托），计时为 `TurnTimer` 纯模型（`scripts/ui/turn_timer.gd`，本地纯展示，未来换服务器 deadline 只改数据源）。2D 与 Ready/条件按钮不动；`hint3d` 只保留按钮。测试 `verify_hint_hud`（59/59）。另新增 **SLAP 状态行 + 装饰进度条**：hint 文本下方独立一行（绿 `SLAP OPEN` / 成功贴牌后红 `SLAP CLOSE`，仅 3D），其下固定 10s 满→空的**装饰**进度条（纯视觉、不对应真实窗口时长）；走空即整行消失；`HintText` 的 TURN_DRAW 后缀已移除。状态由 `main._update_hint_hud` 依 `slap_open`/`phase` 喂入 `HintHud.set_slap_state`。
+- **3D 看板/交互打磨（分支 `agent/feature-uiboard`，纯客户端展示层；除 `slap_resolved` 补 `actor` 外规则/协议/快照零改动）**：① 点数标签抬高 + 深色投影（`CardBlock` `LABEL_LIFT`/`LABEL_SHADOW_*`，悬浮感）。② `CardFly` 按可见面门控牌面/标签（私人交换/罚牌背面不泄漏，B45）；抽牌堆 `DeckCount` 改 `剩余/总数`（`KongRules.DECK_SIZE=54`）。③ peek：他人视角把被看牌翻到"黑底闭眼"占位面（`assets/Cards/peek_hidden.svg`）+蓝光（`CardBlock.reveal_hidden`/`Table3dView.reveal_hidden_slot`），Q 两张 `hold` 到决策结束（`peek_highlight` 加 `hold`）。④ 贴牌成功爆炸弹层 `SlapSuccessBurst`（`assets/ui/slap_burst.svg` 齿状红底黑边 + 卡面 + 「贴牌成功」+ 玩家名；屏幕横向 3/4、垂直居中；`slap_resolved` 补 `actor`）。⑤ 看板重定位：模态板与 Ready/按钮板统一锚到本机座位→桌心 `BOARD_DEPTH=0.2` 深度、悬浮 `BOARD_FLOAT_H=2.1`（`Table3dLayout.board_depth_pos`/`main._board_anchor_world`）；`hint3d` 去双层边框、无按钮隐藏；**隐藏看板禁用拾取盒（B46）**；内容尺寸变化自动 `wrap_to_content`；`main._auto_aim_board` 有模态/按钮时对准看板（结算 GAME_OVER 期间不对准、模态板只在打开时对准一次）。⑥ R-07 超限结束补自动推进（B47）。测试 `verify_hint_hud`(59/59)/`verify_slap_burst`(12/12)/`verify_board3d`(62/62)/`verify_table3d_exchange`(86/86)/`verify_table3d`(42/42)/`verify_shop`(28/28)。
 - **Robot 3D 角色（已完成，纯客户端展示层）**：对局 3D 每个座位 `Avatar` 下挂 `RobotAvatar`（`scripts/ui/robot_avatar.gd`）——实例化 `assets/characters/source/Robot.blend`、剔除模型自带 Camera/Light、把 T-pose 手臂放下为待机姿势（`set_bone_global_pose_override`）、递归 `material_overlay` 仅做**出局/离线变暗**（**不再按回合染色**）；旧占位 `Body/Head` 隐藏（保留节点供 tuner/测试）。**眼部追踪**：`RobotAvatarMath.eye_look_weights`（纯函数）把朝向映射到 ARKit 眼球 blendshape，`Table3dView.update_avatars(cam, remote_looks, remote_zoom, local_zoom)` 每帧让每席机器人用其“主人”同步来的世界注视点（客户端 ~12Hz 上报 `GameState.server_look` → 服务器 `receive_look` 写入 `remote_looks`，不入快照；无则**稳定看向本机相机**，不套用本机瞄准点），含自动眨眼。**眼动采用 VRM 1.0 LookAt 语义（head-relative）**：`set_gaze_target_world(target)` 先做 **Head Tracking**（头 clamp 到 `HEAD_YAW_MAX_DEG`/`HEAD_PITCH_MAX_DEG` 跟随注视点）再做**相对头**的眼残余（`HEAD_*`/`EYE_*`；头/眼独立不叠加）；`set_eye_direction`/`set_eye_look` 为仅眼低层 API。头无需额外同步（世界统一，可由 gaze target 确定性推出）。模型脸朝 +Z、眼球中心 y≈2.038、20 骨骼（手部动画 Phase 3 预留）。**座位角度改为按 seat_id 固定**（`Table3dLayout.seat_angle()`：seat0=0°/1=270°/2=90°/3=180°，所有客户端共享同一世界坐标，修复"注视方向镜像"；`seat_angles` 仅留沙盒等按序取角度用）。另修 `Crosshair` 居中（原 `set_anchors_preset` 未设偏移→停在左上角，改 `set_anchors_and_offsets_preset(PRESET_CENTER)`）。**机体颜色每玩家随机**（进入游戏从 `KongRules.PLAYER_COLORS`(8 色) 随机取未占用色写入 `players[seat].color` 随快照下发；`RobotAvatar.set_body_color` 用逐实例 `set_surface_override_material` 上色，不改共享材质；默认 `#496AFE`）；**按住 Command/Alt 放大时眼睛变小**（`Tiny_Eyes` 形状键，且随注视同步 `GameState.remote_zoom` → `update_avatars(..., remote_zoom, local_zoom, remote_talk, local_talk)`）；**按 M 说话**（`set_talking` 驱动下巴 `jawOpen`，`RobotAvatarMath.talk_jaw` 多正弦开合 + 慢包络；状态随 `remote_talk` 同步）；3D 场景新增 `KeyLight`(DirectionalLight3D)+环境 `Sky` 反射（原场景无灯光→发平）。详见 `docs/3D角色与场景说明.md` §2.1/§4.2/§4.5/§4.6/§4.7/§4.8；协议见 `网络协议_V1.md` §4.8；测试 `verify_robot_avatar`（62/62）。
 - **Robot 鼻子（Mark 的 nose 指针风格，已完成，纯客户端展示层）**：`scripts/ui/nose_avatar.gd`（`NoseAvatar`）程序化圆锥（底在原点、沿 +Z、单位长度；`IDLE/EXTENDING/EXTENDED/RETRACTING`）。鼻根由 `Eyes` 网格 AABB 推出（两眼中间、**眼球下方**、脸前；回退 `NOSE_BASE_MODEL`）；远程席鼻子由 `RobotAvatar` 建在其 `Skeleton3D` 下、每帧按 `Head` 姿势算鼻根并把鼻子**定向到目标点**（`set_nose_target_world`，随头摆、鼻尖钉在目标）；本机第一人称鼻子挂相机（`Table3dView._ensure_local_nose()` / `LOCAL_NOSE_POS`）。**归并到 Mark v2**（见下条）：不再有独立触发键（原 D/中键已移除），改为**由 nose 风格的 mark 驱动**（`Table3dView.show_mark`→`_set_seat_nose_target`；mark `finished` 时缩回）。`look.nose`/`GameState.remote_nose`/`Table3dView.update_noses` 保留但 `main` 不再使用（停用）。**不改**规则/快照/`Robot.blend`/`table3d.tscn`。详见 `docs/3D角色与场景说明.md` §4.9；测试 `verify_nose`（31/31）。
 - **桌面标记 Mark v2（按住 D 出轮盘，已完成，纯客户端展示层）**：3D **按住 D** 冻结准星落点、释放鼠标、在落点显示四扇区轮盘（`scripts/ui/mark_wheel.gd` `MarkWheel`：上眼/右问/下数/左叹，中心中空；数字扇区=`latest_state.discard.rank`，空→`-1`），拖到扇区松 D 放置、**单点不放置**（`main._open_mark_wheel`/`_finish_mark_wheel`；命中 `Mark3dMath.sector_for`）。mark=`{seat,pos,style,icon,text}`；`style∈{ripple,nose}`（放置者设置 `Settings.gameplay.nose_click`：关→波纹、开→鼻子），`icon∈{eye,question,number,exclaim}`。渲染 `scripts/ui/mark3d.gd`（`setup(owner_dir,icon,text,show_pointer)`）：ripple=两层圆形 `TorusMesh` 声呐 + "∧"箭头（顶点在圆心，朝向=标记者→圆心）+ 中心 icon；nose=**驱动该席鼻子伸向落点** + 仅 icon（`Table3dView.show_mark`→`_set_seat_nose_target`）；icon=`Sprite3D`(眼) 或 `Label3D`(?/!/数字)；颜色=玩家机体色 `players[].color`（`_mark_color_for`，无则默认红）；`LIFETIME=3.0s`。落点=`Table3dPicker.ray_plane_y` 与桌面平面交点、`Mark3dMath.on_table` 桌内判定；`Table3dView.show_mark(seat,pos,style,icon,text)`/`clear_marks`（同席替换、退出清空+复位鼻子）。同步：表现层事件 RPC `server_mark(pos,style,icon,text)`→`receive_mark`→`GameState.mark_placed` 信号（不入快照）。**鼻子不再独立触发**（`look.nose` 停用；鼻子由 mark 驱动）。**不改**规则/快照/`table3d.tscn`。详见 `docs/3D角色与场景说明.md` §4.9/§4.10、`网络协议_V1.md` §4.9；测试 `verify_mark`（43/43）。
+- **Kong 铃铛模型（纯客户端展示层）**：`Center/KongBell` 下隐藏旧占位 `Base/Dome/Knob`，挂 `BellModel`（`scripts/ui/bell_model.gd`）实例化 `assets/3Dmodels/call-bell.glb` + `assets/shaders/bell_metal.gdshader`（按模型局部 Y 三段：`y<0.26` 黑底座 / `0.26..1.10` 金钟体 / `y>1.10` 银顶钮，各段 metallic/rough 不同 + `ambient_lift`/`fresnel_lift` 提亮）；`set_glow(on)` 由 `_update_bell` 依 `ActionModel.kongbaya_available` 切换金光；`SCALE=0.37`。拾取仍用场景 `KongBell/PickArea`。模型无材质包（无贴图）。
+- **3D 牌堆堆叠（纯客户端展示层）**：`scripts/ui/deck_pile.gd`（`DeckPile`）把 N 张卡边薄盒叠成一摞（`CARD_THICKNESS`/`JITTER`），`with_back` 区分抽牌堆（顶面贴合 `back07` 卡背）与弃牌堆（只画卡边、正面朝上）。`table3d_view._bind` 建 `Center/DeckPile`（最上张仍由 `Center/Deck` CardBlock 充当）与 `Center/DiscardPile`（最上张仍由 `Center/DiscardTop` 充当）；`render` 按快照 `draw_count`/`discard_count` 设张数、把顶牌抬到堆顶。**弃牌顶变换（贴牌/替换/弃牌）期间保留显示"上一张"**（`_begin_discard_hold` 记 `_prev_discard`）避免下方为空。
+- **Stats 面板（弃牌堆统计，纯客户端展示层）**：快照新增 `discard_count`/`discard_history`（曾进入弃牌堆的牌，均当时公开过）；`scripts/ui/stats_board.gd`（`StatsBoard`）去重后按 4 行花色扇形展开（固定槽位 A..K + Joker）。`ManualPanel` 顶部加页签（手册 / Stats）：**Tab 开手册页、S 开 Stats 页**（同一面板）。**打开时对点击透明**（`main._manual_transparent` → `_board_has_panel` 返回 false、`_board_hit` 跳过 board3d），仍可点卡牌；页签改用键切换。
+- **最终轮/超限结算贴牌窗口（服务器规则）**：Kongbaya 末位行动后或手牌超限（R-07）罚牌落地后，不立即结算，进入 `SLAP_SETTLE_SECONDS=10` 结算贴牌窗口（`slap_open`+`TURN_DRAW`、仅可贴牌）；到期或贴牌判定结束后经 `SLAP_SETTLE_GRACE_SECONDS` 收尾再结算；**倒计时一经开始不再重置**。快照 `settle_deadline_server_ms`。详见 §3/§5/§6 与 `KONG_开发文档.md §3.6`。
 - **卡牌贴图分辨率坑（防复发）**：图集 1× 源图 `opersze-cards-full.png` 每卡仅 **55×77 像素**，在游戏里是**放大**显示（手牌 ≈1.16×、大牌 2×，HiDPI/窗口缩放再 ×2）→ 糊；旧素材 352×512 是缩小显示故清晰。**运行时必须用 4× 高清版**（每卡 220×308，显示尺寸小于格子 → 缩小采样、清晰）。`TextureRect` 一直是 `KEEP_ASPECT_CENTERED`（等比、无变形），故糊的原因是像素不足而非拉伸变形。
 - **卡牌视图重建约定**：`game_view._clear_area` 一律先 `remove_child` 立即移出网格、再 `queue_free` 延迟释放（**不要直接 `free()`**——卡牌点击触发重建时被点击的卡正被信号锁定，free 会报 "Object is locked"）。
 - **罚牌附加卡布局**：前 4 张主网格固定 2 列永不位移；第 5+ 张在 `ExtraLayer` 按**槽号固定绝对定位**（统一向上增长、行列固定，加新罚牌已存在卡不移动）。
@@ -157,10 +163,15 @@ UI 层已拆分（main.gd 是组合根）：
 | `card_fly_sandbox.gd` + `scenes/ui/card_fly_sandbox.tscn` | 3D 换牌动画沙盒（复刻对局布局 + 6 kind 按钮；接入前的手感原型） |
 | `table3d_view.gd`（换牌/抽牌飞牌段 + 堆光晕） | 对局 3D 飞牌编排：`animate_exchange(data)` + `slot_xform`/`center_xform`/`slot_face_up`/`slot_card` + `_anim_slots`/`_discard_hold`/`_flyers` 跨 render 管理（`main.gd` 3D 分支调用）；**抽牌飞牌** `_detect_draw`/`_anim_draw`（快照 pending 空→非空，所有人可见）；抽牌堆/弃牌堆可点**金色光晕**（`ActionModel.draw_available`/`discard_pile_actionable`） |
 | `board_input.gd` | 3D 全息看板坐标纯函数（`local↔uv↔viewport`） |
-| `board3d.gd` | 3D 全息看板宿主：`SubViewport`→半透明 billboard quad（按内容 wrap / 竖直仅绕 Y 朝相机 / 自身拾取消歧 / `push_input` 合成鼠标·键事件）；`main` 建 `board3d`（模态）+ `hint3d`（常驻提示+Ready）两实例 |
+| `board3d.gd` | 3D 全息看板宿主：`SubViewport`→半透明 billboard quad（按内容 wrap / 竖直仅绕 Y 朝相机 / 自身拾取消歧 / `push_input` 合成鼠标·键事件）；`main` 建 `board3d`（模态）+ `hint3d`（常驻提示+Ready）两实例。**`set_shown(on)`** 显隐同时同步拾取盒（B48）；`panel_count()` 供"只读面板点击穿透"判定 |
 | `key_hint_panel.gd` | 3D 左下角按键提示（说明纯白无边框 + 按键 chip 圆角半透明灰底+边框黑字，content-fit）：`放大 【Command】`/`手册 【Tab】` |
 | `manual_model.gd` | **纯函数**：手册数据 `rows()`（牌序 A..K/Joker + 能力文案 + `KongRules.card_value` 分数），headless 可测 |
-| `manual_panel.gd` + `scenes/ui/manual_panel.tscn` | Tab 手册（3D 全息看板弹在面前）：透明毛玻璃 + 三列 牌/能力/分数 |
+| `manual_panel.gd` + `scenes/ui/manual_panel.tscn` | 手册/Stats 面板（3D 全息看板弹在面前）：透明毛玻璃 + 顶部页签（**① 手册** 三列 牌/能力/分数，**② Stats** 灰牌堆统计）；`set_tab`/`setup_stats`；Tab 开手册页、S 开 Stats 页 |
+| `bell_model.gd` | Kong 铃铛模型包装：实例化 `assets/3Dmodels/call-bell.glb` + `bell_metal.gdshader`（按局部 Y 三段：黑底座/金钟体/银顶钮），`set_glow` 可用性金光；`table3d_view._bind` 挂载并隐藏旧占位 Base/Dome/Knob |
+| `deck_pile.gd`（`DeckPile`） | 牌堆视觉：把 N 张卡边薄盒叠成一摞；`with_back=true`（抽牌堆，顶面贴合卡背）/`false`（弃牌堆，只画卡边，正面朝上）；`set_count` 仅在变化时重建 |
+| `stats_board.gd`（`StatsBoard`） | **Stats 面板内容**：把 `discard_history` 去重后按 4 行花色（♠♥♣♦，红 Joker→♥/黑 Joker→♠、A..K **固定槽位**）扇形展开（沿 X 叠 `STEP_FRAC`、微弧 `ARC` + 倾角 `TILT_DEG`），复用 `CardFactory`/`CardView` |
+| `assets/shaders/bell_metal.gdshader` / `deck_back_projection.gdshader` | 铃铛金属（Y 分段）/ 抽牌堆模型卡背投影（沙盒）；纯展示着色器 |
+| `deck_back_config.gd` / `deck_back_math.gd` / `deck_model_sandbox.gd` + `scenes/ui/deck_model_sandbox.tscn` | 抽牌堆模型 `DeckCardPile.glb` 卡背拟合沙盒（方案 3 第一步，未接入对局） |
 
 ## 5. 状态机（`GameState.Phase` 数值不可随意变更，需同步 UI 与测试）
 
@@ -182,10 +193,10 @@ UI 层已拆分（main.gd 是组合根）：
 
 - 房主 `Network.host_game`（ENet peer ID = 1）；客户端 `Network.join_game` + 注册昵称。
 - 命令进入 server `server_*` RPC → 私有 `_server_*` 验证。
-- 状态消息：`receive_lobby`/`receive_state`/`receive_reveal`/`receive_toast`/`receive_peek_highlight`，牌面仅允许在弃牌顶、行动者的待处理抽牌、结算牌中出现。
+- 状态消息：`receive_lobby`/`receive_state`/`receive_reveal`/`receive_toast`/`receive_peek_highlight`，牌面仅允许在弃牌顶、行动者的待处理抽牌、结算牌中出现。快照 `discard_history`（曾进入弃牌堆的牌，均当时公开过）+ `discard_count` 供 3D 弃牌堆堆叠与 Stats 面板；不含隐藏牌面。
 - 请求方向：`slap`（`TURN_DRAW` 且 `slap_open`）、`slap_exchange`（`SLAP_EXCHANGE`）、`slap_duel_stop`（`SLAP_DUEL`，仅候选人）。快照 `slap_duel` 仅在 `SLAP_DUEL` 存在（`contestants`/`duration_ms`/`deadline_server_ms`/`target`，均公开）。
-- 查看高亮 `peek_highlight`：仅含 `{player_id, slot}` 位置、**不含牌面**（详见 `网络协议_V1.md` 4.6）。非当前玩家看到的大牌为**背面**（`pending.hidden=true`，Feature0）。
-- 交换动画：server 广播 `card_exchange_animated` 事件（kind: `replace`/`swap`/`discard`/`slap_penalty`/`slap_resolved`/`slap_gift`），各 client 用**自己视角的 `_card_slots`** 定位播放。`slap_gift`/`slap_penalty` **不含牌面**（防泄漏）；`slap_resolved` 含 card（被贴的牌已通过贴牌 reveal 公开）。
+- 查看高亮 `peek_highlight`：仅含 `{player_id, slot}` 位置、**不含牌面**（详见 `网络协议_V1.md` 4.6）。非当前玩家看到的大牌为**背面**（`pending.hidden=true`，Feature0）。**3D 表现**：收到 `peek_highlight`（7/8/9/10/Q 看牌）时，被看的牌**翻到"黑底闭眼"占位面**（`assets/Cards/peek_hidden.svg`）+ 蓝光（`main._on_peek_highlight` → `Table3dView.reveal_hidden_slot` → `CardBlock.reveal_hidden`），到时翻回；**Q 的两张看牌带 `hold`**，他人视角保持到本次决策结束（离开 `Q_DECISION` 时 `Table3dView.release_hidden_reveals` 释放）。发牌者本人不受影响（仍收私有真实牌面）。
+- 交换动画：server 广播 `card_exchange_animated` 事件（kind: `replace`/`swap`/`discard`/`slap_penalty`/`slap_resolved`/`slap_gift`），各 client 用**自己视角的 `_card_slots`** 定位播放。`slap_gift`/`slap_penalty` **不含牌面**（防泄漏）；`slap_resolved` 含 `card`（被贴的牌已通过贴牌 reveal 公开）且含 `actor`（贴中者 seat）。**3D 贴牌成功**：收到 `slap_resolved` 且 3D 时弹出屏幕空间**齿状爆炸弹层** `SlapSuccessBurst`（红底黑边 + 卡面 + 「贴牌成功」大字 + 贴中者名字；屏幕右侧垂直居中、弹出后自动淡出；`main._show_slap_success`）。
 - 贴牌 reveal target 携带 `correct: Boolean`（客户端据此打绿/红炫光）。
 - 注视点 `look`（纯表现层，**不入快照**）：客户端 3D 下按 ~12Hz `server_look(target, zoom)` → 服务器校验发送者后 `receive_look(seat, target, zoom)` 转发给其他客户端，写 `GameState.remote_looks`（世界注视点）；用于每席机器人眼睛跟随其"主人"自己的鼠标/相机（详见 `网络协议_V1.md` §4.8）。
 
@@ -215,6 +226,11 @@ UI 层已拆分（main.gd 是组合根）：
 - **B41（3D 行动提示/高亮不随本地交互更新）**：`interaction.action_mode` 为本地状态（用能力/J 两段交换只调 `_render_game()`），而 3D 渲染+提示板只在 `_on_state_updated` 刷新 → 3D 提示/高亮停留旧态，切 2D→3D 才更新。修复：`main._refresh_table3d()` 在 `_render_game()` 末尾统一刷新 3D（`_on_state_updated` 去重）。详见 `BUG档案.md`。
 - **B43（3D peek 蓝光看不到）**：其他玩家看不到当前玩家 peek 的蓝色光晕——3D `Table3dView.flash_slot` 只临时染色、不登记，紧随的 `_broadcast_state` 重建卡牌即冲掉。修复：增 `_flashes`（`"seat_slot" -> {color, until_ms}`）登记，`render` 重建后按剩余时间重放（同 `_reveals` 模式），过期清除。详见 `BUG档案.md`。
 - **B42（Q 看牌不保持正面 + 释放动画/交换飞牌衔接）**：Q 的两张揭示 **hold** 到玩家确认交换/不交换：2D `RevealController._held_peek`/`release_held_peeks`，3D `Table3dView.reveal_slot_held`/`release_held_reveals`；`main` 用本地标志 `_hold_next_reveal`（`game_interaction` 在 `queen_target`/`q_view_own` 置位）。**不交换**：`release_held_peeks(true)` 播翻回动画（2D overlay / 3D `releasing` 跨 render 续播 `CardBlock.reveal_from_to`）后才清理，不再瞬切。**交换**：`q_exchange` 不预释放，保留正面由交换飞牌 `consume_held`/`take_held_reveal` 取牌面 → 从正面起飞、背面落地。纯展示层。详见 `BUG档案.md`。
+- **B44（3D 罚牌飞牌飞到一半消失后瞬间出现在手牌）**：`Table3dView.slot_xform` 对**未渲染槽**（罚牌追加的第 5/6 张、或回填空槽）用**座位根节点**（`y=0` 地面）而非 `HandAnchor`（`y≈1.03`）计算，罚牌飞牌朝桌面下方扎、穿桌消失，随后槽位才在正确高度出现。修复：登记 `_hand_node_by_id`，`slot_xform` 未渲染分支改用 `HandAnchor.global_transform * _slot_local(slot)`。详见 `BUG档案.md`。
+- **B45（3D 交换飞牌泄漏牌面）**：`swap` 事件把两张牌面广播给所有客户端，3D `CardFly` 又无条件 `body.setup({card})`——点数标签是 billboard，翻到背面仍显示 → 私人交换泄漏。修复：`CardFly` 按"当前可见面"（起/终面 + 翻转中点）刷新 `body.setup({card}/{})`，起终面都非正面时全程不显牌面/标签（与 2D 一致，零协议改动）。另：抽牌堆 `DeckCount` 改为 `剩余/总数`（`draw_count/KongRules.DECK_SIZE`）。详见 `BUG档案.md`。
+- **B46（3D 看板隐藏后仍抢射线命中）**：`Board3d` 拾取盒不随隐藏禁用，`board3d`/`hint3d` 同锚点时隐藏块的拾取盒抢走射线 → 可见看板 `hit_viewport_coord` 返回 (-1,-1) → 该区域按钮 hover/点击失效（Ready 中间、商店遗物按钮点不了而 skip 能点）。修复：`_sync_visible()` 里 `_pick_shape.disabled = not visible`。另修：`Board3d._process` 内容尺寸变化时自动 `wrap_to_content()`（结算逐轮变高不再被裁）；有模态/按钮时 `main._auto_aim_board()` 自动把视线对准看板（高位看板可点）。详见 `BUG档案.md`。
+- **B47（R-07 超限结束卡结算、进不了商店）**：`GAME_OVER` 两入口中 `_finish_game_over_hand` 漏调 `_start_series_timer()`（及把末 `series` 总结/胜场累加），从超限路径结束的局永久停在结算页。修复：补齐。另：自动对准已改为**结算(GAME_OVER)期间不对准**、模态板**只在打开时对准一次**、提示板按钮变化时才重对准。详见 `BUG档案.md`。
+- **B48（商店点不中商品 / 隐藏看板拾取盒挡射线）**：`board3d`/`hint3d` 拾取盒同在 `PICK_MASK(2)` 层；`_refresh_hint_panel` 隐藏提示板时**直接改 `visible`**、没走 `_sync_visible` → 隐藏后 `_pick_shape.disabled` 仍为 false（启用），同锚点抢走射线 → `board3d` 的 `hit_viewport_coord` 命中错 collider 返回 -1 → `_click_route` 落 "blocked" → 商店点不中（按 Tab 开关手册偶发修复）。修复：`Board3d.set_shown(on)`（显隐同步拾取盒）替代直接改 `visible`；`_ensure_board` 创建提示板后默认 `set_shown(false)`。详见 `BUG档案.md`。
 
 ## 8. 验证命令（headless 单元测试，不启动 GUI）
 
@@ -227,11 +243,11 @@ UI 层已拆分（main.gd 是组合根）：
 ... --headless --path . res://tests/verify_protocol.tscn
 # 交换动画测试（10/10）
 ... --headless --path . res://tests/verify_swap.tscn
-# 贴牌比拼测试（31/31：单正确/双正确比拼/超时/无人 STOP/调试模式/错误码）
+# 贴牌比拼测试（33/33：单正确/双正确比拼/超时/无人 STOP/调试模式/错误码/超限罚牌落地→贴牌窗口→结算）
 ... --headless --path . res://tests/verify_duel.tscn
 # 断线重连测试（41/41：seat 身份/离线标记/条件暂停/踢出/中止/解散/token 认领/手牌恢复）
 ... --headless --path . res://tests/verify_reconnect.tscn
-# Kongbaya 最终轮测试（15/15：正常最终轮结算/重复喊叫被拒/首·非首回合标记）
+# Kongbaya 最终轮测试（37/37：正常最终轮结算/重复喊叫被拒/首·非首回合标记/结算贴牌窗口：末位不立即结算·仅可贴牌·到期或贴牌判定后结算/超限罚牌落地→贴牌窗口→结算·倒计时不重制/弃牌历史）
 ... --headless --path . res://tests/verify_kongbaya.tscn
 # 结算模型 + 再来一局 + 结算页/棋盘联动 + 回归（38/38）
 ... --headless --path . res://tests/verify_settlement.tscn
@@ -247,21 +263,21 @@ UI 层已拆分（main.gd 是组合根）：
 ... --headless --path . res://tests/verify_card_skin.tscn
 # 3D 布局纯函数（19/19：座位角度/槽位网格/分类色/拾取层）
 ... --headless --path . res://tests/verify_table3d_layout.tscn
-# 3D 渲染（39/39：CardBlock 贴图/护盾/相机取景/HUD/面板 data/空槽不渲染/场景契约/大牌桌心正上方/两堆对称/手牌两列居中）
+# 3D 渲染（51/51：CardBlock 贴图/护盾/相机取景/HUD/面板 data/空槽不渲染/场景契约/大牌桌心正上方/两堆对称/手牌两列居中/抽牌堆张数=draw_count-1/顶牌卡背/弃牌堆 DiscardPile 张数=discard_count-1）
 ... --headless --path . res://tests/verify_table3d.tscn
 # 3D 环视与相机（10/10：事件可达/相机为当前/取景/朝向/按住 Command·Alt 放大 FOV/松开恢复/reset）
 ... --headless --path . res://tests/verify_table3d_mouse.tscn
 # Robot 角色（62/62：眼动权重/头部 follow/VRM LookAt head-relative/说话 jawOpen/随机配色/逐实例材质/共享世界/远程同步）
 ... --headless --path . res://tests/verify_robot_avatar.tscn
-# Robot 鼻子指针（31/31：NoseAvatar 状态机/长度折算/随头/本机相机鼻/远程下发/look.nose 同步/彩蛋设置）
+# Robot 鼻子（31/31：NoseAvatar 状态机/鼻根眼球下方/随头/本机相机鼻/鼻子由 mark 驱动）
 ... --headless --path . res://tests/verify_nose.tscn
-# 桌面标记（22/22：纯函数/标记节点/视图/同步/拾取）
+# 桌面标记 Mark v2（43/43：纯函数/轮盘 sector_for/标记节点多图标/视图/同步/拾取）
 ... --headless --path . res://tests/verify_mark.tscn
-# 3D 交互（76/76：拾取/高亮/揭示真实 3D 翻转/翻牌跨render保持/双面几何/own 槽 hover 抬起且拾取盒不动/HUD/铃铛/悬停/回合标识/默认准星指向牌堆/大牌竖立朝向）
+# 3D 交互（88/88：拾取/高亮/揭示真实 3D 翻转/翻牌跨render保持/双面几何/own 槽 hover 抬起且拾取盒不动/HUD/铃铛（BellModel+金属材质接入）/悬停/回合标识/默认准星指向牌堆/大牌竖立朝向）
 ... --headless --path . res://tests/verify_table3d_interaction.tscn
-# 3D 全息看板（52/52：坐标换算 / 挂载+wrap / 竖直朝向 / 输入合成 / 拾取消歧 / 双宿主+Ready（加大+hover）/ Q 按钮在提示板下方（更大+有 hover）/ main 路由）
+# 3D 全息看板（65/65：坐标换算 / 挂载+wrap / 竖直朝向 / 输入合成 / 拾取消歧（含 set_shown 显隐同步拾取盒，B48）/ 双宿主+Ready（加大+hover）/ Q 按钮在提示板下方（更大+有 hover）/ main 路由）
 ... --headless --path . res://tests/verify_board3d.tscn
-# 手册 + 左下角按键提示（41/41：牌序/分数/能力、chip 样式、3D 提示两行、Tab 开/关手册、退出清理）
+# 手册 + 左下角按键提示 + Stats（47/47：牌序/分数/能力、chip 样式、3D 提示两行、Tab 开/关手册、S 开 Stats 页（复用同面板·页签）、StatsBoard 固定槽位分组去重、打开时看板点击穿透、退出清理）
 ... --headless --path . res://tests/verify_manual.tscn
 # 动作模型（35/35：Q/J 确认按钮（J 未选齐禁用）、Joker 条件、铃铛/抽牌可用、Ready 文案与可用、弃牌堆取/弃可用性）
 ... --headless --path . res://tests/verify_actions.tscn
@@ -275,10 +291,12 @@ UI 层已拆分（main.gd 是组合根）：
 ... --headless --path . res://tests/verify_card_animation.tscn
 # 3D 换牌动画沙盒（40/40：配置/纯数学/控制器/沙盒；复刻布局 + 6 种 kind 演示）
 ... --headless --path . res://tests/verify_card_fly.tscn
-# 3D 换牌动画接入对局（66/66：跨 render 标记/6 kind 落地恢复/隐私/未渲染槽/揭示重放不重播/炫光优先级/抽牌飞牌/弃牌堆可点/抽牌堆光晕/Q hold 释放翻回动画/peek 蓝光跨 render 保持）
+# 3D 换牌动画接入对局（86/86：跨 render 标记/6 kind 落地恢复/隐私/未渲染槽/揭示重放不重播/炫光优先级/抽牌飞牌/弃牌堆可点/抽牌堆光晕/Q hold 释放翻回动画/peek 蓝光跨 render 保持/弃牌顶变换保留上一张）
 ... --headless --path . res://tests/verify_table3d_exchange.tscn
 # Q 看牌 hold（12/12：2D hold 登记/交换 consume 返回牌面与撤标记/不交换翻回动画后清理）
 ... --headless --path . res://tests/verify_q_hold.tscn
+# 抽牌堆模型卡背投影沙盒（48/48：DeckBackConfig/分层 hash/投影 XZ/侧面 AO/着色器 uniform/沙盒 apply_config·set_param）
+... --headless --path . res://tests/verify_deck_back.tscn
 # 双实例网络回归（host + client 各跑，均 exit 0）
 ... --headless --path . res://tests/verify_net.tscn -- -role host
 ... --headless --path . res://tests/verify_net.tscn -- -role client

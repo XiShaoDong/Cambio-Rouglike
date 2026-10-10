@@ -20,11 +20,13 @@ func _check(name: String, ok: bool) -> void:
 func _run() -> void:
 	await _test_board_input()
 	await _test_board3d()
+	await _test_board_rewrap()
+	await _test_hidden_board_pick()
 	await _test_modals_dim()
 	await _test_ready_click()
 	await _test_main_routing()
 
-## 3D 开局记忆：Ready 在提示板上，且默认准星（相机→桌心连线）能直接落到它上面 → 可直接点到。
+## 3D 开局记忆：Ready 在提示板上；提示板与模态板同锚点（贴手牌上方），对准后准星可点到。
 func _test_ready_click() -> void:
 	Network.is_host = true
 	var main: Node = preload("res://scenes/main.tscn").instantiate()
@@ -45,20 +47,74 @@ func _test_ready_click() -> void:
 	await get_tree().physics_frame
 	var ready: Button = main._hint_panel.get_node_or_null("VBox/ReadyButton")
 	_check("3D 开局记忆显示 Ready", ready != null and ready.visible)
-	_check("Ready 已加大高度（易点）", ready != null and ready.custom_minimum_size.y >= 60.0)
+	_check("Ready 已加大高度（易点）", ready != null and ready.custom_minimum_size.y >= 90.0)
+	_check("提示板拾取盒已放宽（准星略偏可命中）", main.hint3d.pick_pad.x >= 0.4)
 	_check("Ready 有明显 hover 样式", ready != null and ready.has_theme_stylebox_override("hover"))
-	# 有可点元素时提示板贴准星：默认准星（相机→桌心）应直接落在 Ready 内（无需抬头）
+	# 提示板与模态板同锚点（贴玩家手牌上方）；把相机对准提示板 → 准星命中 Ready
 	var cam: Camera3D = main.table3d.camera.camera_node()
+	_check("提示板与模态板同 XZ 锚点", is_equal_approx(main.hint3d.global_position.x, main.board3d.global_position.x) and is_equal_approx(main.hint3d.global_position.z, main.board3d.global_position.z))
+	cam.look_at(main.hint3d.global_position, Vector3.UP)
 	for i in 3:
 		await get_tree().physics_frame
 	var coord: Vector2i = main.hint3d.hit_viewport_coord(cam)
 	var rr: Rect2 = ready.get_global_rect() if ready != null else Rect2()
-	_check("默认准星即落在 Ready 内（3D 可直接点）", coord.x >= 0 and rr.has_point(Vector2(coord)))
+	_check("对准提示板后准星落在 Ready 内（可点）", coord.x >= 0 and rr.has_point(Vector2(coord)))
+	_check("board3d 隐藏时不抢命中（提示板可命中）", not main._board_hit().is_empty())
 	# 让 main._process 推送 hover motion，检查 Ready 是否真的进入 hover 态
 	await get_tree().process_frame
 	await get_tree().process_frame
 	_check("准星悬停时 Ready.is_hovered()", ready != null and ready.is_hovered())
 	main.queue_free()
+
+## 面板内容变高（如结算页逐轮新增排名行）后，看板应自动重新 wrap，不被裁。
+func _test_board_rewrap() -> void:
+	var b := Board3d.new()
+	add_child(b)
+	await get_tree().process_frame
+	var panel := PanelContainer.new()
+	var inner := Control.new()
+	inner.custom_minimum_size = Vector2(120, 100)
+	panel.add_child(inner)
+	b.mount_panel(panel)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var h1: int = b.viewport_size().y
+	inner.custom_minimum_size = Vector2(120, 420)
+	for i in 3:
+		await get_tree().process_frame
+	_check("内容变高后看板自动重 wrap（不被裁）", b.viewport_size().y > h1)
+	panel.queue_free()
+	b.queue_free()
+
+## 隐藏看板必须禁用拾取盒，否则会抢走同锚点其他看板的射线命中（B46）。
+func _test_hidden_board_pick() -> void:
+	var b := Board3d.new()
+	add_child(b)
+	await get_tree().process_frame
+	_check("无面板时拾取盒禁用", b._pick_shape.disabled)
+	var panel := PanelContainer.new()
+	b.mount_panel(panel)
+	await get_tree().process_frame
+	_check("有面板时拾取盒启用", not b._pick_shape.disabled)
+	b.unmount_panel(panel)
+	await get_tree().process_frame
+	_check("卸载后隐藏且拾取盒禁用", not b.visible and b._pick_shape.disabled)
+	panel.queue_free()
+	# set_shown 外部显隐也必须同步拾取盒（否则隐藏板仍挡同层射线 → 商店点不中）
+	var b2 := Board3d.new()
+	add_child(b2)
+	await get_tree().process_frame
+	var p2 := PanelContainer.new()
+	b2.mount_panel(p2)
+	await get_tree().process_frame
+	_check("挂载后拾取盒启用", not b2._pick_shape.disabled)
+	b2.set_shown(false)
+	_check("set_shown(false) 隐藏并禁用拾取盒", not b2.visible and b2._pick_shape.disabled)
+	b2.set_shown(true)
+	_check("set_shown(true) 显示并启用拾取盒", b2.visible and not b2._pick_shape.disabled)
+	p2.queue_free()
+	b2.queue_free()
+	b.queue_free()
 
 func _test_board_input() -> void:
 	var size := Vector2(2.6, 1.8)
@@ -224,21 +280,23 @@ func _test_main_routing() -> void:
 	_check("3D 下有 board3d 节点", main.board3d != null and is_instance_valid(main.board3d))
 	_check("3D 下有 hint3d 节点", main.hint3d != null and is_instance_valid(main.hint3d))
 	_check("提示板已挂常驻提示面板", main.hint3d.has_panel())
+	_check("无按钮时提示板隐藏（不留空面板）", not main.hint3d.visible)
 	_check("无模态时模态大板不显示", not main.board3d.visible)
 	_check("无模态时点击落到牌桌", main._click_route(false) == "table")
 	_check("命中看板时点击给看板", main._click_route(true) == "board")
 
-	# 看板：XZ 在"相机→桌心"连线上、Y 抬高 1/3；面板竖直；提示板在大板上方
-	var cam: Camera3D = main.table3d.camera.camera_node()
+	# 看板定位：模态板锚在本机座位→桌心的深度锚点、悬浮于桌面上方；面板竖直；提示板在大板上方
 	var cm: Dictionary = main.get_script().get_script_constant_map()
-	var bdist: float = cm.get("BOARD_DIST", 0.0)
-	var base: Vector3 = cam.global_position + (Vector3(0.0, Table3dLayout.TABLE_HEIGHT, 0.0) - cam.global_position).normalized() * bdist
+	var viewer: int = int(main.latest_state.get("viewer_id", 0))
+	var seat_pos: Vector3 = main.table3d.seat_world(viewer)
+	var anchor: Vector3 = Table3dLayout.board_depth_pos(seat_pos, float(cm.get("BOARD_DEPTH", 0.0)), float(cm.get("BOARD_TABLE_HALF", 0.0)))
 	var bp: Vector3 = main.board3d.global_position
-	_check("模态板 XZ 在相机→桌心连线上", absf(bp.x - base.x) < 0.05 and absf(bp.z - base.z) < 0.05)
-	_check("模态板高度已抬升", bp.y > base.y + 0.1)
+	var bh: float = main.board3d.world_size().y
+	_check("模态板 XZ 在手牌/座位深度锚点", anchor.length_squared() > 0.0001 and absf(bp.x - anchor.x) < 0.05 and absf(bp.z - anchor.z) < 0.05)
+	_check("模态板悬浮于桌面上方", is_equal_approx(bp.y, Table3dLayout.TABLE_HEIGHT + float(cm.get("BOARD_FLOAT_H", 0.0)) + bh * 0.5))
 	_check("面板完全竖直（+Y=世界 up）",
 		main.board3d.global_transform.basis.y.normalized().dot(Vector3.UP) > 0.99)
-	_check("提示板在大板上方", main.hint3d.global_position.y > bp.y + 0.1)
+	_check("提示板悬浮于桌面之上", main.hint3d.global_position.y > Table3dLayout.TABLE_HEIGHT)
 
 	main._open_shop_panel()
 	await get_tree().process_frame
@@ -247,6 +305,8 @@ func _test_main_routing() -> void:
 	_check("board3d.has_panel()", main.board3d.has_panel())
 	_check("有模态时模态大板显示", main.board3d.visible)
 	_check("有模态时未命中看板则拦截（不点穿牌桌）", main._click_route(false) == "blocked")
+	await get_tree().physics_frame
+	_check("有模态时自动对准看板 → 准星可命中可点", not main._board_hit().is_empty())
 
 	# 开局记忆阶段：提示板显示 Ready 按钮
 	var st := _tournament_state()
@@ -256,6 +316,7 @@ func _test_main_routing() -> void:
 	await get_tree().process_frame
 	var ready: Button = main._hint_panel.get_node_or_null("VBox/ReadyButton")
 	_check("开局记忆阶段提示板显示 Ready", ready != null and ready.visible)
+	_check("Ready 阶段提示板可见", main.hint3d.visible)
 
 	# Q_DECISION 已看自己牌：交换/不交换按钮出现在提示板下方（与 2D HintActions 一致）
 	var qst := _tournament_state()

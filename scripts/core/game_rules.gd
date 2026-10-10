@@ -7,6 +7,8 @@ extends RefCounted
 const MAX_PLAYERS := 4
 const MIN_PLAYERS := 2
 const HAND_SIZE := 4
+## 初始牌堆总张数：4 花色 × 13 点数 + 2 Joker = 54（用于抽牌堆 "剩余/总数" 展示）。
+const DECK_SIZE := 54
 ## 玩家机器人配色（进入游戏时随机分配、保证不重复；末位为原默认色）。
 const PLAYER_COLORS := ["#3ABA64", "#BD414B", "#A36DE9", "#7158FE", "#A0D45D", "#B18C3E", "#63CBEA", "#496AFE"]
 
@@ -35,6 +37,14 @@ const SLAP_DUEL_GRACE_MS := 2000
 ## 加粗区目标位置范围（bar 归一化坐标，避开贴边）。
 const SLAP_DUEL_TARGET_MIN := 0.15
 const SLAP_DUEL_TARGET_MAX := 0.85
+
+## 最终轮（Kongbaya）末位玩家行动后的**结算贴牌窗口**（秒）：期间仅可贴牌，到时开始结算。
+## 目的：末位行动后不立即结算，给其他玩家贴牌机会，并让末位动作的在途动画（peek 翻回 / J·Q 换位）放完。
+const SLAP_SETTLE_SECONDS := 10.0
+## 结算前收尾宽限（秒）：贴牌判定 / 罚牌 / 赠牌等发生在窗口内的动画放完后再结算。
+const SLAP_SETTLE_GRACE_SECONDS := 1.2
+## 手牌超限（R-07）：罚牌先飞到玩家手里，之后才开贴牌结算窗口（秒）。
+const SETTLE_OVERFLOW_PENALTY_DELAY := 0.9
 
 const SPECIAL_RANKS := ["7", "8", "9", "10", "J", "Q"]
 
