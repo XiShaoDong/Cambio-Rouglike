@@ -6,6 +6,11 @@ extends Node3D
 ## 只读 + 拾取分发：不做规则/隐私判断（已知/未知由快照 slot 是否含 "card" 决定）。
 
 const CardBlockScript := preload("res://scripts/ui/card_block.gd")
+const NoseAvatarScript := preload("res://scripts/ui/nose_avatar.gd")
+const Mark3DScript := preload("res://scripts/ui/mark3d.gd")
+const Mark3dMathScript := preload("res://scripts/ui/mark3d_math.gd")
+const NOSE_PICK_KINDS := ["slot", "deck", "discard", "pending"]  # 可被中键"标记"的拾取类型
+const LOCAL_NOSE_POS := Vector3(0.0, -0.06, -0.15)               # 本机鼻根（相机本地，-Z=前）
 
 const SEAT_COUNT := 4
 const HUD_OFFSET := 0.55
@@ -44,6 +49,10 @@ var _hover_slot := {}
 var _hover_ray_local := Vector2.ZERO
 var _avatar_dim_mat: StandardMaterial3D = null
 var _hover_collider: Object = null
+var _hover_kind := ""              # 当前悬停拾取类型（供 hovered_card_world）
+var _hover_card = null             # 当前悬停的卡牌节点（CardBlock，取其中心作鼻尖目标）
+var _local_nose = null             # NoseAvatar（挂本机相机，第一人称）
+var _marks := {}  # seat -> Mark3D（桌面标记，独立节点、跨 render 保留）
 var _hover_mat: StandardMaterial3D = null
 var _seat_panels: Array = []      # PlayerStatPanel per slot
 var _stat_viewports: Array = []
@@ -150,12 +159,15 @@ func _bind() -> void:
 		_stat_viewports.append(sub)
 		_seat_markers.append(marker)
 	_bound = true
+	_ensure_local_nose()
 
 ## 显示/隐藏预览（不处理点击与动画）。
 func set_active(on: bool) -> void:
 	visible = on
 	if not on:
 		_clear_exchange_anim()
+		clear_local_nose()
+		clear_marks()
 
 ## 按快照全量重建（无增量、无插值）。state 为 HiddenInfo 投影出的公开快照。
 func render(state: Dictionary, actionable := Callable()) -> void:
@@ -662,6 +674,14 @@ func update_hover() -> bool:
 		return false
 	var center := get_viewport().get_visible_rect().size * 0.5
 	var hit := Table3dPicker.pick_hit(camera.camera_node(), get_world_3d(), center)
+	_hover_kind = str((hit.get("pick", {}) as Dictionary).get("kind", ""))
+	_hover_card = null
+	if NOSE_PICK_KINDS.has(_hover_kind):
+		var hc = hit.get("collider")
+		if hc != null and is_instance_valid(hc):
+			var hp = (hc as Node).get_parent()
+			if hp is Node3D and is_instance_valid(hp):
+				_hover_card = hp
 	var collider = hit.get("collider")
 	# 上一次悬停对象可能已被 render 重建释放 → 先判有效（避免传已释放对象触发类型错误）
 	var prev = _hover_collider if (_hover_collider != null and is_instance_valid(_hover_collider)) else null
@@ -700,7 +720,162 @@ func clear_hover() -> void:
 	var prev = _hover_collider if (_hover_collider != null and is_instance_valid(_hover_collider)) else null
 	_apply_hover(prev, false)
 	_hover_collider = null
+	_hover_kind = ""
+	_hover_card = null
 	_leave_hover_slot()
+
+## ===== 桌面标记（波纹 ping）=====
+## 在 pos 生成标记；style=ripple 出波纹+箭头，style=nose 驱动该席鼻子并只显示图标。
+## icon: eye/question/number/exclaim；text 仅 number 用。同席替换。
+func show_mark(seat_id: int, pos: Vector3, style := "ripple", icon := "eye", text := "") -> void:
+	_bind()
+	if not _bound or not pos.is_finite():
+		return
+	var old = _marks.get(seat_id)
+	if old != null and is_instance_valid(old):
+		old.queue_free()
+	var mark = Mark3DScript.new()
+	var owner_pos := Vector3.ZERO
+	var seat_node = _seat_node_by_id.get(seat_id)
+	if seat_node != null and is_instance_valid(seat_node):
+		owner_pos = (seat_node as Node3D).global_position
+	add_child(mark)
+	mark.global_position = pos
+	mark.setup(Mark3dMathScript.arrow_dir_xz(pos, owner_pos), icon, text, style != "nose")
+	var col = _mark_color_for(seat_id)
+	if col != null:
+		mark.set_color(col)
+	if style == "nose":
+		_set_seat_nose_target(seat_id, pos)
+	mark.finished.connect(func():
+		if _marks.get(seat_id) == mark:
+			_marks.erase(seat_id)
+			if style == "nose":
+				_set_seat_nose_target(seat_id, Vector3.ZERO))
+	_marks[seat_id] = mark
+
+## 驱动某席鼻子到目标世界点（本机席→第一人称相机鼻；他人→其角色鼻）。ZERO=缩回。
+func _set_seat_nose_target(seat_id: int, pos: Vector3) -> void:
+	if seat_id == _viewer:
+		if pos == Vector3.ZERO:
+			clear_local_nose()
+		else:
+			set_local_nose_target_world(pos)
+		return
+	var node = _seat_node_by_id.get(seat_id)
+	if node == null or not is_instance_valid(node):
+		return
+	var robot = (node as Node3D).get_node_or_null("Avatar/RobotAvatar")
+	if robot != null:
+		robot.set_nose_target_world(pos)
+
+func clear_marks() -> void:
+	for s in _marks.keys():
+		var m = _marks[s]
+		if m != null and is_instance_valid(m):
+			m.queue_free()
+	_marks.clear()
+	clear_local_nose()
+	for seat in _seat_node_by_id.keys():
+		var n = _seat_node_by_id[seat]
+		if n != null and is_instance_valid(n):
+			var rb = (n as Node3D).get_node_or_null("Avatar/RobotAvatar")
+			if rb != null:
+				rb.set_nose_target_world(Vector3.ZERO)
+
+## 该席玩家的标记颜色（快照 players[].color，HTML）；无/非法返回 null（用默认红）。
+func _mark_color_for(seat_id: int):
+	for p in _last_state.get("players", []):
+		if int(p.get("id", -1)) == seat_id:
+			var c := str(p.get("color", ""))
+			if not c.is_empty() and Color.html_is_valid(c):
+				return Color.html(c)
+	return null
+
+## ===== 鼻子指针（中键）=====
+## 建立本机第一人称鼻子（挂相机；本地 +Z 转到相机前向 -Z）。
+func _ensure_local_nose() -> void:
+	if _local_nose != null and is_instance_valid(_local_nose):
+		return
+	if camera == null:
+		return
+	var cam: Camera3D = camera.camera_node()
+	if cam == null:
+		return
+	_local_nose = NoseAvatarScript.new()
+	_local_nose.name = "LocalNose"
+	_local_nose.transform = Transform3D(Basis(Vector3.UP, PI), LOCAL_NOSE_POS)
+	cam.add_child(_local_nose)
+	_local_nose.set_color(Color("F2C14E"))
+
+## 当前悬停卡牌的**中心**世界坐标；非卡牌/无悬停返回 null。
+func hovered_card_world():
+	if _hover_card != null and is_instance_valid(_hover_card):
+		return (_hover_card as Node3D).global_position
+	return null
+
+## 本机鼻根世界位置（供 main 用）。
+func local_nose_base_world() -> Vector3:
+	if _local_nose == null or not is_instance_valid(_local_nose):
+		return Vector3.ZERO
+	return _local_nose.global_position
+
+## 本机第一人称鼻子：朝目标世界点定向、长度=鼻根到目标距离（ZERO=缩回）。
+func set_local_nose_target_world(target_world: Vector3) -> void:
+	_ensure_local_nose()
+	if _local_nose == null:
+		return
+	if target_world == Vector3.ZERO or not target_world.is_finite():
+		_local_nose.set_target(0.0)
+		return
+	var cam: Camera3D = camera.camera_node() if camera != null else null
+	if cam == null:
+		return
+	var target_local: Vector3 = cam.global_transform.affine_inverse() * target_world
+	var delta: Vector3 = target_local - LOCAL_NOSE_POS
+	var dist := delta.length()
+	if dist <= 0.0001:
+		_local_nose.set_target(0.0)
+		return
+	var dn := delta / dist
+	var up := Vector3.UP
+	if absf(dn.dot(up)) > 0.99:
+		up = Vector3.RIGHT
+	_local_nose.transform = Transform3D(Basis.looking_at(dn, up, true), LOCAL_NOSE_POS)
+	_local_nose.set_target(dist)
+
+func local_nose_length() -> float:
+	if _local_nose == null:
+		return 0.0
+	return _local_nose.length()
+
+func local_nose_state_name() -> String:
+	if _local_nose == null:
+		return "IDLE"
+	return _local_nose.state_name()
+
+func clear_local_nose() -> void:
+	if _local_nose != null:
+		_local_nose.set_target(0.0)
+
+## 每帧下发：远程各席鼻子目标世界坐标 + 本机相机鼻子目标世界坐标。
+func update_noses(remote_nose: Dictionary, local_target: Vector3 = Vector3.ZERO) -> void:
+	_bind()
+	if not _bound:
+		return
+	for seat in _seat_node_by_id.keys():
+		var node = _seat_node_by_id[seat]
+		if node == null or not is_instance_valid(node):
+			continue
+		var avatar = (node as Node3D).get_node_or_null("Avatar")
+		if avatar == null:
+			continue
+		var robot = avatar.get_node_or_null("RobotAvatar")
+		if robot == null:
+			continue
+		var t = remote_nose.get(seat, Vector3.ZERO)
+		robot.set_nose_target_world(t if t is Vector3 else Vector3.ZERO)
+	set_local_nose_target_world(local_target)
 
 ## 高亮/取消：作用于该拾取对象父节点下所有 MeshInstance3D。
 ## 形参不标注类型：可能是已释放对象（传参处不做类型检查，函数内 is_instance_valid 兜底）。

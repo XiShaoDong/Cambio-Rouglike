@@ -27,3 +27,16 @@ static func pick_hit(cam: Camera3D, world: World3D, screen_center: Vector2) -> D
 static func pick(cam: Camera3D, world: World3D, screen_center: Vector2) -> Dictionary:
 	var hit := pick_hit(cam, world, screen_center)
 	return hit.get("pick", {})
+
+## 屏幕中心射线与水平面 y=plane_y 的交点；|dir.y| 过小或 t<=0 返回 Vector3.INF。
+static func ray_plane_y(cam: Camera3D, screen_center: Vector2, plane_y: float) -> Vector3:
+	if cam == null:
+		return Vector3.INF
+	var origin := cam.project_ray_origin(screen_center)
+	var dir := cam.project_ray_normal(screen_center)
+	if absf(dir.y) < 0.000001:
+		return Vector3.INF
+	var t := (plane_y - origin.y) / dir.y
+	if t <= 0.0:
+		return Vector3.INF
+	return origin + dir * t
