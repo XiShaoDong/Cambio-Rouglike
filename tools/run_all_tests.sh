@@ -89,6 +89,7 @@ run_single "table3d_mouse" res://tests/verify_table3d_mouse.tscn
 run_single "robot_avatar" res://tests/verify_robot_avatar.tscn
 run_single "nose" res://tests/verify_nose.tscn
 run_single "mark" res://tests/verify_mark.tscn
+run_single "emote" res://tests/verify_emote.tscn
 run_single "actions" res://tests/verify_actions.tscn
 run_single "stat_panel" res://tests/verify_stat_panel.tscn
 run_single "table3d_interaction" res://tests/verify_table3d_interaction.tscn

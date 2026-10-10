@@ -40,3 +40,16 @@ static func sector_for(offset: Vector2, inner: float, outer: float) -> String:
 	if ang >= 45.0 and ang < 135.0:
 		return "number"
 	return "exclaim"
+
+## 通用径向命中：count 扇区，扇区 0 以正上(-90°)为中心、顺时针递增；中空/超范围返回 -1。
+static func sector_index_for(offset: Vector2, inner: float, outer: float, count: int) -> int:
+	if count <= 0:
+		return -1
+	var r := offset.length()
+	if r < inner or r > outer:
+		return -1
+	var w := 360.0 / float(count)
+	var a := rad_to_deg(atan2(offset.y, offset.x))
+	var rel := fposmod(a + 90.0 + w * 0.5, 360.0)
+	var idx := int(rel / w)
+	return clampi(idx, 0, count - 1)

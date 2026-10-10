@@ -95,10 +95,24 @@ func _open_mark_wheel() -> void:
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 	_mark_wheel.open(center, _discard_number_text())
 	_wheel_open = true
+	_wheel_kind = "mark"
 
-## 松开 D：按所选扇区放置标记（中空/未选 → 不放置），并恢复捕获。
-func _finish_mark_wheel() -> void:
+## 松开对应键：按所选放置标记 / 播放表情（中空/未选 → 不做），并恢复捕获。
+func _finish_wheel() -> void:
+	var kind := _wheel_kind
 	_wheel_open = false
+	_wheel_kind = ""
+	if kind == "emote":
+		var idx := -1
+		if _emote_wheel != null and is_instance_valid(_emote_wheel):
+			idx = _emote_wheel.selected()
+			_emote_wheel.close()
+		_sync_table3d_pointer()
+		if idx >= 0:
+			var seat_e := int(latest_state.get("viewer_id", -1))
+			if seat_e >= 0:
+				_send_emote(seat_e, idx)
+		return
 	var sel := ""
 	if _mark_wheel != null and is_instance_valid(_mark_wheel):
 		sel = _mark_wheel.selected()
@@ -129,6 +143,31 @@ func _discard_number_text() -> String:
 func _on_mark_placed(seat: int, pos: Vector3, style: String, icon: String, text: String) -> void:
 	if _table3d_active and table3d != null and is_instance_valid(table3d):
 		table3d.show_mark(seat, pos, style, icon, text)
+
+## 处理 Y：释放鼠标、屏幕中心显示 6 扇区表情轮盘。
+func _open_emote_wheel() -> void:
+	if _wheel_open or table3d == null or not is_instance_valid(table3d):
+		return
+	if _board_has_panel() or _settings_open():
+		return
+	if _emote_wheel == null or not is_instance_valid(_emote_wheel):
+		_emote_wheel = EmoteWheelScript.new()
+		add_child(_emote_wheel)
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+	_emote_wheel.open(get_viewport().get_visible_rect().size * 0.5)
+	_wheel_open = true
+	_wheel_kind = "emote"
+
+func _send_emote(seat: int, index: int) -> void:
+	if multiplayer.is_server():
+		GameState._apply_emote(seat, index)
+	else:
+		GameState.server_emote.rpc_id(1, index)
+
+## 收到表情（他人）→ 3D 下显示。
+func _on_emote_played(seat: int, index: int) -> void:
+	if _table3d_active and table3d != null and is_instance_valid(table3d):
+		table3d.show_emote(seat, index)
 
 ## 3D 操作面板动作（与 2D 控制按钮行为一致）。
 func _on_action(action: String) -> void:
@@ -491,8 +530,11 @@ func _set_table3d(on: bool) -> void:
 	_table3d_active = on
 	if _wheel_open:
 		_wheel_open = false
+		_wheel_kind = ""
 		if _mark_wheel != null and is_instance_valid(_mark_wheel):
 			_mark_wheel.close()
+		if _emote_wheel != null and is_instance_valid(_emote_wheel):
+			_emote_wheel.close()
 	if on:
 		if table3d == null or not is_instance_valid(table3d):
 			table3d = load("res://scenes/ui/table3d.tscn").instantiate()
@@ -562,11 +604,14 @@ func _input(event: InputEvent) -> void:
 	if _settings_open():
 		return
 	if _wheel_open:
-		if event is InputEventKey and not event.echo and event.keycode == KEY_D and not event.pressed:
-			_finish_mark_wheel()
-			get_viewport().set_input_as_handled()
-		elif event is InputEventMouseMotion and _mark_wheel != null and is_instance_valid(_mark_wheel):
-			_mark_wheel.update_cursor(event.position)
+		if event is InputEventKey and not event.echo and not event.pressed:
+			if (_wheel_kind == "mark" and event.keycode == KEY_D) or (_wheel_kind == "emote" and event.keycode == KEY_Y):
+				_finish_wheel()
+				get_viewport().set_input_as_handled()
+		elif event is InputEventMouseMotion:
+			var aw = _emote_wheel if _wheel_kind == "emote" else _mark_wheel
+			if aw != null and is_instance_valid(aw):
+				aw.update_cursor(event.position)
 		return
 	var board_panel := _board_has_panel()
 	# 按住 Command/Alt：拉近视场（放大）；松开恢复。不标记 handled，避免影响其他快捷键。
@@ -594,9 +639,14 @@ func _input(event: InputEvent) -> void:
 			_talking_local = not _talking_local
 			get_viewport().set_input_as_handled()
 			return
-		# D 按下：出轮盘选标
+		# D 按下：出标记轮盘
 		if event.keycode == KEY_D:
 			_open_mark_wheel()
+			get_viewport().set_input_as_handled()
+			return
+		# Y 按下：出表情轮盘
+		if event.keycode == KEY_Y:
+			_open_emote_wheel()
 			get_viewport().set_input_as_handled()
 			return
 		# 有看板面板时，Enter 交给面板（Joker/商店）。
@@ -732,6 +782,7 @@ const DuelBarScript := preload("res://scripts/ui/duel_bar.gd")
 const SettingsMenuScript := preload("res://scripts/ui/settings_menu.gd")
 const Mark3dMathScript := preload("res://scripts/ui/mark3d_math.gd")
 const MarkWheelScript := preload("res://scripts/ui/mark_wheel.gd")
+const EmoteWheelScript := preload("res://scripts/ui/emote_wheel.gd")
 const SettlementPageScript := preload("res://scenes/ui/settlement_page.tscn")
 const ShopPanelScript := preload("res://scenes/ui/shop_panel.tscn")
 const JokerTransformPanelScript := preload("res://scenes/ui/joker_transform_panel.tscn")
@@ -779,8 +830,10 @@ var _last_look_dir := Vector3.ZERO
 var _last_look_zoom := false
 var _last_look_talk := false
 var _wheel_open := false
+var _wheel_kind := ""
 var _wheel_pos := Vector3.ZERO
 var _mark_wheel = null
+var _emote_wheel = null
 var _last_look_nose := Vector3.ZERO      # 上次上报的鼻子目标（变化即发）
 var _talking_local := false
 var _crosshair: Control = null
@@ -916,6 +969,7 @@ func _ready() -> void:
 	GameState.resume_hand_received.connect(_on_resume_hand)
 	GameState.sfx_played.connect(_on_sfx)
 	GameState.mark_placed.connect(_on_mark_placed)
+	GameState.emote_played.connect(_on_emote_played)
 	Network.connection_status_changed.connect(_set_status)
 	Network.connection_failed.connect(_show_toast)
 	Network.joined_server.connect(_on_joined_server_for_reconnect)

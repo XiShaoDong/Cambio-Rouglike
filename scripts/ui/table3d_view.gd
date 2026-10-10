@@ -7,6 +7,7 @@ extends Node3D
 
 const CardBlockScript := preload("res://scripts/ui/card_block.gd")
 const NoseAvatarScript := preload("res://scripts/ui/nose_avatar.gd")
+const EmoteDisplayScript := preload("res://scripts/ui/emote_display.gd")
 const Mark3DScript := preload("res://scripts/ui/mark3d.gd")
 const Mark3dMathScript := preload("res://scripts/ui/mark3d_math.gd")
 const NOSE_PICK_KINDS := ["slot", "deck", "discard", "pending"]  # 可被中键"标记"的拾取类型
@@ -52,6 +53,7 @@ var _hover_collider: Object = null
 var _hover_kind := ""              # 当前悬停拾取类型（供 hovered_card_world）
 var _hover_card = null             # 当前悬停的卡牌节点（CardBlock，取其中心作鼻尖目标）
 var _local_nose = null             # NoseAvatar（挂本机相机，第一人称）
+var _emotes := {}  # seat -> EmoteDisplay
 var _marks := {}  # seat -> Mark3D（桌面标记，独立节点、跨 render 保留）
 var _hover_mat: StandardMaterial3D = null
 var _seat_panels: Array = []      # PlayerStatPanel per slot
@@ -197,6 +199,7 @@ func set_active(on: bool) -> void:
 		_clear_exchange_anim()
 		clear_local_nose()
 		clear_marks()
+		clear_emotes()
 
 ## 按快照全量重建（无增量、无插值）。state 为 HiddenInfo 投影出的公开快照。
 func render(state: Dictionary, actionable := Callable()) -> void:
@@ -871,6 +874,41 @@ func clear_marks() -> void:
 			var rb = (n as Node3D).get_node_or_null("Avatar/RobotAvatar")
 			if rb != null:
 				rb.set_nose_target_world(Vector3.ZERO)
+
+## ===== 表情（占位：头顶数字 billboard）=====
+## 生成某席表情；自己角色隐藏 → 忽略自己；同席替换。
+func show_emote(seat_id: int, index: int) -> void:
+	_bind()
+	if not _bound or seat_id == _viewer:
+		return
+	var node = _seat_node_by_id.get(seat_id)
+	if node == null or not is_instance_valid(node):
+		return
+	var avatar = (node as Node3D).get_node_or_null("Avatar")
+	if avatar == null:
+		return
+	var old = _emotes.get(seat_id)
+	if old != null and is_instance_valid(old):
+		old.queue_free()
+	var eye := 1.5
+	if camera != null and camera.get("EYE_HEIGHT") != null:
+		eye = float(camera.get("EYE_HEIGHT"))
+	var head_top := RobotAvatar.MODEL_HEAD_TOP * RobotAvatar.SCALE - eye
+	var disp = EmoteDisplayScript.new()
+	avatar.add_child(disp)
+	disp.position = Vector3(0.0, head_top + 0.5, 0.0)
+	disp.play(index)
+	disp.finished.connect(func():
+		if _emotes.get(seat_id) == disp:
+			_emotes.erase(seat_id))
+	_emotes[seat_id] = disp
+
+func clear_emotes() -> void:
+	for s in _emotes.keys():
+		var d = _emotes[s]
+		if d != null and is_instance_valid(d):
+			d.queue_free()
+	_emotes.clear()
 
 ## 该席玩家的标记颜色（快照 players[].color，HTML）；无/非法返回 null（用默认红）。
 func _mark_color_for(seat_id: int):

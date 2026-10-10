@@ -13,6 +13,7 @@ signal command_rejected(code: int, message: String)
 signal match_aborted(code: int, message: String)
 signal card_exchange_animated(data: Dictionary)
 signal mark_placed(seat: int, pos: Vector3, style: String, icon: String, text: String)
+signal emote_played(seat: int, index: int)
 signal peek_highlighted(data: Dictionary)
 signal registered_token_received(token: String)
 signal resume_hand_received(hand: Array, pending: Dictionary)
@@ -1727,3 +1728,23 @@ func _apply_mark(seat: int, pos: Vector3, style: String, icon: String, text: Str
 @rpc("authority", "call_remote", "reliable")
 func receive_mark(seat: int, pos: Vector3, style: String, icon: String, text: String) -> void:
 	mark_placed.emit(seat, pos, style, icon, text)
+
+## ===== 表情（纯表现层，不入快照）=====
+@rpc("any_peer", "call_remote", "reliable")
+func server_emote(index: int) -> void:
+	var seat := _peer_to_seat(multiplayer.get_remote_sender_id())
+	if seat < 0:
+		return
+	_apply_emote(seat, index)
+
+## 服务器权威应用表情：本地发信号（房主可见）+ 转发给其他客户端。
+func _apply_emote(seat: int, index: int) -> void:
+	emote_played.emit(seat, index)
+	for s in players.keys():
+		var peer := int(players[s].peer_id)
+		if peer > 1:
+			receive_emote.rpc_id(peer, seat, index)
+
+@rpc("authority", "call_remote", "reliable")
+func receive_emote(seat: int, index: int) -> void:
+	emote_played.emit(seat, index)
