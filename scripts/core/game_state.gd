@@ -542,6 +542,30 @@ func _server_next_match(sender: int, action_id := "") -> void:
 		return
 	_deal_next_match()
 
+## 重开本局（仅房主；保留系列赛/经济/生命/局号，重新发牌）。
+func request_restart_match(action_id := "") -> void:
+	if multiplayer.is_server():
+		_server_restart_match(_peer_to_seat(1), action_id)
+	else:
+		server_restart_match.rpc_id(1, action_id)
+
+@rpc("any_peer", "reliable")
+func server_restart_match(action_id: String) -> void:
+	if multiplayer.is_server():
+		_server_restart_match(_peer_to_seat(multiplayer.get_remote_sender_id()), action_id)
+
+func _server_restart_match(sender: int, action_id := "") -> void:
+	if phase == Phase.LOBBY:
+		_reject(sender, RejectCode.ROOM_NOT_OPEN, action_id)
+		return
+	if sender != 0:
+		_reject(sender, RejectCode.NOT_HOST, action_id)
+		return
+	if players.size() < KongRules.MIN_PLAYERS:
+		_reject(sender, RejectCode.NOT_ENOUGH_PLAYERS, action_id)
+		return
+	_deal_new_match()
+
 ## 进入下一局（商店裁决 / 再来一局共用）。match_number 递增并开新局。
 func _deal_next_match() -> void:
 	match_number += 1
