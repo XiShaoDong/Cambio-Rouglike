@@ -22,6 +22,7 @@ const RelicBarScript := preload("res://scenes/ui/relic_bar.tscn")
 
 var main: Node
 var _ready_clicked := false
+var _restart_button: Button = null
 
 func _init(owner_node: Node) -> void:
 	main = owner_node
@@ -91,6 +92,39 @@ func build() -> void:
 	var log_row: HBoxContainer = corner.get_node("LogRow")
 	main.log_box = log_row.get_node("LogBox")
 	main.log_box.add_theme_color_override("default_color", UITheme.color("text_secondary"))
+	_build_restart_button(board)
+
+## 房主重开按钮（棋盘右侧圆形 ↻）：仅房主对局中可见，点击弹提示板确认。
+## 锚定棋盘右边缘、标题栏下方留白处（不参与任何容器布局）。
+func _build_restart_button(board: Control) -> void:
+	_restart_button = Button.new()
+	_restart_button.name = "RestartButton"
+	_restart_button.text = "↻"
+	_restart_button.custom_minimum_size = Vector2(48, 48)
+	_restart_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	_restart_button.tooltip_text = "重开本局（仅房主）"
+	_restart_button.add_theme_font_size_override("font_size", 22)
+	_restart_button.add_theme_color_override("font_color", Color(0.08, 0.09, 0.12))
+	var acc := UITheme.color("accent")
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = acc
+	normal.set_corner_radius_all(24)
+	_restart_button.add_theme_stylebox_override("normal", normal)
+	var hover: StyleBoxFlat = normal.duplicate()
+	hover.bg_color = acc.lightened(0.2)
+	_restart_button.add_theme_stylebox_override("hover", hover)
+	var pressed: StyleBoxFlat = normal.duplicate()
+	pressed.bg_color = acc.darkened(0.15)
+	_restart_button.add_theme_stylebox_override("pressed", pressed)
+	_restart_button.pressed.connect(func(): main._request_restart_confirm())
+	board.add_child(_restart_button)
+	_restart_button.anchor_left = 1.0
+	_restart_button.anchor_right = 1.0
+	_restart_button.offset_left = -60.0
+	_restart_button.offset_right = -12.0
+	_restart_button.offset_top = 64.0
+	_restart_button.offset_bottom = 112.0
+	_restart_button.visible = false
 
 ## 把最新状态投影到界面。
 func render(state: Dictionary) -> void:
@@ -99,6 +133,9 @@ func render(state: Dictionary) -> void:
 	var phase := int(state.phase)
 	var viewer := int(state.viewer_id)
 	var is_current := viewer == int(state.current_player)
+	# 房主重开按钮：仅房主且对局中（非大厅/结算）可见。
+	if _restart_button != null and is_instance_valid(_restart_button):
+		_restart_button.visible = Network.is_host and phase != 0 and phase != PHASE_GAME_OVER
 	var viewer_eliminated := false
 	for player in state.players:
 		if int(player.id) == viewer and bool(player.get("eliminated", false)):
@@ -254,7 +291,7 @@ func _render_controls(phase: int, is_current: bool) -> void:
 	if bool(main.latest_state.get("suspended", false)):
 		_render_suspended_controls()
 		return
-	for entry in ActionModel.conditional_actions(main.latest_state, main._interaction_ctx()):
+	for entry in main._current_hint_actions():
 		var action := str(entry.get("action", ""))
 		if action == ActionModel.Q_KEEP:
 			main.interaction.action_mode = ""

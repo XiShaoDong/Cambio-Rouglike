@@ -22,6 +22,7 @@ const STAT_VIEWPORT_SIZE := Vector2i(320, 120)
 const STAT_PANEL_OFFSET := Vector3(0.0, 0.75, 0.0)
 const STAT_PANEL_PIXEL_SIZE := 0.005
 const PENDING_Y := 0.95  # 大牌竖立悬浮中心离桌高度（牌高 1.0 → 底≈0.45、顶≈1.45）
+const DEAL_INTERVAL := 0.15  # 开局发牌：每张间隔（秒，按 _deal_speed 缩放）
 const STAT_PANEL_ABOVE := 0.45   # 状态面板相对机器人头顶的上方间隙
 const MARKER_ABOVE_PANEL := 0.5  # 回合标识相对状态面板的上方间隙
 
@@ -44,6 +45,7 @@ var _deck_label: Label3D
 var _discard_block = null  # CardBlock（场景 Center/DiscardTop）
 var _pending_block = null  # CardBlock（场景 Center/Pending）
 var _hud = null  # Table3dHud（场景 Hud）
+var _restart_button: Node3D = null  # 房主重开按钮（牌桌右后角，准星可点）
 var _card_blocks := {}  # {seat: {slot: CardBlock}}
 var _viewer := 0
 var _hover_slot := {}
@@ -82,6 +84,8 @@ var _prev_discard := {}        # 上一帧快照的弃牌顶（判断抽牌 vs �
 var _pending_seen := false     # 已见过一次 pending（避免进入 3D 首帧误触发抽牌飞牌）
 var _last_state: Dictionary = {}
 var _last_actionable := Callable()
+var _deal_speed := 1.0
+var _dealing := false
 
 func _ready() -> void:
 	_bind()
@@ -189,8 +193,56 @@ func _bind() -> void:
 		_seat_panels.append(panel)
 		_stat_viewports.append(sub)
 		_seat_markers.append(marker)
+	_ensure_restart_button()
 	_bound = true
 	_ensure_local_nose()
+
+## 房主重开按钮（牌桌右后角）：扁平半透明圆盘 + ↻ 图标（billboard）+ 拾取区。
+## 动作经「hud」拾取 → main._on_action("restart")；显隐由 render 按房主/阶段控制。
+func _ensure_restart_button() -> void:
+	if _restart_button != null and is_instance_valid(_restart_button):
+		return
+	var root := Node3D.new()
+	root.name = "RestartButton"
+	var base := MeshInstance3D.new()
+	base.name = "Base"
+	var disc := CylinderMesh.new()
+	disc.top_radius = 0.18
+	disc.bottom_radius = 0.18
+	disc.height = 0.04
+	base.mesh = disc
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.12, 0.14, 0.18, 0.85)
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	base.material_override = mat
+	root.add_child(base)
+	var icon := Label3D.new()
+	icon.name = "Icon"
+	icon.text = "↻"
+	icon.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	icon.no_depth_test = true
+	icon.pixel_size = 0.0025
+	icon.font_size = 128
+	icon.modulate = Color(1.0, 1.0, 1.0)
+	icon.position = Vector3(0.0, 0.06, 0.0)
+	root.add_child(icon)
+	var area := Area3D.new()
+	area.name = "PickArea"
+	area.collision_layer = Table3dLayout.PICK_MASK
+	area.collision_mask = 0
+	area.set_meta("pick", {"kind": "hud", "action": "restart"})
+	var shape := CollisionShape3D.new()
+	var sphere := SphereShape3D.new()
+	sphere.radius = 0.2
+	shape.shape = sphere
+	area.add_child(shape)
+	root.add_child(area)
+	root.position = Vector3(
+		Table3dLayout.TABLE_RADIUS * 0.8,
+		Table3dLayout.TABLE_HEIGHT + 0.03,
+		Table3dLayout.TABLE_RADIUS * 0.8)
+	add_child(root)
+	_restart_button = root
 
 ## 显示/隐藏预览（不处理点击与动画）。
 func set_active(on: bool) -> void:
@@ -312,6 +364,10 @@ func render(state: Dictionary, actionable := Callable()) -> void:
 	_hud.rotation_degrees = Vector3(0.0, v_angle + 180.0, 0.0)
 	_reapply_hover_pose()
 	_update_bell(state)
+	# 房主重开按钮：仅房主且对局中（非大厅/结算）可见。
+	if _restart_button != null and is_instance_valid(_restart_button):
+		var phase := int(state.get("phase", 0))
+		_restart_button.visible = Network.is_host and phase != 0 and phase != 7
 
 ## 重建后重放在途 hover（immediate，避免广播导致弹跳）。
 func _reapply_hover_pose() -> void:
@@ -1161,6 +1217,46 @@ func _clear_exchange_anim() -> void:
 	_pending_seen = false
 	_prev_pending = {}
 	_prev_discard = {}
+	_dealing = false
+
+## 开局发牌动画：从中央抽牌堆逐张飞到各席手牌槽（按座位轮转），落地露出。
+func play_deal(state: Dictionary) -> void:
+	_bind()
+	if not _bound or state.is_empty() or _dealing:
+		return
+	var seats: Array = _seat_node_by_id.keys()
+	seats.sort()
+	if seats.is_empty():
+		return
+	var max_slots := 0
+	for p in state.get("players", []):
+		max_slots = maxi(max_slots, (p.get("slots", []) as Array).size())
+	if max_slots <= 0:
+		return
+	# 一个玩家一个玩家地发：按座位升序（从房主 seat0 开始），每人的手牌发完再下一个。
+	var targets: Array = []
+	for seat in seats:
+		for r in max_slots:
+			targets.append([int(seat), r])
+	for t in targets:
+		_mark_anim_slot(int(t[0]), int(t[1]))
+	_dealing = true
+	render(state)
+	_run_deal(targets)
+
+func _run_deal(targets: Array) -> void:
+	for t in targets:
+		await get_tree().create_timer(DEAL_INTERVAL / maxf(_deal_speed, 0.01)).timeout
+		if not is_inside_tree() or not _dealing:
+			return
+		_spawn_fly(center_xform("deck"), slot_xform(int(t[0]), int(t[1])), {}, false, false,
+			func(): _unmark_anim_slot(int(t[0]), int(t[1])))
+	await get_tree().create_timer(DEAL_INTERVAL / maxf(_deal_speed, 0.01)).timeout
+	_dealing = false
+
+## main 每帧按空格设置（2.0 / 1.0）。
+func set_deal_speed(s: float) -> void:
+	_deal_speed = maxf(s, 0.01)
 
 ## 开始弃牌顶变换：记住"上一张"用于动画期间保留显示（避免下方为空）。
 func _begin_discard_hold() -> void:

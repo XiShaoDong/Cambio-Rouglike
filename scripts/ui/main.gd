@@ -189,6 +189,17 @@ func _on_action(action: String) -> void:
 			interaction.jack_cancel()
 		"joker":
 			_open_joker_transform_panel()
+		"restart":
+			_request_restart_confirm()
+		"restart_yes":
+			_restart_confirm = false
+			GameState.request_restart_match(_next_action_id())
+			_refresh_hint_panel()
+			_refresh_hint_2d()
+		"restart_no":
+			_restart_confirm = false
+			_refresh_hint_panel()
+			_refresh_hint_2d()
 
 ## 3D 操作面板按钮：条件动作（Q/Joker）已移到提示板下方，Ready 在提示板、Kongbaya 由铃铛负责，
 ## 故 3D 桌面 HUD 不再承载按钮（保留空面板以兼容既有结构）。
@@ -483,7 +494,8 @@ func _refresh_hint_panel() -> void:
 		for child in acts.get_children():
 			acts.remove_child(child)
 			child.queue_free()
-		for entry in ActionModel.conditional_actions(latest_state, _interaction_ctx()):
+		var actions: Array = _current_hint_actions()
+		for entry in actions:
 			has_actions = true
 			var act_btn := _decision_button(str(entry.get("text", "")))
 			act_btn.disabled = not bool(entry.get("enabled", true))
@@ -550,6 +562,7 @@ func _set_table3d(on: bool) -> void:
 		_ensure_board()
 		table3d.set_hud_buttons(_hud_buttons())
 		table3d.render(latest_state, interaction.card_actionable)
+		_maybe_play_deal()
 		_place_boards()
 		_sync_table3d_pointer()
 		_ensure_hint_hud()
@@ -671,6 +684,8 @@ func _process(delta: float) -> void:
 		return
 	if table3d == null or not is_instance_valid(table3d):
 		return
+	if table3d != null and is_instance_valid(table3d):
+		table3d.set_deal_speed(2.0 if Input.is_key_pressed(KEY_SPACE) else 1.0)
 	if _settings_open():
 		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 		return
@@ -791,6 +806,8 @@ const ManualPanelScript := preload("res://scenes/ui/manual_panel.tscn")
 var latest_lobby: Dictionary = {}
 var latest_state: Dictionary = {}
 var last_phase := -1
+var _deal_played_match_id := ""
+var _restart_confirm := false
 
 var status_label: Label
 var lobby_status_label: Label
@@ -1229,6 +1246,8 @@ func _on_state_updated(state: Dictionary) -> void:
 		_on_joker_cancel()
 	_show_shop_result_toast(state)
 	_sync_table3d_pointer()
+	# 发牌动画：每局新 match_id 播一次（3D 下）；同 match_id（重连）不重播。
+	_maybe_play_deal()
 
 ## 清空上一局可能残留的动画/挂起状态（对局结束时在途的看牌/贴牌揭示）。
 func _clear_settlement_anim_state() -> void:
@@ -1523,7 +1542,44 @@ func _begin_ability() -> void:
 func _on_card_pressed(player_id: int, slot: int) -> void:
 	interaction.on_card_pressed(player_id, slot)
 
+## 房主请求重开本局（弹出确认板）。
+func _request_restart_confirm() -> void:
+	if not Network.is_host:
+		return
+	_restart_confirm = true
+	_refresh_hint_panel()
+	_refresh_hint_2d()
+
+## 重开确认变化后刷新 2D 提示动作（3D 由 _refresh_hint_panel 更新提示板）。
+func _refresh_hint_2d() -> void:
+	if not _table3d_active and not latest_state.is_empty():
+		_render_game_if_active()
+
+## 每局新 match_id 播一次发牌动画（仅 3D；重连同 match_id 不重播；2D 期间不标记以便切到 3D 补播）。
+func _maybe_play_deal() -> void:
+	var mid := str(latest_state.get("match_id", ""))
+	if mid == "" or int(latest_state.get("phase", 0)) == PHASE_LOBBY:
+		return
+	if mid == _deal_played_match_id:
+		return
+	if not _table3d_active or table3d == null or not is_instance_valid(table3d):
+		return
+	table3d.play_deal(latest_state)
+	_deal_played_match_id = mid
+
+func _restart_confirm_actions() -> Array:
+	return [
+		{"text": "确认重开", "action": "restart_yes", "enabled": true},
+		{"text": "取消", "action": "restart_no", "enabled": true},
+	]
+
+## 当前提示板动作（重开确认优先，否则条件动作）。2D HintActions 与 3D 提示板共用。
+func _current_hint_actions() -> Array:
+	return _restart_confirm_actions() if _restart_confirm else ActionModel.conditional_actions(latest_state, _interaction_ctx())
+
 func _hint_for(phase: int, is_current: bool) -> String:
+	if _restart_confirm:
+		return "是否重开本局？"
 	return HintText.hint(latest_state, phase, is_current, interaction.action_mode)
 
 func _mode_instruction(fallback: String) -> String:
