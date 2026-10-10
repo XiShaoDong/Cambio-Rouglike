@@ -10,6 +10,8 @@ const STRIP_NODES := ["Camera", "Light"]
 # 模型空间尺度/锚点（见 docs/3D角色与场景说明.md）
 const MODEL_EYE := Vector3(0.0, 2.038, 0.215)  # 眼球中心（+Z = 脸朝向）
 const MODEL_HEAD_TOP := 2.2                     # 头顶高度（模型空间）
+const NOSE_BASE_MODEL := Vector3(0.0, 1.80, 0.34)   # 鼻根回退值（眼下方/脸前）；实际由 Eyes 网格 AABB 推出
+const NoseAvatarScript := preload("res://scripts/ui/nose_avatar.gd")
 const SCALE := 1.65                             # 整体缩放（原 1.1 × 1.5；脚在原点，越大越高、过高会出画）
 
 # 待机姿势 / 眼球追踪参数
@@ -33,6 +35,9 @@ var _robot: Node3D
 var _skeleton: Skeleton3D
 var _head_idx := -1
 var _eyes: MeshInstance3D
+var _nose = null                # NoseAvatar（挂在 Skeleton3D 下，随头）
+var _nose_base_model: Vector3 = NOSE_BASE_MODEL  # 鼻根（模型/骨架空间，由 Eyes AABB 推出）
+var _nose_target_world: Vector3 = Vector3.ZERO   # 鼻子目标世界坐标（ZERO=未伸出）
 var _eye_index := {}          # blendshape name -> index
 var _jaw_targets: Array = []  # [[MeshInstance3D, jawOpen_idx], ...]（嘴在下巴网格，不在 Eyes）
 var _eye_zoom := false
@@ -46,6 +51,7 @@ func _ready() -> void:
 	_build()
 
 func _process(delta: float) -> void:
+	_update_nose()
 	if _talking:
 		_talk_t += delta
 		_set_jaw(RobotAvatarMath.talk_jaw(_talk_t))
@@ -81,6 +87,9 @@ func _build() -> void:
 	if _eyes != null and _eyes.mesh != null:
 		for i in _eyes.mesh.get_blend_shape_count():
 			_eye_index[_eyes.mesh.get_blend_shape_name(i)] = i
+		# 鼻根：由眼球网格 AABB 推出——两眼中间、眼球下方、靠近脸前（+Z 为脸朝向）。
+		var a: AABB = _eyes.mesh.get_aabb()
+		_nose_base_model = Vector3(0.0, a.position.y + a.size.y * 0.20, a.position.z + a.size.z * 0.70)
 	# 嘴（jawOpen）在下巴网格：收集所有含该形状的网格
 	for mesh_name in ["Face", "Body", "Arms", "Legs", "Eyes"]:
 		var mi := _robot.get_node_or_null("Armature/Skeleton3D/" + mesh_name)
@@ -94,6 +103,11 @@ func _build() -> void:
 				_jaw_targets.append([mi, ji])
 	_apply_idle_pose()
 	_apply_body_color()
+	if _skeleton != null:
+		_nose = NoseAvatarScript.new()
+		_nose.name = "Nose"
+		_skeleton.add_child(_nose)
+		_nose.set_color(_body_color)
 
 ## 机体外观：逐实例覆盖 Body 表面材质（不改共享网格/材质），支持每个玩家不同颜色。
 ## Arms/Body/Legs 单面；Face 面 0 = Body、面 1 = Mouth（保留）。
@@ -111,6 +125,8 @@ func _apply_body_color() -> void:
 	var face = _robot.get_node_or_null("Armature/Skeleton3D/Face")
 	if face != null:
 		face.set_surface_override_material(0, m)
+	if _nose != null:
+		_nose.set_color(_body_color)
 
 ## 设置该玩家机体颜色（进游戏随机分配；默认 `BODY_COLOR`）。
 func set_body_color(color: Color) -> void:
@@ -252,6 +268,58 @@ func reset_eyes() -> void:
 	if _skeleton != null and _head_idx >= 0:
 		var rest: Transform3D = _skeleton.get_bone_global_rest(_head_idx)
 		_skeleton.set_bone_global_pose_override(_head_idx, rest, 1.0, true)
+
+## ===== 鼻子（中键 / D 键指针）=====
+## 目标为**世界坐标点**（hover 卡牌中心）；Vector3.ZERO 表示未伸出。
+## 鼻根随头移动，鼻子朝目标点定向、长度=鼻根到目标点距离 → 鼻尖落在目标点上。
+func set_nose_target_world(target_world: Vector3) -> void:
+	_build()
+	_nose_target_world = target_world if target_world.is_finite() else Vector3.ZERO
+
+## 当前鼻子长度（世界单位）。
+func nose_length() -> float:
+	if _nose == null:
+		return 0.0
+	return _nose.length() * SCALE
+
+func nose_state_name() -> String:
+	if _nose == null:
+		return "IDLE"
+	return _nose.state_name()
+
+## 鼻根世界变换（由 Head 当前姿势推出）。
+func nose_base_world() -> Transform3D:
+	_build()
+	if _skeleton == null or _head_idx < 0:
+		return Transform3D(global_transform.basis, global_transform * _nose_base_model)
+	var hpose: Transform3D = _skeleton.get_bone_global_pose(_head_idx)
+	var hrest: Transform3D = _skeleton.get_bone_global_rest(_head_idx)
+	var base_skel: Vector3 = hpose * (hrest.affine_inverse() * _nose_base_model)
+	return Transform3D(_skeleton.global_transform.basis, _skeleton.global_transform * base_skel)
+
+## 每帧：按头姿势 + 目标点重算鼻子的基与长度（随头摆、鼻尖指向目标）。
+func _update_nose() -> void:
+	if _nose == null or _skeleton == null or _head_idx < 0:
+		return
+	if _nose_target_world == Vector3.ZERO:
+		if _nose.is_active():
+			_nose.set_target(0.0)
+		return
+	var hpose: Transform3D = _skeleton.get_bone_global_pose(_head_idx)
+	var hrest: Transform3D = _skeleton.get_bone_global_rest(_head_idx)
+	var base_skel: Vector3 = hpose * (hrest.affine_inverse() * _nose_base_model)
+	var target_skel: Vector3 = _skeleton.global_transform.affine_inverse() * _nose_target_world
+	var delta: Vector3 = target_skel - base_skel
+	var dist := delta.length()
+	if dist <= 0.0001:
+		_nose.set_target(0.0)
+		return
+	var dn := delta / dist
+	var up := Vector3.UP
+	if absf(dn.dot(up)) > 0.99:
+		up = Vector3.RIGHT
+	_nose.transform = Transform3D(Basis.looking_at(dn, up, true), base_skel)
+	_nose.set_target(dist)
 
 ## 当前某形状键权重（测试用）。
 func blend_value(name: String) -> float:

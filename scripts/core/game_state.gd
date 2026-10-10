@@ -12,6 +12,8 @@ signal toast_received(message: String)
 signal command_rejected(code: int, message: String)
 signal match_aborted(code: int, message: String)
 signal card_exchange_animated(data: Dictionary)
+signal mark_placed(seat: int, pos: Vector3, style: String, icon: String, text: String)
+signal emote_played(seat: int, index: int)
 signal peek_highlighted(data: Dictionary)
 signal registered_token_received(token: String)
 signal resume_hand_received(hand: Array, pending: Dictionary)
@@ -86,6 +88,7 @@ var _registered_token := ""
 var remote_looks: Dictionary = {}  # {seat: Vector3} 各玩家世界注视点（gaze target，纯表现层，不入快照）
 var remote_zoom: Dictionary = {}   # {seat: bool} 各玩家是否处于放大（眼睛小眼），纯表现层
 var remote_talk: Dictionary = {}   # {seat: bool} 各玩家是否在说话（嘴开合），纯表现层
+var remote_nose: Dictionary = {}   # {seat: Vector3} 各玩家鼻子目标世界坐标（ZERO=未伸出），纯表现层
 
 var peek: PeekSystem
 var effects: EffectSystem
@@ -154,6 +157,7 @@ func _on_peer_left(peer_id: int) -> void:
 	remote_looks.erase(seat)
 	remote_zoom.erase(seat)
 	remote_talk.erase(seat)
+	remote_nose.erase(seat)
 	_add_log("%s 断线，对局暂停等待重连（轮到其回合时冻结）。" % left_name)
 	_broadcast_state()
 
@@ -197,6 +201,7 @@ func _reset_match() -> void:
 	remote_looks.clear()
 	remote_zoom.clear()
 	remote_talk.clear()
+	remote_nose.clear()
 
 func _new_match_id() -> String:
 	return "m_%08x_%s" % [randi(), Time.get_unix_time_from_system()]
@@ -1675,26 +1680,71 @@ func receive_match_aborted(code: int, message: String) -> void:
 ## 低频率、允许丢弃无妨；不参与规则/判定。
 
 @rpc("any_peer", "call_remote", "reliable")
-func server_look(target: Vector3, zoom: bool, talking: bool) -> void:
+func server_look(target: Vector3, zoom: bool, talking: bool, nose := Vector3.ZERO) -> void:
 	var seat := _peer_to_seat(multiplayer.get_remote_sender_id())
 	if seat < 0:
 		return
-	_apply_look(seat, target, zoom, talking)
+	_apply_look(seat, target, zoom, talking, nose)
 
-## 服务器权威应用注视：记录本机 remote_looks/remote_zoom/remote_talk 并转发（房主本人经此路径）。
-func _apply_look(seat: int, target: Vector3, zoom := false, talking := false) -> void:
+## 服务器权威应用注视：记录本机 remote_looks/remote_zoom/remote_talk/remote_nose 并转发（房主本人经此路径）。
+func _apply_look(seat: int, target: Vector3, zoom := false, talking := false, nose := Vector3.ZERO) -> void:
 	if not target.is_finite():
 		return
+	var n := nose if nose.is_finite() else Vector3.ZERO
 	remote_looks[seat] = target
 	remote_zoom[seat] = zoom
 	remote_talk[seat] = talking
+	remote_nose[seat] = n
 	for s in players.keys():
 		var peer := int(players[s].peer_id)
 		if peer > 1:
-			receive_look.rpc_id(peer, seat, target, zoom, talking)
+			receive_look.rpc_id(peer, seat, target, zoom, talking, n)
 
 @rpc("authority", "call_remote", "reliable")
-func receive_look(seat: int, target: Vector3, zoom: bool, talking: bool) -> void:
+func receive_look(seat: int, target: Vector3, zoom: bool, talking: bool, nose := Vector3.ZERO) -> void:
 	remote_looks[seat] = target
 	remote_zoom[seat] = zoom
 	remote_talk[seat] = talking
+	remote_nose[seat] = nose if nose.is_finite() else Vector3.ZERO
+
+## ===== 桌面标记（纯表现层，不入快照）=====
+@rpc("any_peer", "call_remote", "reliable")
+func server_mark(pos: Vector3, style: String, icon: String, text: String) -> void:
+	var seat := _peer_to_seat(multiplayer.get_remote_sender_id())
+	if seat < 0:
+		return
+	_apply_mark(seat, pos, style, icon, text)
+
+## 服务器权威应用标记：本地发信号（房主可见）+ 转发给其他客户端。
+func _apply_mark(seat: int, pos: Vector3, style: String, icon: String, text: String) -> void:
+	if not pos.is_finite():
+		return
+	mark_placed.emit(seat, pos, style, icon, text)
+	for s in players.keys():
+		var peer := int(players[s].peer_id)
+		if peer > 1:
+			receive_mark.rpc_id(peer, seat, pos, style, icon, text)
+
+@rpc("authority", "call_remote", "reliable")
+func receive_mark(seat: int, pos: Vector3, style: String, icon: String, text: String) -> void:
+	mark_placed.emit(seat, pos, style, icon, text)
+
+## ===== 表情（纯表现层，不入快照）=====
+@rpc("any_peer", "call_remote", "reliable")
+func server_emote(index: int) -> void:
+	var seat := _peer_to_seat(multiplayer.get_remote_sender_id())
+	if seat < 0:
+		return
+	_apply_emote(seat, index)
+
+## 服务器权威应用表情：本地发信号（房主可见）+ 转发给其他客户端。
+func _apply_emote(seat: int, index: int) -> void:
+	emote_played.emit(seat, index)
+	for s in players.keys():
+		var peer := int(players[s].peer_id)
+		if peer > 1:
+			receive_emote.rpc_id(peer, seat, index)
+
+@rpc("authority", "call_remote", "reliable")
+func receive_emote(seat: int, index: int) -> void:
+	emote_played.emit(seat, index)
