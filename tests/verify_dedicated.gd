@@ -45,6 +45,16 @@ func _ready() -> void:
 	srv.queue_free()
 	Network.disconnect_game(false)
 
+	# dedicated：中止/解散只终止本房间、保留服务器进程（无 zombie）
+	Network.start_dedicated(17080)
+	GameState._add_player(2, "C1")
+	GameState._add_player(3, "C2")
+	GameState._server_abort_match()
+	_check("dedicated abort → 回 LOBBY", GameState.phase == GameState.Phase.LOBBY)
+	_check("dedicated abort → 清空座位", GameState.players.is_empty())
+	_check("dedicated abort → 服务器进程保留", Network.is_host and not Network.host_is_player)
+	Network.disconnect_game(false)
+
 	print("=== DEDICATED RESULT: %d/%d passed%s ===" % [checks - failures, checks, " (FAILURES!)" if failures else ""])
 	get_tree().quit(1 if failures else 0)
 

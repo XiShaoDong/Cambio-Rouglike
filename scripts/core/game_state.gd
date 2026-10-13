@@ -1136,37 +1136,67 @@ func _server_dev_eliminate(sender: int, target_seat: int) -> void:
 ## 房主中止当前对局并回到初始大厅（仅房主=seat0）。
 ## 中止后关闭服务器连接：玩家已退出、无法重连（阶段二前），房间不再保留，
 ## 否则房间会挂起（无法重连也无法销毁）。回到初始界面可重新建房/加入。
+## 房主中止对局。玩家-host：本地房主进程发起；dedicated：房主客户端经 RPC 触发（服务器校验 host_seat）。
 func request_abort_match() -> void:
-	if not multiplayer.is_server() or not Network.is_host:
-		return
-	_server_abort_match()
+	if multiplayer.is_server():
+		if Network.host_is_player:
+			_server_abort_match()
+	else:
+		server_abort_match.rpc_id(1)
 
 @rpc("any_peer", "reliable")
 func server_abort_match() -> void:
-	if multiplayer.is_server():
-		_server_abort_match()
+	if not multiplayer.is_server():
+		return
+	var sender := _peer_to_seat(multiplayer.get_remote_sender_id())
+	if sender != host_seat:
+		_reject(sender, RejectCode.NOT_HOST)
+		return
+	_server_abort_match()
 
 func _server_abort_match() -> void:
-	_broadcast_abort(RejectCode.MATCH_ABORTED_PLAYER_LEFT, "房主中止了对局。")
-	_reset_match()
-	Network.disconnect_game(false)
+	_end_room(RejectCode.MATCH_ABORTED_PLAYER_LEFT, "房主中止了对局。")
 
-## 房主解散房间（仅房主=seat0）：通知所有玩家回大厅并关闭服务器连接。
-## 销毁房间后房主/客户端回到初始大厅界面，可重新建房或加入其他房间。
+## 房主解散房间。玩家-host：本地房主进程发起并关闭服务器连接；dedicated：房主客户端经 RPC 触发（校验 host_seat），
+## 服务器只终止本房间、保留进程继续接受新连接。
 func request_close_room() -> void:
-	if not multiplayer.is_server() or not Network.is_host:
-		return
-	_server_close_room()
+	if multiplayer.is_server():
+		if Network.host_is_player:
+			_server_close_room()
+	else:
+		server_close_room.rpc_id(1)
 
 @rpc("any_peer", "reliable")
 func server_close_room() -> void:
-	if multiplayer.is_server():
-		_server_close_room()
+	if not multiplayer.is_server():
+		return
+	var sender := _peer_to_seat(multiplayer.get_remote_sender_id())
+	if sender != host_seat:
+		_reject(sender, RejectCode.NOT_HOST)
+		return
+	_server_close_room()
 
 func _server_close_room() -> void:
-	_broadcast_abort(RejectCode.HOST_DISCONNECTED, "房间已被房主解散。")
+	_end_room(RejectCode.HOST_DISCONNECTED, "房间已被房主解散。")
+
+## 结束本房间：广播中止 → 断开在座客户端 → 重置房间。
+## 玩家-host：同时关闭服务器连接（房主进程回初始大厅）。
+## dedicated：保留服务器进程（可继续接受新连接）；房间资源被重置（无 zombie）。
+func _end_room(code: int, message: String) -> void:
+	_broadcast_abort(code, message)
+	var client_peers: Array[int] = []
+	for seat in players.keys():
+		var pid := int(players[seat].peer_id)
+		if pid > 1:
+			client_peers.append(pid)
 	_reset_match()
-	Network.disconnect_game(false)
+	if Network.host_is_player:
+		Network.disconnect_game(false)
+	else:
+		var mp := multiplayer.multiplayer_peer
+		if mp is ENetMultiplayerPeer:
+			for pid in client_peers:
+				mp.disconnect_peer(pid)
 
 func _discard_pending_and_open_slap(_resume: String) -> void:
 	var card_id: String = pending_draw.card_id

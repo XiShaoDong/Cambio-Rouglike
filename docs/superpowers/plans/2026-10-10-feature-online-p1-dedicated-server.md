@@ -120,8 +120,8 @@ func _on_host_started(profile):
 - ✅ **Task 2（核心）** `GameState._on_host_started` dedicated 不占座；`request_start_match`/`request_next_match` 本地房主分支加 `host_is_player` 守卫。
 - ✅ **Task 3** lobby 快照 `your_id`/`room_host`（随大厅 L1 完成；`dedicated` 字段未加，非必需）。
 - ✅ **Task 4** headless 入口 `scripts/server_main.gd` + `scenes/server.tscn`（`-- --port`）。
-- ⏳ **Task 2（Step 3）abort/close 的 dedicated RPC 语义**：待补——dedicated 下由房主（`host_seat`）经 RPC 触发；`_server_close_room` 在 dedicated 语义 = 通知回大厅 + 重置房间但**保留进程**（不 `disconnect_game`）；`server_abort_match`/`server_close_room` RPC 目前**无房主校验**，需加 `sender == host_seat`。
-- ⏳ **Task 5/6** 文档（部分已随 L1 记录）与全量回归。
+- ✅ **Task 2（Step 3）abort/close 的 dedicated RPC 语义（已补）**：`request_abort_match`/`request_close_room` dedicated 下经 RPC 由房主（`host_seat`）触发；`server_abort_match`/`server_close_room` 加 `sender == host_seat` 校验；新增 `_end_room(code,message)`——广播中止 → 断开在座客户端 → 重置房间：**玩家-host** 关闭服务器连接、**dedicated 保留服务器进程**（无 zombie）。测试 `verify_dedicated`（18/18）。
+- ✅ **Task 5/6** 文档已随 P1 更新；核心回归已跑。
 
 ## 部署手顺（占位，参数如后定）
 > 架构/OS 默认 **Ubuntu 22.04 LTS + Ampere ARM(aarch64)**，回退 **Ubuntu 22.04 + x86_64**。Godot 与本地开发同小版本（4.6.x）。
