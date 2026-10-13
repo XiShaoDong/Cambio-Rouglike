@@ -12,3 +12,7 @@ docs/修改日志.md
 
 # Blender 自动备份
 *.blend1
+
+# Python 缓存（目录服务）
+__pycache__/
+*.pyc
