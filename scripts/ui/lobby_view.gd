@@ -1,93 +1,181 @@
 class_name LobbyView
 extends RefCounted
-## 大厅视图（main.gd 拆分 · 第二优先级）
-## 职责：大厅 UI 构建、创建/加入房间、开发者双开、房间成员列表刷新。
-## 持有 main（组合根）引用，访问其 UI 成员与工具方法。
+## 大厅视图（main.gd 拆分）：两态——主菜单（创建/加入）/ 房间（槽位 + Ready + 房主控制）。
+## 纯展示 + 转发 request_*；ready/host_seat/kick 均为服务器权威（见 GameState）。
 
 var main: Node
+
+# 主菜单态
+var _menu_box: VBoxContainer
+# 房间态
+var _room_box: VBoxContainer
+var _header_label: Label
+var _share_field: LineEdit
+var _slots_box: VBoxContainer
+var _match_limit_spin: SpinBox
+var _ready_button: Button
+var _start_button: Button
+var _disband_button: Button
+var _leave_button: Button
 
 func _init(owner_node: Node) -> void:
 	main = owner_node
 
-## 构建大厅界面（需已存在 lobby_panel）。
+## 构建大厅界面（需已存在 main.lobby_panel）。
 func build() -> void:
+	_build_menu()
+	_build_room()
+	_show_menu()
+
+func _build_menu() -> void:
+	_menu_box = VBoxContainer.new()
+	_menu_box.add_theme_constant_override("separation", 12)
+	main.lobby_panel.add_child(_menu_box)
+
 	var lobby_title := Label.new()
 	lobby_title.text = "KONG  ·  LAN MVP"
 	lobby_title.add_theme_font_size_override("font_size", 30)
 	lobby_title.add_theme_color_override("font_color", UITheme.color("accent"))
-	main.lobby_panel.add_child(lobby_title)
+	_menu_box.add_child(lobby_title)
+
 	main.lobby_status_label = Label.new()
 	main.lobby_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	main.lobby_status_label.add_theme_color_override("font_color", UITheme.color("text_secondary"))
-	main.lobby_status_label.text = "输入昵称后创建或加入局域网房间。默认端口 7007。"
-	main.lobby_panel.add_child(main.lobby_status_label)
+	main.lobby_status_label.text = "输入昵称后创建或加入房间。默认端口 7007。"
+	_menu_box.add_child(main.lobby_status_label)
+
 	var intro := Label.new()
-	intro.text = "房主的电脑负责裁定全部规则；同一 Wi‑Fi 下的朋友输入房主的局域网 IP 即可加入。"
+	intro.text = "创建房间后把「房间地址」发给朋友，或用地址加入。"
 	intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	main.lobby_panel.add_child(intro)
+	_menu_box.add_child(intro)
+
 	var inputs := HBoxContainer.new()
 	inputs.add_theme_constant_override("separation", 10)
-	main.lobby_panel.add_child(inputs)
+	_menu_box.add_child(inputs)
+
 	main.name_input = LineEdit.new()
 	main.name_input.placeholder_text = "昵称"
 	main.name_input.text = "玩家"
 	main.name_input.custom_minimum_size = Vector2(190, 42)
 	inputs.add_child(main.name_input)
+
 	main.address_input = LineEdit.new()
-	main.address_input.placeholder_text = "房主 IP（加入时填写）"
+	main.address_input.placeholder_text = "房间地址 / 房主 IP（加入时填写）"
 	main.address_input.text = "127.0.0.1"
-	main.address_input.custom_minimum_size = Vector2(240, 42)
+	main.address_input.custom_minimum_size = Vector2(260, 42)
 	inputs.add_child(main.address_input)
+
 	main.port_input = LineEdit.new()
 	main.port_input.placeholder_text = "端口"
 	main.port_input.text = str(KongNetwork.DEFAULT_PORT)
 	main.port_input.custom_minimum_size = Vector2(105, 42)
 	main.port_input.alignment = HORIZONTAL_ALIGNMENT_CENTER
 	inputs.add_child(main.port_input)
+
+	var buttons := HBoxContainer.new()
+	buttons.add_theme_constant_override("separation", 10)
+	_menu_box.add_child(buttons)
+
 	var host: Button = main._button("创建房间")
 	host.pressed.connect(host_game)
 	host.disabled = main.is_dev_join
-	inputs.add_child(host)
+	buttons.add_child(host)
+
 	var join: Button = main._button("加入房间")
 	join.pressed.connect(join_game)
 	join.disabled = main.is_dev_join
-	inputs.add_child(join)
+	buttons.add_child(join)
+
 	var dev: Button = main._button("开发者：本机双开测试")
 	dev.pressed.connect(dev_launch_second)
 	dev.add_theme_color_override("font_color", UITheme.color("success"))
 	dev.disabled = main.is_dev_join
-	inputs.add_child(dev)
-	var spin_row := HBoxContainer.new()
-	spin_row.add_theme_constant_override("separation", 8)
-	main.lobby_panel.add_child(spin_row)
-	var spin_lbl := Label.new()
-	spin_lbl.text = "系列赛局数 X："
-	spin_row.add_child(spin_lbl)
-	main.match_limit_spin = SpinBox.new()
-	main.match_limit_spin.min_value = KongRules.MIN_MATCH_LIMIT
-	main.match_limit_spin.max_value = KongRules.MAX_MATCH_LIMIT
-	main.match_limit_spin.step = 1
-	main.match_limit_spin.value = KongRules.DEFAULT_MATCH_LIMIT
-	main.match_limit_spin.custom_minimum_size = Vector2(100, 0)
-	main.match_limit_spin.visible = false
-	spin_row.add_child(main.match_limit_spin)
-	main.lobby_members = RichTextLabel.new()
-	main.lobby_members.bbcode_enabled = true
-	main.lobby_members.fit_content = true
-	main.lobby_members.custom_minimum_size = Vector2(0, 140)
-	main.lobby_members.add_theme_font_size_override("normal_font_size", 18)
-	main.lobby_panel.add_child(main.lobby_members)
+	buttons.add_child(dev)
+
+func _build_room() -> void:
+	_room_box = VBoxContainer.new()
+	_room_box.add_theme_constant_override("separation", 12)
+	main.lobby_panel.add_child(_room_box)
+
+	# 分享行：房间地址 + 复制
+	var share_row := HBoxContainer.new()
+	share_row.add_theme_constant_override("separation", 8)
+	_room_box.add_child(share_row)
+	var share_lbl := Label.new()
+	share_lbl.text = "房间地址（发给朋友）："
+	share_row.add_child(share_lbl)
+	_share_field = LineEdit.new()
+	_share_field.editable = false
+	_share_field.custom_minimum_size = Vector2(260, 42)
+	share_row.add_child(_share_field)
+	var copy_btn: Button = main._button("复制")
+	copy_btn.pressed.connect(_on_copy_share)
+	share_row.add_child(copy_btn)
+
+	_header_label = Label.new()
+	_header_label.add_theme_font_size_override("font_size", 18)
+	_header_label.add_theme_color_override("font_color", UITheme.color("accent"))
+	_room_box.add_child(_header_label)
+
+	_slots_box = VBoxContainer.new()
+	_slots_box.add_theme_constant_override("separation", 6)
+	_room_box.add_child(_slots_box)
+
+	# 局数设置（房主可编辑，客人只读可见）
+	var limits := HBoxContainer.new()
+	limits.add_theme_constant_override("separation", 8)
+	_room_box.add_child(limits)
+	var limits_lbl := Label.new()
+	limits_lbl.text = "系列赛局数："
+	limits.add_child(limits_lbl)
+	_match_limit_spin = SpinBox.new()
+	_match_limit_spin.min_value = KongRules.MIN_MATCH_LIMIT
+	_match_limit_spin.max_value = KongRules.MAX_MATCH_LIMIT
+	_match_limit_spin.step = 1
+	_match_limit_spin.value = KongRules.DEFAULT_MATCH_LIMIT
+	_match_limit_spin.custom_minimum_size = Vector2(100, 0)
+	limits.add_child(_match_limit_spin)
+
+	var controls := HBoxContainer.new()
+	controls.add_theme_constant_override("separation", 10)
+	_room_box.add_child(controls)
+
+	_ready_button = main._button("准备")
+	_ready_button.pressed.connect(_on_ready_pressed)
+	controls.add_child(_ready_button)
+
+	_start_button = main._button("开始对局")
+	_start_button.pressed.connect(_on_start_pressed)
+	controls.add_child(_start_button)
+
+	_disband_button = main._button("解散房间")
+	_disband_button.add_theme_color_override("font_color", UITheme.color("danger"))
+	_disband_button.pressed.connect(GameState.request_close_room)
+	controls.add_child(_disband_button)
+
+	_leave_button = main._button("退出房间")
+	_leave_button.pressed.connect(_leave_room)
+	controls.add_child(_leave_button)
+
+func _show_menu() -> void:
+	if _menu_box != null:
+		_menu_box.visible = true
+	if _room_box != null:
+		_room_box.visible = false
+
+func _show_room() -> void:
+	if _menu_box != null:
+		_menu_box.visible = false
+	if _room_box != null:
+		_room_box.visible = true
 
 func host_game() -> void:
 	Network.host_game({"name": main._entered_name()}, main._entered_port())
 
-func _start_with_limit() -> void:
-	GameState.request_start_match(int(main.match_limit_spin.value))
-
 func join_game() -> void:
 	var address: String = main.address_input.text.strip_edges()
 	if address.is_empty():
-		main._show_toast("请输入房主的局域网 IP。")
+		main._show_toast("请输入房主 IP 或房间地址。")
 		return
 	main._reconnect_expected = false  # 正常加入，不触发重连
 	Network.join_game(address, {"name": main._entered_name()}, main._entered_port())
@@ -123,57 +211,123 @@ func apply_dev_join() -> void:
 	Network.join_game(address, {"name": "开发者2"}, port)
 	main._set_status("开发者模式：正在自动加入 %s:%d…" % [address, port])
 
-## 回到初始大厅：清空房主操作按钮与成员列表（解散房间/中止/退出房间后调用）。
+## 回到主菜单态（解散房间/中止/退出房间后调用）。
 func reset_lobby() -> void:
-	if main.start_button != null:
-		if is_instance_valid(main.start_button):
-			main.start_button.queue_free()
-		main.start_button = null
-	if main.close_room_button != null:
-		if is_instance_valid(main.close_room_button):
-			main.close_room_button.queue_free()
-		main.close_room_button = null
-	if main.leave_room_button != null:
-		if is_instance_valid(main.leave_room_button):
-			main.leave_room_button.queue_free()
-		main.leave_room_button = null
-	main.lobby_members.text = ""
+	if _slots_box != null:
+		for c in _slots_box.get_children():
+			c.queue_free()
+	_show_menu()
 	main.lobby_panel.visible = true
 	main.game_panel.visible = false
 
-## 刷新房间成员列表。
+## 刷新房间界面（服务器逐 peer 下发的 lobby 快照）。
 func update_lobby(lobby: Dictionary) -> void:
 	main.latest_lobby = lobby
 	main.lobby_panel.visible = true
 	main.game_panel.visible = false
-	var lines := ["[color=#f6d77a]房间玩家（%d/%d）[/color]" % [lobby.players.size(), lobby.max_players]]
-	for entry in lobby.players:
-		var host_mark := "  [房主]" if int(entry.id) == int(lobby.host_id) else ""
-		lines.append("• %s%s" % [entry.name, host_mark])
+	_show_room()
+
+	var your_id: int = int(lobby.get("your_id", -1))
+	var is_host: bool = your_id == int(lobby.get("room_host", 0))
+	var entries: Array = lobby.get("players", [])
+	_header_label.text = "房间玩家（%d/%d）" % [entries.size(), int(lobby.get("max_players", KongRules.MAX_PLAYERS))]
+
+	_rebuild_slots(lobby, is_host)
+
+	# 房间地址
+	_share_field.text = _share_text()
+
+	# 局数：显示权威值；房主可编辑
+	var limit := int(lobby.get("match_limit", KongRules.DEFAULT_MATCH_LIMIT))
+	_match_limit_spin.set_value_no_signal(limit)
+	_match_limit_spin.editable = is_host
+
+	# 控制按钮
+	var my_ready := false
+	for e in entries:
+		if int(e.get("id", -1)) == your_id:
+			my_ready = bool(e.get("ready", false))
+	_ready_button.visible = not is_host
+	_ready_button.text = "取消准备" if my_ready else "准备"
+	_ready_button.disabled = false
+
+	_start_button.visible = is_host
+	_disband_button.visible = is_host
+	_leave_button.visible = not is_host
+
+	if is_host:
+		var ok := entries.size() >= int(lobby.get("min_players", KongRules.MIN_PLAYERS)) and _all_ready(lobby)
+		_start_button.disabled = not ok
+
+func _rebuild_slots(lobby: Dictionary, is_host: bool) -> void:
+	for c in _slots_box.get_children():
+		c.queue_free()
+	var maxp := int(lobby.get("max_players", KongRules.MAX_PLAYERS))
+	var host := int(lobby.get("room_host", 0))
+	var taken: Dictionary = {}
+	for e in lobby.get("players", []):
+		taken[int(e.get("id", -1))] = e
+	for seat in range(maxp):
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 10)
+		var lbl := Label.new()
+		if taken.has(seat):
+			var e: Dictionary = taken[seat]
+			lbl.text = "%d. %s %s %s" % [
+				seat + 1,
+				str(e.get("name", "")),
+				"[房主]" if seat == host else "",
+				"✔ 已准备" if bool(e.get("ready", false)) else "… 未准备",
+			]
+		else:
+			lbl.text = "%d. 等待加入…" % [seat + 1]
+		row.add_child(lbl)
+		if is_host and taken.has(seat) and seat != host:
+			var kick: Button = main._button("踢出")
+			kick.pressed.connect(GameState.request_kick.bind(seat))
+			row.add_child(kick)
+		_slots_box.add_child(row)
+
+## 非房主是否全部已准备（房主无需准备）。
+func _all_ready(lobby: Dictionary) -> bool:
+	var host := int(lobby.get("room_host", 0))
+	var need := 0
+	for e in lobby.get("players", []):
+		if int(e.get("id", -1)) == host:
+			continue
+		need += 1
+		if not bool(e.get("ready", false)):
+			return false
+	return need >= 1
+
+func _share_text() -> String:
+	var port: int = main._entered_port()
 	if Network.is_host:
-		lines.append("\n[房主] 至少 2 人后可开始。")
-		if main.start_button == null:
-			main.start_button = main._button("开始对局")
-			main.start_button.name = "StartMatch"
-			main.start_button.pressed.connect(_start_with_limit)
-			main.lobby_panel.add_child(main.start_button)
-		main.start_button.disabled = lobby.players.size() < int(lobby.min_players)
-		main.match_limit_spin.visible = true
-		# 房主可解散房间：通知全员回大厅并关闭服务器，回到初始界面
-		if main.close_room_button == null:
-			main.close_room_button = main._button("解散房间")
-			main.close_room_button.name = "CloseRoom"
-			main.close_room_button.pressed.connect(GameState.request_close_room)
-			main.lobby_panel.add_child(main.close_room_button)
-	else:
-		# 客户端可主动退出房间：断开连接回到初始大厅
-		if main.leave_room_button == null:
-			main.leave_room_button = main._button("退出房间")
-			main.leave_room_button.name = "LeaveRoom"
-			main.leave_room_button.pressed.connect(_leave_room)
-			main.lobby_panel.add_child(main.leave_room_button)
-		main.match_limit_spin.visible = false
-	main.lobby_members.text = "\n".join(lines)
+		return "%s:%d" % [_guess_lan_ip(), port]
+	var addr: String = main.address_input.text.strip_edges()
+	return "%s:%d" % [addr if not addr.is_empty() else "?", port]
+
+func _guess_lan_ip() -> String:
+	for ip in IP.get_local_addresses():
+		if ip.count(".") == 3 and not ip.begins_with("127."):
+			return ip
+	return "127.0.0.1"
+
+func _on_copy_share() -> void:
+	var text := _share_field.text
+	DisplayServer.clipboard_set(text)
+	main._show_toast("已复制房间地址：%s" % text)
+
+func _on_ready_pressed() -> void:
+	var my_ready := false
+	var your_id := int(main.latest_lobby.get("your_id", -1))
+	for e in main.latest_lobby.get("players", []):
+		if int(e.get("id", -1)) == your_id:
+			my_ready = bool(e.get("ready", false))
+	GameState.request_set_ready(not my_ready)
+
+func _on_start_pressed() -> void:
+	GameState.request_start_match(int(_match_limit_spin.value))
 
 ## 客户端主动退出房间：断开连接，回到初始大厅界面。
 ## 保留 token 与地址，便于之后重新"加入房间"时凭 token 重连回原座位（若房主对局仍在进行）。

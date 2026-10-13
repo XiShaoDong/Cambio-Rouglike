@@ -816,7 +816,6 @@ var game_panel: VBoxContainer
 var name_input: LineEdit
 var address_input: LineEdit
 var port_input: LineEdit
-var lobby_members: RichTextLabel
 var ready_button: Button
 var bell_button: Button
 var round_label: Label
@@ -856,10 +855,6 @@ var _talking_local := false
 var _crosshair: Control = null
 var _self_panel: PlayerStatPanel = null
 var is_dev_join := false
-var start_button: Button = null
-var close_room_button: Button = null
-var leave_room_button: Button = null
-var match_limit_spin: SpinBox = null
 var _cards := CardFactory.new()
 var interaction: GameInteraction
 var lobby: LobbyView
@@ -1209,6 +1204,15 @@ func _entered_port() -> int:
 	var parsed := int(port_input.text)
 	return parsed if parsed > 0 and parsed < 65536 else KongNetwork.DEFAULT_PORT
 
+## 我是不是房主（房间创建者/动态 host_seat 的持有者）。大厅阶段用 lobby 快照；对局中用 state。
+func is_room_host() -> bool:
+	var in_game := not latest_state.is_empty() and int(latest_state.get("phase", GameState.Phase.LOBBY)) != GameState.Phase.LOBBY
+	if in_game:
+		return int(latest_state.get("viewer_id", -1)) == int(latest_state.get("room_host", 0))
+	if not latest_lobby.is_empty():
+		return int(latest_lobby.get("your_id", -1)) == int(latest_lobby.get("room_host", 0))
+	return false
+
 func _on_state_updated(state: Dictionary) -> void:
 	latest_state = state
 	# 非 LOBBY 阶段视为对局中（用于断线后判断是否提示重连）
@@ -1342,7 +1346,7 @@ func _open_settlement() -> void:
 	var match_limit: int = int(run.get("match_limit", KongRules.DEFAULT_MATCH_LIMIT))
 	var series: Dictionary = (latest_state.get("result", {}) as Dictionary).get("series", {})
 	var rewards: Dictionary = (latest_state.get("result", {}) as Dictionary).get("rewards", {})
-	page.setup(model, Network.is_host, int(latest_state.get("match_number", 1)),
+	page.setup(model, is_room_host(), int(latest_state.get("match_number", 1)),
 		_play_pending_winner, _request_next_match, GameState.request_abort_match,
 		_on_settlement_flip, true, match_limit, series, rewards)
 	settlement_page = page
@@ -1544,7 +1548,7 @@ func _on_card_pressed(player_id: int, slot: int) -> void:
 
 ## 房主请求重开本局（弹出确认板）。
 func _request_restart_confirm() -> void:
-	if not Network.is_host:
+	if not is_room_host():
 		return
 	_restart_confirm = true
 	_refresh_hint_panel()

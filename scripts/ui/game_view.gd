@@ -22,6 +22,7 @@ const RelicBarScript := preload("res://scenes/ui/relic_bar.tscn")
 
 var main: Node
 var _ready_clicked := false
+var _last_match_id := ""  # 上次渲染的 match_id：新一局（重开/再来一局/下一局）→ 复位 _ready_clicked
 var _restart_button: Button = null
 
 func _init(owner_node: Node) -> void:
@@ -130,12 +131,18 @@ func _build_restart_button(board: Control) -> void:
 func render(state: Dictionary) -> void:
 	if state.is_empty():
 		return
+	# 新一局（重开本局 / 再来一局 / 下一局都会换 match_id）→ 复位本机 Ready 点击态，
+	# 否则重开回到 INITIAL_PEEK 时 phase 从未离开，`_ready_clicked` 残留为 true → Ready 按钮卡在"已准备"且禁用。
+	var mid := str(state.get("match_id", ""))
+	if mid != _last_match_id:
+		_last_match_id = mid
+		_ready_clicked = false
 	var phase := int(state.phase)
 	var viewer := int(state.viewer_id)
 	var is_current := viewer == int(state.current_player)
 	# 房主重开按钮：仅房主且对局中（非大厅/结算）可见。
 	if _restart_button != null and is_instance_valid(_restart_button):
-		_restart_button.visible = Network.is_host and phase != 0 and phase != PHASE_GAME_OVER
+		_restart_button.visible = main.is_room_host() and phase != 0 and phase != PHASE_GAME_OVER
 	var viewer_eliminated := false
 	for player in state.players:
 		if int(player.id) == viewer and bool(player.get("eliminated", false)):
@@ -326,7 +333,7 @@ func _render_suspended_controls() -> void:
 		who.text = "离线：%s" % "、".join(offline_names)
 		who.add_theme_color_override("font_color", UITheme.color("text_secondary"))
 		main.controls_box.add_child(who)
-	if not Network.is_host:
+	if not main.is_room_host():
 		return
 	var kick: Button = main._button("踢出离线者并继续")
 	kick.pressed.connect(func():

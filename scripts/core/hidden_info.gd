@@ -27,6 +27,7 @@ static func snapshot_for(state: Node, viewer_id: int) -> Dictionary:
 		"phase": phase,
 		"phase_name": _phase_name(phase),
 		"viewer_id": viewer_id,
+		"room_host": int(state.host_seat),  # 动态房主座位（只读；供客户端判房主 UI）
 		"current_player": current_seat,
 		"current_name": players.get(current_seat, {}).get("name", ""),
 		"players": snapshot_players,

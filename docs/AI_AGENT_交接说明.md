@@ -73,6 +73,7 @@
 - **卡牌贴图分辨率坑（防复发）**：图集 1× 源图 `opersze-cards-full.png` 每卡仅 **55×77 像素**，在游戏里是**放大**显示（手牌 ≈1.16×、大牌 2×，HiDPI/窗口缩放再 ×2）→ 糊；旧素材 352×512 是缩小显示故清晰。**运行时必须用 4× 高清版**（每卡 220×308，显示尺寸小于格子 → 缩小采样、清晰）。`TextureRect` 一直是 `KEEP_ASPECT_CENTERED`（等比、无变形），故糊的原因是像素不足而非拉伸变形。
 - **卡牌视图重建约定**：`game_view._clear_area` 一律先 `remove_child` 立即移出网格、再 `queue_free` 延迟释放（**不要直接 `free()`**——卡牌点击触发重建时被点击的卡正被信号锁定，free 会报 "Object is locked"）。
 - **罚牌附加卡布局**：前 4 张主网格固定 2 列永不位移；第 5+ 张在 `ExtraLayer` 按**槽号固定绝对定位**（统一向上增长、行列固定，加新罚牌已存在卡不移动）。
+- **大厅改造 L1（进行中，分支 `agent/feature-online`，纯大厅/少量表现层）**：两态大厅（主菜单/房间）+ 固定槽位 + 每人 Ready + 房主控制（开始/踢在线/局数可见/解散）+ 复制直连信息。**动态房主 `host_seat`**（创建者=首进入者，LOBBY 离开转移；所有房主校验读 `host_seat`、去写死 0）。服务器权威 Ready（`players[].ready`、`request_set_ready`）；在线踢人 `request_kick`；`_lobby_snapshot` 逐 peer 带 `your_id`/`room_host`/`match_limit`；对局快照增只读 `room_host`。客户端房主判定统一 `main.is_room_host()`（`Network.is_host` 仅表"本进程是 ENet server"）。L1 的"必须全员 ready"为 UI 侧强制（服务器闸留 P2）。**修复**：重开本局复位客户端 Ready 点击态；重开保留护盾保护格。设计与计划见 `docs/superpowers/specs/2026-10-10-lobby-redesign.md`、`docs/superpowers/plans/2026-10-10-lobby-redesign-L1.md`、`docs/superpowers/plans/2026-10-10-feature-online-p1-dedicated-server.md`；测试 `verify_lobby.gd`/`verify_restart.gd`。规则/状态机/对局快照牌面投影/HiddenInfo 零改动。
 - Git：仓库 `git@github.com:XiShaoDong/Cambio-Rouglike.git`，分支 `main`。
 - 项目路径：`~/dev/gameDev/cambio-rouglike/`。
 

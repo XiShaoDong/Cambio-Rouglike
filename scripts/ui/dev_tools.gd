@@ -34,7 +34,7 @@ func refresh_panel() -> void:
 	if _panel != null and is_instance_valid(_panel):
 		_panel.queue_free()
 		_panel = null
-	if not main.dev_mode or not Network.is_host or main.latest_state.is_empty():
+	if not main.dev_mode or not main.is_room_host() or main.latest_state.is_empty():
 		return
 	if int(main.latest_state.get("phase", 0)) == GameState.Phase.LOBBY:
 		return

@@ -57,6 +57,7 @@ var players: Dictionary = {}  # key: seat_id(0..N-1)；value: {seat, peer_id, to
 var turn_order: Array[int] = []  # seat_id 顺序
 var current_player_id := 0  # seat_id
 var _next_seat := 0
+var host_seat := 0  # 房主座位（房间创建者=首个进入者；L1 起为动态，见 lobby 设计）
 var deck: Array[String] = []
 var discard_pile: Array[String] = []
 ## 弃牌历史：所有曾进入弃牌堆的牌 id（按时间顺序；这些牌当时都公开，属公开信息）。
@@ -147,9 +148,7 @@ func _on_peer_left(peer_id: int) -> void:
 		return
 	var left_name: String = players[seat].get("name", "玩家")
 	if phase == Phase.LOBBY:
-		players.erase(seat)
-		turn_order.erase(seat)
-		_broadcast_lobby()
+		_remove_lobby_seat(seat)
 		return
 	# 阶段一/二：标记离线 + 条件暂停，不中止对局；保留 token 供断线重连认领
 	players[seat].offline = true
@@ -161,11 +160,20 @@ func _on_peer_left(peer_id: int) -> void:
 	_add_log("%s 断线，对局暂停等待重连（轮到其回合时冻结）。" % left_name)
 	_broadcast_state()
 
+## LOBBY 阶段移除座位（掉线 / 被房主踢出共用）。房主离开 → 转移给下一在线玩家。
+func _remove_lobby_seat(seat: int) -> void:
+	players.erase(seat)
+	turn_order.erase(seat)
+	if seat == host_seat and not turn_order.is_empty():
+		host_seat = int(turn_order[0])
+	_broadcast_lobby()
+
 func _reset_match() -> void:
 	phase = Phase.LOBBY
 	players.clear()
 	turn_order.clear()
 	_next_seat = 0
+	host_seat = 0
 	deck.clear()
 	discard_pile.clear()
 	discard_history.clear()
@@ -299,8 +307,12 @@ func _add_player(peer_id: int, display_name: String) -> void:
 		"currency": KongRules.START_CURRENCY,
 		"wins": 0,
 		"protected_slot": -1,
+		"ready": false,
 	}
 	turn_order.append(seat)
+	# 首个进入房间的玩家即房主（房间创建者）
+	if turn_order.size() == 1:
+		host_seat = seat
 	# 注册时把 token 定向发给该玩家，用于断线后重连认领座位
 	var token: String = players[seat].token
 	if peer_id == 1:
@@ -347,12 +359,31 @@ func _alive_count() -> int:
 func _apply_match_start_relics() -> void:
 	for seat in _alive_order():
 		players[seat].protected_slot = -1
+	var shield_match := int(run_state.get("shield_match", -1))
+	# 重开同一局（match_number 未变）：复用已记录的护盾——重开应保留玩家买的道具状态。
+	if shield_match == match_number:
+		var owner := int(run_state.get("shield_owner", -1))
+		if players.has(owner) and _is_alive(owner):
+			players[owner].protected_slot = int(run_state.get("shield_slot", -1))
+		return
+	# 进入更晚的局：上一局的护盾记录作废。
+	if shield_match != -1:
+		run_state["shield_match"] = -1
+		run_state["shield_slot"] = -1
+		run_state["shield_owner"] = -1
+	# 首次为本局消耗新购护盾：随机选格、记录（供重开复用）、并从 relics 移除。
+	for seat in _alive_order():
 		if _is_relic_owner(seat, Relics.GUARD_SHIELD_ID):
 			var count: int = players[seat].cards.size()
-			players[seat].protected_slot = randi() % maxi(1, count)
+			var slot := randi() % maxi(1, count)
+			players[seat].protected_slot = slot
+			run_state["shield_match"] = match_number
+			run_state["shield_slot"] = slot
+			run_state["shield_owner"] = int(seat)
 			run_state["relics"].erase(Relics.GUARD_SHIELD_ID)
 			run_state.get("relic_owners", {}).erase(Relics.GUARD_SHIELD_ID)
-			_add_log("%s 的防守护盾随机保护了第 %d 格。" % [players[seat].name, players[seat].protected_slot])
+			_add_log("%s 的防守护盾随机保护了第 %d 格。" % [players[seat].name, slot])
+			return
 
 ## seat 的 slot 是否受防守护盾保护。
 func _is_protected(seat: int, slot: int) -> bool:
@@ -471,7 +502,7 @@ func _server_start_match(sender: int, match_limit := 0) -> void:
 	if phase != Phase.LOBBY:
 		_reject(sender, RejectCode.ROOM_NOT_OPEN)
 		return
-	if sender != 0:
+	if sender != host_seat:
 		_reject(sender, RejectCode.NOT_HOST)
 		return
 	if players.size() < KongRules.MIN_PLAYERS:
@@ -505,6 +536,7 @@ func _deal_new_match() -> void:
 	for seat in turn_order:
 		players[seat].cards.clear()
 		players[seat].has_acted = false
+		players[seat].ready = false
 	for seat in _alive_order():
 		for _slot in KongRules.HAND_SIZE:
 			players[seat].cards.append(_draw_from_deck())
@@ -534,7 +566,7 @@ func _server_next_match(sender: int, action_id := "") -> void:
 	if _series_finished():
 		_reject(sender, RejectCode.INVALID_PHASE, action_id)
 		return
-	if sender != 0:
+	if sender != host_seat:
 		_reject(sender, RejectCode.NOT_HOST, action_id)
 		return
 	if players.size() < KongRules.MIN_PLAYERS:
@@ -558,7 +590,7 @@ func _server_restart_match(sender: int, action_id := "") -> void:
 	if phase == Phase.LOBBY:
 		_reject(sender, RejectCode.ROOM_NOT_OPEN, action_id)
 		return
-	if sender != 0:
+	if sender != host_seat:
 		_reject(sender, RejectCode.NOT_HOST, action_id)
 		return
 	if players.size() < KongRules.MIN_PLAYERS:
@@ -989,10 +1021,37 @@ func _server_kongbaya(sender: int, action_id := "") -> void:
 		return
 	kongbaya.declare(sender, action_id)
 
-## 房主踢出离线玩家并继续对局（仅房主=seat0）。被踢者若为当前玩家则轮转到下一玩家。
+## 房主踢出"在线"玩家（仅 LOBBY；仅房主）：移除座位并断开其连接。
+func request_kick(target_seat: int) -> void:
+	if multiplayer.is_server():
+		_server_kick(_peer_to_seat(1), target_seat)
+	else:
+		server_kick.rpc_id(1, target_seat)
+
+@rpc("any_peer", "reliable")
+func server_kick(target_seat: int) -> void:
+	if multiplayer.is_server():
+		_server_kick(_peer_to_seat(multiplayer.get_remote_sender_id()), target_seat)
+
+func _server_kick(sender: int, target_seat: int) -> void:
+	if phase != Phase.LOBBY:
+		return
+	if sender != host_seat:
+		_reject(sender, RejectCode.NOT_HOST)
+		return
+	if target_seat == host_seat or not players.has(target_seat):
+		return
+	var peer := int(players[target_seat].peer_id)
+	if peer > 1:
+		_send_toast(target_seat, "你已被房主移出房间。")
+	_remove_lobby_seat(target_seat)
+	if peer > 1 and multiplayer.multiplayer_peer is ENetMultiplayerPeer:
+		multiplayer.multiplayer_peer.disconnect_peer(peer)
+
+## 房主踢出离线玩家并继续对局（仅房主=host_seat）。被踢者若为当前玩家则轮转到下一玩家。
 func request_kick_offline(target_seat: int) -> void:
 	if multiplayer.is_server():
-		if _peer_to_seat(1) == 0:
+		if _peer_to_seat(1) == host_seat:
 			_kick_offline_seat(target_seat)
 	else:
 		server_kick_offline.rpc_id(1, target_seat)
@@ -1000,7 +1059,7 @@ func request_kick_offline(target_seat: int) -> void:
 @rpc("any_peer", "reliable")
 func server_kick_offline(target_seat: int) -> void:
 	if multiplayer.is_server():
-		if _peer_to_seat(multiplayer.get_remote_sender_id()) == 0:
+		if _peer_to_seat(multiplayer.get_remote_sender_id()) == host_seat:
 			_kick_offline_seat(target_seat)
 
 func _kick_offline_seat(target_seat: int) -> void:
@@ -1047,7 +1106,7 @@ func _server_dev_eliminate(sender: int, target_seat: int) -> void:
 	if phase == Phase.LOBBY:
 		_reject(sender, RejectCode.INVALID_PHASE)
 		return
-	if sender != 0:
+	if sender != host_seat:
 		_reject(sender, RejectCode.NOT_HOST)
 		return
 	if not players.has(target_seat) or not _is_alive(target_seat):
@@ -1524,19 +1583,55 @@ func _snapshot_for(viewer_id: int) -> Dictionary:
 func _phase_name() -> String:
 	return HiddenInfo._phase_name(phase)
 
-func _lobby_snapshot() -> Dictionary:
+## 大厅快照。viewer_seat 用于下发"你是几号座位"（your_id）；-1 表示不指定。
+func _lobby_snapshot(viewer_seat := -1) -> Dictionary:
 	var entries: Array = []
 	for seat in turn_order:
-		entries.append({"id": seat, "name": players[seat].name})
-	return {"players": entries, "host_id": 0, "min_players": KongRules.MIN_PLAYERS, "max_players": KongRules.MAX_PLAYERS}
+		entries.append({
+			"id": seat,
+			"name": players[seat].name,
+			"ready": bool(players[seat].get("ready", false)),
+		})
+	return {
+		"players": entries,
+		"host_id": host_seat,
+		"room_host": host_seat,
+		"your_id": viewer_seat,
+		"min_players": KongRules.MIN_PLAYERS,
+		"max_players": KongRules.MAX_PLAYERS,
+		"match_limit": int(run_state.get("match_limit", KongRules.DEFAULT_MATCH_LIMIT)),
+	}
 
+## 逐 peer 下发大厅快照（含各自 your_id）；离线（peer<=0）跳过。
 func _broadcast_lobby() -> void:
-	var lobby := _lobby_snapshot()
-	_receive_lobby(lobby)
 	for seat in players.keys():
 		var peer := int(players[seat].peer_id)
-		if peer > 1:
-			receive_lobby.rpc_id(peer, lobby)
+		if peer <= 0:
+			continue
+		var snap := _lobby_snapshot(int(seat))
+		if peer == 1:
+			_receive_lobby(snap)
+		else:
+			receive_lobby.rpc_id(peer, snap)
+
+## ===== 大厅：准备（服务器权威）=====
+func request_set_ready(on: bool) -> void:
+	if multiplayer.is_server():
+		_server_set_ready(_peer_to_seat(1), on)
+	else:
+		server_set_ready.rpc_id(1, on)
+
+@rpc("any_peer", "reliable")
+func server_set_ready(on: bool) -> void:
+	if multiplayer.is_server():
+		_server_set_ready(_peer_to_seat(multiplayer.get_remote_sender_id()), on)
+
+## 仅 LOBBY 生效；写座位 ready 并广播 lobby。
+func _server_set_ready(sender: int, on: bool) -> void:
+	if phase != Phase.LOBBY or not players.has(sender):
+		return
+	players[sender].ready = on
+	_broadcast_lobby()
 
 func _broadcast_state() -> void:
 	state_revision += 1
