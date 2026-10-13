@@ -134,7 +134,9 @@ func _on_network_status(message: String) -> void:
 
 func _on_host_started(profile: Dictionary) -> void:
 	_reset_match()
-	_add_player(1, str(profile.get("name", "房主")))
+	# 玩家-host：房主本人占 seat 0；专用服务器（host_is_player=false）：不占座，首个客户端才是 seat 0。
+	if Network.host_is_player:
+		_add_player(1, str(profile.get("name", "房主")))
 	_broadcast_lobby()
 
 func _on_joined_server() -> void:
@@ -489,7 +491,9 @@ func _send_resume_hand(seat: int) -> void:
 
 func request_start_match(match_limit := 0) -> void:
 	if multiplayer.is_server():
-		_server_start_match(_peer_to_seat(1), match_limit)
+		# 本地房主仅玩家-host 模式存在；dedicated 下无人占座，开局一律走 RPC 由 seat host_seat 触发。
+		if Network.host_is_player:
+			_server_start_match(_peer_to_seat(1), match_limit)
 	else:
 		server_start_match.rpc_id(1, match_limit)
 
@@ -550,7 +554,8 @@ func _deal_new_match() -> void:
 ## 再来一局：GAME_OVER 后房主一键开新局（无需回大厅）。match_number 递增。
 func request_next_match(action_id := "") -> void:
 	if multiplayer.is_server():
-		_server_next_match(_peer_to_seat(1), action_id)
+		if Network.host_is_player:
+			_server_next_match(_peer_to_seat(1), action_id)
 	else:
 		server_next_match.rpc_id(1, action_id)
 

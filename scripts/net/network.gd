@@ -12,6 +12,8 @@ const DEFAULT_PORT := 7007
 
 var local_profile: Dictionary = {"name": "玩家"}
 var is_host := false
+var host_is_player := true   # host 是否作为玩家占座：玩家-host=true；专用服务器=false
+var dedicated := false       # 是否专用（中立）服务器模式
 
 func _ready() -> void:
 	multiplayer.connected_to_server.connect(_on_connected_to_server)
@@ -19,11 +21,18 @@ func _ready() -> void:
 	multiplayer.server_disconnected.connect(_on_server_disconnected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 
-func host_game(profile: Dictionary, port := DEFAULT_PORT) -> void:
+## 每局允许的客户端数：玩家-host 时房主占 1 席（-1），专用服务器不占席。
+func max_clients() -> int:
+	return KongRules.MAX_PLAYERS - (1 if host_is_player else 0)
+
+## 创建房间。as_player=false 时本进程只做权威、不占玩家座位（专用服务器）。
+func host_game(profile: Dictionary, port := DEFAULT_PORT, as_player := true) -> void:
 	disconnect_game(false)
+	host_is_player = as_player
+	dedicated = not as_player
 	local_profile = profile
 	var peer := ENetMultiplayerPeer.new()
-	var error := peer.create_server(port, KongRules.MAX_PLAYERS - 1)
+	var error := peer.create_server(port, max_clients())
 	if error != OK:
 		connection_failed.emit("无法在端口 %d 创建房间（错误 %d）" % [port, error])
 		return
@@ -31,6 +40,10 @@ func host_game(profile: Dictionary, port := DEFAULT_PORT) -> void:
 	is_host = true
 	connection_status_changed.emit("房间已创建，等待玩家加入")
 	host_started.emit(local_profile)
+
+## 专用（中立）服务器：不占玩家座位。供 headless 入口调用。
+func start_dedicated(port := DEFAULT_PORT) -> void:
+	host_game({"name": "服务器"}, port, false)
 
 func join_game(address: String, profile: Dictionary, port := DEFAULT_PORT) -> void:
 	disconnect_game(false)
@@ -50,6 +63,8 @@ func disconnect_game(show_message := true) -> void:
 		multiplayer.multiplayer_peer.close()
 	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
 	is_host = false
+	host_is_player = true
+	dedicated = false
 	if show_message:
 		connection_status_changed.emit("已断开连接")
 

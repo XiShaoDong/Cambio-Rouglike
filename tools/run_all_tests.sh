@@ -77,6 +77,7 @@ run_single "swap"       res://tests/verify_swap.tscn
 run_single "duel"       res://tests/verify_duel.tscn
 run_single "reconnect"  res://tests/verify_reconnect.tscn
 run_single "lobby"      res://tests/verify_lobby.tscn
+run_single "dedicated"  res://tests/verify_dedicated.tscn
 run_single "kongbaya"   res://tests/verify_kongbaya.tscn
 run_single "settlement" res://tests/verify_settlement.tscn
 run_single "series"     res://tests/verify_series.tscn
