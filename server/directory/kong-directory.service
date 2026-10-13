@@ -1,0 +1,18 @@
+# KONG 房间目录服务 systemd 单元模板
+# 安装：sudo cp kong-directory.service /etc/systemd/system/ && sudo systemctl enable --now kong-directory
+# 注意：按你的实际路径/用户/端口修改 WorkingDirectory 与 ExecStart。
+[Unit]
+Description=KONG Room Directory (HTTP/JSON)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=kong
+WorkingDirectory=/opt/kong/server/directory
+ExecStart=/usr/bin/python3 /opt/kong/server/directory/directory.py --port 8080
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

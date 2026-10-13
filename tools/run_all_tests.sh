@@ -71,6 +71,14 @@ if ! "$GODOT" --headless --path . --quit-after 5 > "$TMP/compile.log" 2>&1; then
 fi
 PASS=$((PASS+1)); say "PASS  编译检查（无脚本错误）"
 
+say "== 目录服务（Python，P2）=="
+if command -v python3 >/dev/null 2>&1 && python3 server/directory/test_directory.py > "$TMP/dir.log" 2>&1; then
+	PASS=$((PASS+1)); say "PASS  directory        $(grep RESULT "$TMP/dir.log" | tail -1)"
+else
+	FAIL=$((FAIL+1)); FAILED+=("directory(python)"); say "FAIL  directory        (python3 缺失或断言失败)"
+	grep -E 'FAIL|Error|Traceback' "$TMP/dir.log" | head -6 | sed 's/^/        /'
+fi
+
 say "== 单进程核心回归 =="
 run_single "protocol"   res://tests/verify_protocol.tscn
 run_single "swap"       res://tests/verify_swap.tscn
@@ -78,6 +86,7 @@ run_single "duel"       res://tests/verify_duel.tscn
 run_single "reconnect"  res://tests/verify_reconnect.tscn
 run_single "lobby"      res://tests/verify_lobby.tscn
 run_single "dedicated"  res://tests/verify_dedicated.tscn
+run_single "directory_client" res://tests/verify_directory_client.tscn
 run_single "kongbaya"   res://tests/verify_kongbaya.tscn
 run_single "settlement" res://tests/verify_settlement.tscn
 run_single "series"     res://tests/verify_series.tscn
@@ -116,6 +125,19 @@ fi
 
 say "== 双实例网络测试 =="
 run_dual "net"  res://tests/verify_net.tscn   "-role host"   "-role client"
+
+say "== P2 输码联机 E2E =="
+if command -v python3 >/dev/null 2>&1; then
+	python3 server/directory/directory.py --port 8080 > "$TMP/dir_e2e.log" 2>&1 &
+	_DIRPID=$!
+	sleep 1
+	run_dual "e2e_code" res://tests/verify_e2e_code.tscn \
+		"-role host -port 17099 -dir http://127.0.0.1:8080" \
+		"-role client -port 17099 -dir http://127.0.0.1:8080"
+	kill "$_DIRPID" 2>/dev/null
+else
+	say "SKIP  e2e_code  (python3 缺失)"
+fi
 
 say "== 网络条件注入测试（ProxyRelay UDP 中继）=="
 for S in baseline latency loss jitter; do

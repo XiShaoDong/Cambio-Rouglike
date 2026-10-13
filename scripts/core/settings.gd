@@ -21,6 +21,9 @@ var _data := {
 	"gameplay": {
 		"nose_click": false,   # 彩蛋：Robot 鼻子点击（3D 悬停卡牌中键/D 伸鼻）
 	},
+	"network": {
+		"directory_url": "",   # 中心房间目录服务地址（P2），如 http://1.2.3.4:8080
+	},
 }
 
 func _ready() -> void:

@@ -41,56 +41,70 @@ func _build_menu() -> void:
 	main.lobby_status_label = Label.new()
 	main.lobby_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	main.lobby_status_label.add_theme_color_override("font_color", UITheme.color("text_secondary"))
-	main.lobby_status_label.text = "输入昵称后创建或加入房间。默认端口 7007。"
+	main.lobby_status_label.text = "输入昵称，创建房间或凭房间码加入。"
 	_menu_box.add_child(main.lobby_status_label)
 
-	var intro := Label.new()
-	intro.text = "创建房间后把「房间地址」发给朋友，或用地址加入。"
-	intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_menu_box.add_child(intro)
-
-	var inputs := HBoxContainer.new()
-	inputs.add_theme_constant_override("separation", 10)
-	_menu_box.add_child(inputs)
-
+	# 昵称
+	var name_row := HBoxContainer.new()
+	name_row.add_theme_constant_override("separation", 10)
+	_menu_box.add_child(name_row)
 	main.name_input = LineEdit.new()
 	main.name_input.placeholder_text = "昵称"
 	main.name_input.text = "玩家"
-	main.name_input.custom_minimum_size = Vector2(190, 42)
-	inputs.add_child(main.name_input)
+	main.name_input.custom_minimum_size = Vector2(200, 42)
+	name_row.add_child(main.name_input)
 
-	main.address_input = LineEdit.new()
-	main.address_input.placeholder_text = "房间地址 / 房主 IP（加入时填写）"
-	main.address_input.text = "127.0.0.1"
-	main.address_input.custom_minimum_size = Vector2(260, 42)
-	inputs.add_child(main.address_input)
+	# 加入房间：房间码
+	var code_row := HBoxContainer.new()
+	code_row.add_theme_constant_override("separation", 10)
+	_menu_box.add_child(code_row)
+	main.room_code_input = LineEdit.new()
+	main.room_code_input.placeholder_text = "房间码（如 K7X2Q9）"
+	main.room_code_input.custom_minimum_size = Vector2(240, 42)
+	code_row.add_child(main.room_code_input)
+	var join_code: Button = main._button("加入房间")
+	join_code.pressed.connect(join_by_code)
+	join_code.disabled = main.is_dev_join
+	code_row.add_child(join_code)
 
-	main.port_input = LineEdit.new()
-	main.port_input.placeholder_text = "端口"
-	main.port_input.text = str(KongNetwork.DEFAULT_PORT)
-	main.port_input.custom_minimum_size = Vector2(105, 42)
-	main.port_input.alignment = HORIZONTAL_ALIGNMENT_CENTER
-	inputs.add_child(main.port_input)
-
-	var buttons := HBoxContainer.new()
-	buttons.add_theme_constant_override("separation", 10)
-	_menu_box.add_child(buttons)
-
+	# 创建房间
 	var host: Button = main._button("创建房间")
 	host.pressed.connect(host_game)
 	host.disabled = main.is_dev_join
-	buttons.add_child(host)
+	_menu_box.add_child(host)
 
-	var join: Button = main._button("加入房间")
-	join.pressed.connect(join_game)
-	join.disabled = main.is_dev_join
-	buttons.add_child(join)
-
-	var dev: Button = main._button("开发者：本机双开测试")
+	# 高级（IP 直连），默认折叠
+	var adv_toggle: Button = main._button("▸ 高级（IP 直连）")
+	adv_toggle.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_menu_box.add_child(adv_toggle)
+	var adv := VBoxContainer.new()
+	adv.visible = false
+	adv.add_theme_constant_override("separation", 8)
+	_menu_box.add_child(adv)
+	adv_toggle.pressed.connect(func(): adv.visible = not adv.visible)
+	var adv_row := HBoxContainer.new()
+	adv_row.add_theme_constant_override("separation", 10)
+	adv.add_child(adv_row)
+	main.address_input = LineEdit.new()
+	main.address_input.placeholder_text = "房主 IP"
+	main.address_input.text = "127.0.0.1"
+	main.address_input.custom_minimum_size = Vector2(170, 42)
+	adv_row.add_child(main.address_input)
+	main.port_input = LineEdit.new()
+	main.port_input.placeholder_text = "端口"
+	main.port_input.text = str(KongNetwork.DEFAULT_PORT)
+	main.port_input.custom_minimum_size = Vector2(95, 42)
+	main.port_input.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	adv_row.add_child(main.port_input)
+	var join_ip: Button = main._button("直连加入")
+	join_ip.pressed.connect(join_game)
+	join_ip.disabled = main.is_dev_join
+	adv_row.add_child(join_ip)
+	var dev: Button = main._button("开发者：本机双开")
 	dev.pressed.connect(dev_launch_second)
 	dev.add_theme_color_override("font_color", UITheme.color("success"))
 	dev.disabled = main.is_dev_join
-	buttons.add_child(dev)
+	adv_row.add_child(dev)
 
 func _build_room() -> void:
 	_room_box = VBoxContainer.new()
@@ -102,7 +116,7 @@ func _build_room() -> void:
 	share_row.add_theme_constant_override("separation", 8)
 	_room_box.add_child(share_row)
 	var share_lbl := Label.new()
-	share_lbl.text = "房间地址（发给朋友）："
+	share_lbl.text = "房间码 / 地址（发给朋友）："
 	share_row.add_child(share_lbl)
 	_share_field = LineEdit.new()
 	_share_field.editable = false
@@ -172,13 +186,35 @@ func _show_room() -> void:
 func host_game() -> void:
 	Network.host_game({"name": main._entered_name()}, main._entered_port())
 
+## 直连加入（高级：IP:端口）。
 func join_game() -> void:
 	var address: String = main.address_input.text.strip_edges()
 	if address.is_empty():
-		main._show_toast("请输入房主 IP 或房间地址。")
+		main._show_toast("请输入房主 IP。")
 		return
 	main._reconnect_expected = false  # 正常加入，不触发重连
 	Network.join_game(address, {"name": main._entered_name()}, main._entered_port())
+
+## 凭房间码加入：向目录查地址后连接。
+func join_by_code() -> void:
+	var code: String = main.room_code_input.text.strip_edges()
+	if code.is_empty():
+		main._show_toast("请输入房间码。")
+		return
+	if main.directory == null or not main.directory.is_configured():
+		main._show_toast("未配置目录服务：请到 设置 → 目录地址 填写（或用高级里的 IP 直连）。")
+		return
+	main._reconnect_expected = false
+	main._show_toast("正在查询房间 %s…" % code.to_upper())
+	main.directory.join_room(code, func(ok: bool, data: Dictionary):
+		if ok and data.has("host"):
+			var host := str(data["host"])
+			var p := int(data.get("port", KongNetwork.DEFAULT_PORT))
+			main.address_input.text = host
+			main.port_input.text = str(p)
+			Network.join_game(host, {"name": main._entered_name()}, p)
+		else:
+			main._show_toast("加入失败：房间不存在或已过期。"))
 
 func dev_launch_second() -> void:
 	var executable := OS.get_executable_path()
@@ -301,11 +337,18 @@ func _all_ready(lobby: Dictionary) -> bool:
 	return need >= 1
 
 func _share_text() -> String:
+	if not str(main.room_code).is_empty():
+		return str(main.room_code)
 	var port: int = main._entered_port()
 	if Network.is_host:
 		return "%s:%d" % [_guess_lan_ip(), port]
 	var addr: String = main.address_input.text.strip_edges()
 	return "%s:%d" % [addr if not addr.is_empty() else "?", port]
+
+## 房间码异步到位后刷新分享框。
+func refresh_share() -> void:
+	if _share_field != null:
+		_share_field.text = _share_text()
 
 func _guess_lan_ip() -> String:
 	for ip in IP.get_local_addresses():

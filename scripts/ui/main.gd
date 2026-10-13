@@ -814,6 +814,7 @@ var lobby_status_label: Label
 var lobby_panel: VBoxContainer
 var game_panel: VBoxContainer
 var name_input: LineEdit
+var room_code_input: LineEdit
 var address_input: LineEdit
 var port_input: LineEdit
 var ready_button: Button
@@ -856,6 +857,9 @@ var _crosshair: Control = null
 var _self_panel: PlayerStatPanel = null
 var is_dev_join := false
 var _cards := CardFactory.new()
+var directory: DirectoryClient = null   # P2 中心房间目录客户端
+var room_code := ""                     # 本房间的短码（宿主登记后）
+var _dir_hb_timer: Timer = null
 var interaction: GameInteraction
 var lobby: LobbyView
 var game_view: GameView
@@ -985,9 +989,49 @@ func _ready() -> void:
 	Network.connection_status_changed.connect(_set_status)
 	Network.connection_failed.connect(_show_toast)
 	Network.joined_server.connect(_on_joined_server_for_reconnect)
+	# P2：中心房间目录客户端 + 心跳定时器
+	directory = DirectoryClient.new()
+	directory.setup(str(Settings.get_setting("network", "directory_url", "")))
+	add_child(directory)
+	Network.host_started.connect(_on_directory_host_started)
+	_dir_hb_timer = Timer.new()
+	_dir_hb_timer.wait_time = 10.0
+	_dir_hb_timer.timeout.connect(_on_directory_heartbeat)
+	add_child(_dir_hb_timer)
 	_apply_dev_join()
 	_restore_identity()
-	_set_status("输入昵称后创建或加入局域网房间。默认端口 7007。")
+	_set_status("输入昵称后创建或加入房间（可用房间码或 IP）。默认端口 7007。")
+
+## 建房成功后向目录登记，拿房间码（player-host 模式）。
+func _on_directory_host_started(_profile: Dictionary) -> void:
+	if directory == null or not directory.is_configured():
+		return
+	directory.create_room(_entered_port(), "player_host", KongRules.MAX_PLAYERS,
+		func(ok: bool, data: Dictionary):
+			if ok and data.has("code"):
+				room_code = str(data["code"])
+				_dir_hb_timer.start()
+				lobby.refresh_share()
+				_show_toast("房间码：%s（发给朋友）" % room_code)
+			else:
+				_show_toast("创建房间码失败：%s" % str(data.get("error", "?"))))
+
+func _on_directory_heartbeat() -> void:
+	if not room_code.is_empty() and directory != null and directory.is_configured():
+		directory.heartbeat(room_code)
+
+## 设置中心目录地址（设置菜单改动时即时生效）。
+func set_directory_url(url: String) -> void:
+	if directory != null:
+		directory.setup(url)
+
+## 关闭本房间的目录登记（解散/中止/退出时调用）。
+func _close_directory_room() -> void:
+	if _dir_hb_timer != null:
+		_dir_hb_timer.stop()
+	if not room_code.is_empty() and directory != null and directory.is_configured():
+		directory.close_room(room_code)
+	room_code = ""
 
 var _action_counter := 0
 func _next_action_id() -> String:
@@ -998,6 +1042,7 @@ func _on_command_rejected(_code: int, message: String) -> void:
 	_show_toast("被拒绝：%s" % message)
 
 func _on_match_aborted(_code: int, message: String) -> void:
+	_close_directory_room()
 	if _table3d_active:
 		_set_table3d(false)
 	latest_state.clear()
