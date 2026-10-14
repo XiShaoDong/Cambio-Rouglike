@@ -78,6 +78,12 @@ else
 	FAIL=$((FAIL+1)); FAILED+=("directory(python)"); say "FAIL  directory        (python3 缺失或断言失败)"
 	grep -E 'FAIL|Error|Traceback' "$TMP/dir.log" | head -6 | sed 's/^/        /'
 fi
+if command -v python3 >/dev/null 2>&1 && python3 server/account/test_account.py > "$TMP/acc.log" 2>&1; then
+	PASS=$((PASS+1)); say "PASS  account          $(grep RESULT "$TMP/acc.log" | tail -1)"
+else
+	FAIL=$((FAIL+1)); FAILED+=("account(python)"); say "FAIL  account          (python3 缺失或断言失败)"
+	grep -E 'FAIL|Error|Traceback' "$TMP/acc.log" | head -6 | sed 's/^/        /'
+fi
 
 say "== 单进程核心回归 =="
 run_single "protocol"   res://tests/verify_protocol.tscn
@@ -87,6 +93,8 @@ run_single "reconnect"  res://tests/verify_reconnect.tscn
 run_single "lobby"      res://tests/verify_lobby.tscn
 run_single "dedicated"  res://tests/verify_dedicated.tscn
 run_single "directory_client" res://tests/verify_directory_client.tscn
+run_single "account_client"  res://tests/verify_account_client.tscn
+run_single "steam_stub"      res://tests/verify_steam_stub.tscn
 run_single "kongbaya"   res://tests/verify_kongbaya.tscn
 run_single "settlement" res://tests/verify_settlement.tscn
 run_single "series"     res://tests/verify_series.tscn

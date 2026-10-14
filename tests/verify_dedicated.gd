@@ -55,6 +55,13 @@ func _ready() -> void:
 	_check("dedicated abort → 服务器进程保留", Network.is_host and not Network.host_is_player)
 	Network.disconnect_game(false)
 
+	# P3a：account_id 关联座位（内部用；缺省为空=匿名）
+	GameState._reset_match()
+	GameState._add_player(1, "H", "acc_test1")
+	GameState._add_player(2, "C")
+	_check("座位带 account_id", str(GameState.players[0].get("account_id", "")) == "acc_test1")
+	_check("缺省 account_id 为空", str(GameState.players[1].get("account_id", "")) == "")
+
 	print("=== DEDICATED RESULT: %d/%d passed%s ===" % [checks - failures, checks, " (FAILURES!)" if failures else ""])
 	get_tree().quit(1 if failures else 0)
 

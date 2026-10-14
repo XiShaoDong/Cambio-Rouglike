@@ -86,6 +86,7 @@ var state_revision := 0
 var action_history: Dictionary = {}
 var last_seen_revision := -1
 var _registered_token := ""
+var local_account_id := ""  # P3a：本机持久账号 id（由客户端在注册时带上；空=匿名）
 var remote_looks: Dictionary = {}  # {seat: Vector3} 各玩家世界注视点（gaze target，纯表现层，不入快照）
 var remote_zoom: Dictionary = {}   # {seat: bool} 各玩家是否处于放大（眼睛小眼），纯表现层
 var remote_talk: Dictionary = {}   # {seat: bool} 各玩家是否在说话（嘴开合），纯表现层
@@ -140,7 +141,7 @@ func _on_host_started(profile: Dictionary) -> void:
 	_broadcast_lobby()
 
 func _on_joined_server() -> void:
-	request_register_player.rpc_id(1, str(Network.local_profile.get("name", "玩家")), PROTOCOL_VERSION)
+	request_register_player.rpc_id(1, str(Network.local_profile.get("name", "玩家")), PROTOCOL_VERSION, local_account_id)
 
 func _on_peer_left(peer_id: int) -> void:
 	if not multiplayer.is_server():
@@ -286,7 +287,7 @@ func _reject(seat: int, code: int, action_id := "") -> void:
 	else:
 		receive_rejected.rpc_id(peer, code, action_id, message)
 
-func _add_player(peer_id: int, display_name: String) -> void:
+func _add_player(peer_id: int, display_name: String, account_id := "") -> void:
 	var seat := _next_seat
 	_next_seat += 1
 	var safe_name := display_name.strip_edges().left(16)
@@ -310,6 +311,7 @@ func _add_player(peer_id: int, display_name: String) -> void:
 		"wins": 0,
 		"protected_slot": -1,
 		"ready": false,
+		"account_id": str(account_id),  # P3a 持久账号（内部用，默认不下发快照）
 	}
 	turn_order.append(seat)
 	# 首个进入房间的玩家即房主（房间创建者）
@@ -420,7 +422,7 @@ func _guard_spectator(sender: int, action_id: String) -> bool:
 	return false
 
 @rpc("any_peer", "reliable")
-func request_register_player(display_name: String, protocol_version: int = KongGameState.PROTOCOL_VERSION) -> void:
+func request_register_player(display_name: String, protocol_version: int = KongGameState.PROTOCOL_VERSION, account_id := "") -> void:
 	if not multiplayer.is_server() or phase != Phase.LOBBY:
 		return
 	var sender := multiplayer.get_remote_sender_id()
@@ -432,7 +434,7 @@ func request_register_player(display_name: String, protocol_version: int = KongG
 	if players.size() >= KongRules.MAX_PLAYERS:
 		_reject(sender, RejectCode.ROOM_FULL)
 		return
-	_add_player(sender, display_name)
+	_add_player(sender, display_name, account_id)
 	_add_log("%s 加入了房间。" % players[_peer_to_seat(sender)].name)
 	_broadcast_lobby()
 

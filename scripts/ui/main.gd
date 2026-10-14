@@ -860,6 +860,11 @@ var _cards := CardFactory.new()
 var directory: DirectoryClient = null   # P2 中心房间目录客户端
 var room_code := ""                     # 本房间的短码（宿主登记后）
 var _dir_hb_timer: Timer = null
+var account: AccountClient = null       # P3a 账号服务客户端
+var account_id := ""                    # 本机持久账号 id
+var account_name := ""                  # 账号昵称
+var steam_bridge: SteamBridge = null    # P3b/P3c Steam 桥（桩先行）
+const ACCOUNT_CFG := "user://account.cfg"
 var interaction: GameInteraction
 var lobby: LobbyView
 var game_view: GameView
@@ -998,6 +1003,13 @@ func _ready() -> void:
 	_dir_hb_timer.wait_time = 10.0
 	_dir_hb_timer.timeout.connect(_on_directory_heartbeat)
 	add_child(_dir_hb_timer)
+	# P3a：账号服务客户端 + 本地身份（登录或注册）
+	account = AccountClient.new()
+	account.setup(str(Settings.get_setting("network", "account_url", "")))
+	add_child(account)
+	steam_bridge = SteamBridge.new()
+	add_child(steam_bridge)
+	_account_boot()
 	_apply_dev_join()
 	_restore_identity()
 	_set_status("输入昵称后创建或加入房间（可用房间码或 IP）。默认端口 7007。")
@@ -1032,6 +1044,73 @@ func _close_directory_room() -> void:
 	if not room_code.is_empty() and directory != null and directory.is_configured():
 		directory.close_room(room_code)
 	room_code = ""
+
+## ===== 账号（P3a）：首启注册 / 有本地身份则登录（失败重注册），异步不阻塞游戏 =====
+func _account_boot() -> void:
+	if account == null or not account.is_configured():
+		return
+	var cfg := ConfigFile.new()
+	var aid := ""
+	var sec := ""
+	if cfg.load(ACCOUNT_CFG) == OK:
+		aid = str(cfg.get_value("account", "id", ""))
+		sec = str(cfg.get_value("account", "secret", ""))
+	if not aid.is_empty() and not sec.is_empty():
+		account.login(aid, sec, func(ok: bool, data: Dictionary):
+			if ok:
+				_apply_account(data, sec)
+			else:
+				_account_register())
+	else:
+		_account_register()
+
+func _account_register() -> void:
+	account.register(_entered_name(), func(ok: bool, data: Dictionary):
+		if ok:
+			_apply_account(data, "")
+		else:
+			_show_toast("账号注册失败：%s" % str(data.get("error", "?"))))
+
+## register 返回含 secret；login 不含 → 沿用本地已存的 secret。
+func _apply_account(data: Dictionary, fallback_secret: String) -> void:
+	account_id = str(data.get("account_id", ""))
+	account_name = str(data.get("name", ""))
+	GameState.local_account_id = account_id  # 连接注册时带上
+	var secret := str(data.get("secret", ""))
+	if secret.is_empty():
+		secret = fallback_secret
+	var cfg := ConfigFile.new()
+	cfg.set_value("account", "id", account_id)
+	cfg.set_value("account", "secret", secret)
+	cfg.set_value("account", "name", account_name)
+	cfg.save(ACCOUNT_CFG)
+	_try_steam_bind(secret)
+
+## P3b：有 Steam 则取票据→服务端校验→绑定；无（桩）则跳过。
+func _try_steam_bind(secret: String) -> void:
+	if steam_bridge == null or not steam_bridge.available():
+		return
+	if account == null or not account.is_configured() or account_id.is_empty():
+		return
+	steam_bridge.get_auth_ticket(func(ticket: String):
+		if ticket.is_empty():
+			return
+		account.steam_auth(account_id, secret, ticket, func(ok: bool, data: Dictionary):
+			if ok:
+				_show_toast("Steam 已绑定（%s）" % str(data.get("steam_id", "")))
+			else:
+				print("[steam] bind failed: %s" % str(data.get("error", "?")))))
+
+## P3c：房间内"邀请好友"（桩下提示未启用；真实现列好友发邀请，带 room_code）。
+func _on_invite_friends() -> void:
+	if steam_bridge == null or not steam_bridge.available():
+		_show_toast("Steam 未启用（安装 GodotSteam 后可用）")
+		return
+	if room_code.is_empty():
+		_show_toast("请先创建房间再邀请好友。")
+		return
+	steam_bridge.get_friends(func(friends: Array):
+		_show_toast("Steam 好友 %d 位；邀请功能待联调（房间码 %s）" % [friends.size(), room_code]))
 
 var _action_counter := 0
 func _next_action_id() -> String:

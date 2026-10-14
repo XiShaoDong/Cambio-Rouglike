@@ -23,6 +23,7 @@ var _data := {
 	},
 	"network": {
 		"directory_url": "",   # 中心房间目录服务地址（P2），如 http://1.2.3.4:8080
+		"account_url": "",     # 账号服务地址（P3a），如 http://1.2.3.4:8090
 	},
 }
 

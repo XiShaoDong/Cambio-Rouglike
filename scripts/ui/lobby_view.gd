@@ -16,6 +16,7 @@ var _match_limit_spin: SpinBox
 var _ready_button: Button
 var _start_button: Button
 var _disband_button: Button
+var _invite_button: Button
 var _leave_button: Button
 
 func _init(owner_node: Node) -> void:
@@ -167,6 +168,10 @@ func _build_room() -> void:
 	_disband_button.pressed.connect(GameState.request_close_room)
 	controls.add_child(_disband_button)
 
+	_invite_button = main._button("邀请好友")
+	_invite_button.pressed.connect(main._on_invite_friends)
+	controls.add_child(_invite_button)
+
 	_leave_button = main._button("退出房间")
 	_leave_button.pressed.connect(_leave_room)
 	controls.add_child(_leave_button)
@@ -289,6 +294,7 @@ func update_lobby(lobby: Dictionary) -> void:
 
 	_start_button.visible = is_host
 	_disband_button.visible = is_host
+	_invite_button.visible = is_host
 	_leave_button.visible = not is_host
 
 	if is_host:

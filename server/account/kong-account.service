@@ -1,0 +1,18 @@
+# KONG 账号服务 systemd 单元模板
+# 安装：sudo cp kong-account.service /etc/systemd/system/ && sudo systemctl enable --now kong-account
+# 注意：按实际路径/用户/端口/数据目录修改。
+[Unit]
+Description=KONG Account Service (HTTP/JSON)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=kong
+WorkingDirectory=/opt/kong/server/account
+ExecStart=/usr/bin/python3 /opt/kong/server/account/account.py --port 8090 --data /var/lib/kong/accounts.json
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
