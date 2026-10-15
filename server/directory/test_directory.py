@@ -46,6 +46,9 @@ def test_ttl():
     s = DirectoryStore(ttl=100, hb_timeout=10**9)
     c = s.create("9.9.9.9", 7007, "dedicated", 4, now=1000)
     s.heartbeat(c, now=1050)
+    _c = s.create("203.0.113.9", 7007, "dedicated", 4)
+    _ok("显式 host 覆盖源 IP（专用服务器上报公网 IP）",
+        s.join(_c)["host"] == "203.0.113.9")
     _ok("码 TTL 过期（心跳无效）", s.join(c, now=1101) is None)  # created=1000, +101 > 100
 
 

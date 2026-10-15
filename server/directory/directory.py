@@ -163,7 +163,14 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(port, int):
                 self._json({"error": "BAD_REQUEST"}, 400)
                 return
-            code = self.store.create(ip, port, data.get("mode", "dedicated"), data.get("max_players", 4))
+            # 房间地址：优先请求显式 host（如专用服务器的公网 IP）；否则用源 IP；
+            # 若源 IP 是回环（同机部署）且配了 advertise_host，则用 advertise_host。
+            host = str(data.get("host", "") or "").strip()
+            if not host:
+                host = ip
+            if host in ("127.0.0.1", "::1", "localhost") and getattr(self, "advertise_host", ""):
+                host = self.advertise_host
+            code = self.store.create(host, port, data.get("mode", "dedicated"), data.get("max_players", 4))
             self._json({"code": code, "expires_in": self.store.ttl})
         elif path == "/join_room":
             r = self.store.join(str(data.get("code", "")))
@@ -183,10 +190,12 @@ def main():
     ap.add_argument("--ttl", type=int, default=DEFAULT_TTL)
     ap.add_argument("--heartbeat-timeout", type=int, default=DEFAULT_HB_TIMEOUT)
     ap.add_argument("--rate", type=int, default=DEFAULT_RATE)
+    ap.add_argument("--advertise-host", default="", help="同机部署时对外广播的公网 IP（源 IP 为回环时使用）")
     args = ap.parse_args()
 
     Handler.store = DirectoryStore(ttl=args.ttl, hb_timeout=args.heartbeat_timeout)
     Handler.limiter = RateLimiter(limit=args.rate)
+    Handler.advertise_host = args.advertise_host
     srv = ThreadingHTTPServer(("0.0.0.0", args.port), Handler)
     print("[KONG] directory listening on TCP %d (ttl=%ds hb=%ds rate=%d/%ds)"
           % (args.port, args.ttl, args.heartbeat_timeout, args.rate, RATE_WINDOW))
