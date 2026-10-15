@@ -88,11 +88,28 @@ sudo systemctl enable --now kong-directory.service
 sleep 1
 sudo systemctl enable --now kong-server.service
 
-log "6/6 防火墙（ufw）"
-sudo ufw allow ${DIR_PORT}/tcp || true
-sudo ufw allow ${GAME_PORT}/udp || true
-sudo ufw allow ${ACCOUNT_PORT}/tcp || true
-sudo ufw --force enable || true
+log "6/6 防火墙（iptables，兼容 Oracle 自带规则）"
+# Oracle Ubuntu 镜像自带 iptables REJECT 规则，ufw 未必生效；直接插 ACCEPT 并持久化。
+add_ipt() { # proto port
+  if ! sudo iptables -C INPUT -p "$1" --dport "$2" -j ACCEPT 2>/dev/null; then
+    sudo iptables -I INPUT -p "$1" --dport "$2" -j ACCEPT
+  fi
+}
+add_ipt tcp "$DIR_PORT"
+add_ipt udp "$GAME_PORT"
+add_ipt tcp "$ACCOUNT_PORT"
+if command -v netfilter-persistent >/dev/null 2>&1; then
+  sudo netfilter-persistent save || true
+elif command -v iptables-save >/dev/null 2>&1; then
+  sudo mkdir -p /etc/iptables
+  sudo sh -c 'iptables-save > /etc/iptables/rules.v4' || true
+fi
+# 若系统用 ufw，也一并放行（幂等）
+if command -v ufw >/dev/null 2>&1; then
+  sudo ufw allow ${DIR_PORT}/tcp || true
+  sudo ufw allow ${GAME_PORT}/udp || true
+  sudo ufw allow ${ACCOUNT_PORT}/tcp || true
+fi
 
 log "完成。状态："
 systemctl --no-pager --lines=0 status kong-directory.service || true
