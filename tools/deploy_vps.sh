@@ -53,7 +53,10 @@ if grep -q 'godot_mcp\|MCPRuntimeProbe' project.godot; then
   sed -i '/MCPRuntimeProbe/d' project.godot
   echo "[deploy] 已从 project.godot 剥离 MCP 编辑器插件/autoload（部署机不需要）"
 fi
+# 强制干净导入：清除可能被中断而残缺的 .godot 缓存（否则类缓存可能不含新 class_name）
+rm -rf .godot
 timeout 300 godot --headless --import || echo "[deploy] import 超时/出错，继续"
+echo "[deploy] 类缓存检查：$(grep -c DirectoryClient .godot/global_script_class_cache.cfg 2>/dev/null) 处 DirectoryClient"
 
 log "5/6 安装 systemd 服务（目录 + 专用服务器）"
 sudo tee /etc/systemd/system/kong-directory.service >/dev/null <<EOF
