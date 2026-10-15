@@ -37,6 +37,8 @@ godot --version || true
 log "3/6 拉取/更新代码到 $APP_DIR（分支 $BRANCH）"
 if [ -d "$APP_DIR/.git" ]; then
   git -C "$APP_DIR" fetch --all
+  # 先丢弃上一次部署对 project.godot 的本地改动（剥离 MCP），避免 pull 冲突
+  git -C "$APP_DIR" checkout -- project.godot 2>/dev/null || true
   git -C "$APP_DIR" checkout "$BRANCH"
   git -C "$APP_DIR" pull --ff-only || true
 else
