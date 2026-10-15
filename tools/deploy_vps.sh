@@ -20,7 +20,7 @@ log() { printf '\n[deploy] %s\n' "$*"; }
 
 log "1/6 安装系统依赖"
 sudo apt-get update -y
-sudo apt-get install -y python3 git unzip curl
+sudo apt-get install -y python3 git unzip curl libfontconfig1
 
 log "2/6 安装 Godot ${GODOT_VER}（linux.x86_64）"
 if ! command -v godot >/dev/null 2>&1; then
@@ -45,7 +45,15 @@ else
 fi
 
 log "4/6 首次导入 Godot 资源（headless）"
-( cd "$APP_DIR" && godot --headless --import >/dev/null 2>&1 || true )
+# 服务器/部署机不需要 MCP 编辑器插件：它 auto_start 一个 HTTP 服务，会让 headless
+# 的 --import（会加载编辑器）不退出而“卡住”。这里在部署副本中剥离该插件与其 autoload。
+cd "$APP_DIR"
+if grep -q 'godot_mcp\|MCPRuntimeProbe' project.godot; then
+  sed -i '/godot_mcp/d' project.godot
+  sed -i '/MCPRuntimeProbe/d' project.godot
+  echo "[deploy] 已从 project.godot 剥离 MCP 编辑器插件/autoload（部署机不需要）"
+fi
+timeout 300 godot --headless --import || echo "[deploy] import 超时/出错，继续"
 
 log "5/6 安装 systemd 服务（目录 + 专用服务器）"
 sudo tee /etc/systemd/system/kong-directory.service >/dev/null <<EOF
