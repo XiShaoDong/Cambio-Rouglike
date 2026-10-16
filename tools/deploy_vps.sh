@@ -55,10 +55,19 @@ if grep -q 'godot_mcp\|MCPRuntimeProbe' project.godot; then
   sed -i '/MCPRuntimeProbe/d' project.godot
   echo "[deploy] 已从 project.godot 剥离 MCP 编辑器插件/autoload（部署机不需要）"
 fi
-# 强制干净导入：清除可能被中断而残缺的 .godot 缓存（否则类缓存可能不含新 class_name）
-rm -rf .godot
-timeout 300 godot --headless --import || echo "[deploy] import 超时/出错，继续"
+# 类缓存：服务器只需脚本的 class_name 解析，不需要逐个导入美术资源。
+# 小机器上 `--import`（会加载整个编辑器）极慢甚至超时，故直接用仓库内预生成的类缓存。
+mkdir -p .godot
+if [ -f deploy/godot_global_script_class_cache.cfg ]; then
+  cp deploy/godot_global_script_class_cache.cfg .godot/global_script_class_cache.cfg
+  echo "[deploy] 已放置预生成类缓存"
+fi
 echo "[deploy] 类缓存检查：$(grep -c DirectoryClient .godot/global_script_class_cache.cfg 2>/dev/null) 处 DirectoryClient"
+# 需要完整美术导入时（例如跑 Linux 客户端）设 FULL_IMPORT=1 再跑本脚本：
+if [ "${FULL_IMPORT:-0}" = "1" ]; then
+  echo "[deploy] FULL_IMPORT=1 → 执行完整导入（较慢）"
+  timeout 1800 godot --headless --import || echo "[deploy] import 超时/出错，继续"
+fi
 
 log "5/6 安装 systemd 服务（目录 + 专用服务器）"
 sudo tee /etc/systemd/system/kong-directory.service >/dev/null <<EOF
