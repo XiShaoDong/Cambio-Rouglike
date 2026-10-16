@@ -12,11 +12,14 @@ func setup(url: String) -> void:
 func is_configured() -> bool:
 	return not base_url.is_empty()
 
-## host：可选。显式上报对外地址（专用服务器传公网 IP）；留空则服务端用请求源 IP。
-func create_room(port: int, mode: String, max_players: int, cb: Callable, host := "") -> void:
+## host：可选，显式上报对外地址（专用服务器传公网 IP）；留空则服务端用请求源 IP。
+## code：可选，固定房间码（专用服务器用，如 "KONG"）；留空则服务端随机生成。
+func create_room(port: int, mode: String, max_players: int, cb: Callable, host := "", code := "") -> void:
 	var body := {"port": port, "mode": mode, "max_players": max_players}
 	if not str(host).is_empty():
 		body["host"] = str(host)
+	if not str(code).is_empty():
+		body["code"] = str(code)
 	_post("/create_room", body, cb)
 
 func join_room(code: String, cb: Callable) -> void:

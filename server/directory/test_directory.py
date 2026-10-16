@@ -62,12 +62,23 @@ def test_rate_limit():
     _ok("不同 IP 独立", rl.allow("2.2.2.2", now=3))
 
 
+def test_fixed_code():
+    s = DirectoryStore(ttl=100, hb_timeout=100)
+    c = s.create("1.2.3.4", 7007, "dedicated", 4, code="kong")
+    _ok("自定义码大写规范化", c == "KONG")
+    _ok("小写 join 命中", s.join("kong", now=1000)["host"] == "1.2.3.4")
+    _ok("同码重登记=接管", s.create("5.6.7.8", 7007, "dedicated", 4, code="KONG") == "KONG"
+        and s.join("KONG", now=1000)["host"] == "5.6.7.8")
+    _ok("非法码被拒", s.create("1.2.3.4", 7007, "dedicated", 4, code="ab") is None)
+
+
 def main():
     test_code_gen()
     test_create_join_close()
     test_heartbeat()
     test_ttl()
     test_rate_limit()
+    test_fixed_code()
     total = _checks
     passed = _checks - _fail
     print("=== DIRECTORY RESULT: %d/%d passed%s ===" % (passed, total, " (FAILURES!)" if _fail else ""))

@@ -55,11 +55,18 @@ class DirectoryStore:
                 removed.append(code)
         return removed
 
-    def create(self, host, port, mode, max_players, now=None):
+    def create(self, host, port, mode, max_players, now=None, code=None):
         now = time.time() if now is None else now
         with self._lock:
             self.sweep(now)
-            code = self._new_code()
+            if code:
+                c = str(code).strip().upper()
+                if not self._valid_code(c):
+                    return None  # 自定义码非法
+                code = c
+                # 固定码：同码重登记视为"接管"（宿主重启后沿用同码）
+            else:
+                code = self._new_code()
             self._rooms[code] = {
                 "host": host,
                 "port": int(port),
@@ -70,11 +77,18 @@ class DirectoryStore:
             }
             return code
 
+    @staticmethod
+    def _valid_code(code):
+        # 自定义/固定码：允许完整 A-Z0-9（长度 3..16）。join 时会统一大写。
+        if not (3 <= len(code) <= 16):
+            return False
+        return all(ch in "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789" for ch in code)
+
     def join(self, code, now=None):
         now = time.time() if now is None else now
         with self._lock:
             self.sweep(now)
-            r = self._rooms.get(code)
+            r = self._rooms.get(str(code).strip().upper())
             if r is None:
                 return None
             return {"host": r["host"], "port": r["port"], "mode": r["mode"]}
@@ -83,7 +97,7 @@ class DirectoryStore:
         now = time.time() if now is None else now
         with self._lock:
             self.sweep(now)
-            r = self._rooms.get(code)
+            r = self._rooms.get(str(code).strip().upper())
             if r is None:
                 return False
             r["last_seen"] = now
@@ -92,7 +106,7 @@ class DirectoryStore:
 
     def close(self, code):
         with self._lock:
-            return self._rooms.pop(code, None) is not None
+            return self._rooms.pop(str(code).strip().upper(), None) is not None
 
     def count(self):
         return len(self._rooms)
@@ -171,7 +185,12 @@ class Handler(BaseHTTPRequestHandler):
                 host = ip
             if host in ("127.0.0.1", "::1", "localhost") and getattr(self, "advertise_host", ""):
                 host = self.advertise_host
-            code = self.store.create(host, port, data.get("mode", "dedicated"), data.get("max_players", 4))
+            code = self.store.create(
+                host, port, data.get("mode", "dedicated"), data.get("max_players", 4),
+                code=data.get("code"))
+            if code is None:
+                self._json({"error": "BAD_CODE"}, 400)
+                return
             self._json({"code": code, "expires_in": self.store.ttl})
         elif path == "/join_room":
             r = self.store.join(str(data.get("code", "")))

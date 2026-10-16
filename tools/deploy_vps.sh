@@ -12,6 +12,7 @@ GAME_PORT="${GAME_PORT:-7007}"
 DIR_PORT="${DIR_PORT:-8080}"
 ACCOUNT_PORT="${ACCOUNT_PORT:-8090}"
 ADVERTISE="${ADVERTISE:-129.213.203.137}"
+ROOM_CODE="${ROOM_CODE:-KONG}"
 APP_DIR="${APP_DIR:-$HOME/kong}"
 GODOT_VER="${GODOT_VER:-4.6.2-stable}"
 GODOT_BIN="/usr/local/bin/godot"
@@ -97,7 +98,7 @@ Requires=kong-directory.service
 [Service]
 User=$USER
 WorkingDirectory=$APP_DIR
-ExecStart=$GODOT_BIN --headless --path . res://scenes/server.tscn -- --port $GAME_PORT --directory http://127.0.0.1:$DIR_PORT --advertise $ADVERTISE
+ExecStart=$GODOT_BIN --headless --path . res://scenes/server.tscn -- --port $GAME_PORT --directory http://127.0.0.1:$DIR_PORT --advertise $ADVERTISE --code $ROOM_CODE
 Restart=always
 RestartSec=3
 

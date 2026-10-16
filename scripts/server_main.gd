@@ -10,6 +10,7 @@ func _ready() -> void:
 	var port := KongNetwork.DEFAULT_PORT
 	var dir_url := str(Settings.get_setting("network", "directory_url", ""))
 	var advertise := ""
+	var room_code_arg := ""
 	var args := OS.get_cmdline_user_args()
 	for i in range(args.size()):
 		if args[i] == "--port" and i + 1 < args.size():
@@ -20,12 +21,14 @@ func _ready() -> void:
 			dir_url = args[i + 1]
 		elif args[i] == "--advertise" and i + 1 < args.size():
 			advertise = args[i + 1]
+		elif args[i] == "--code" and i + 1 < args.size():
+			room_code_arg = args[i + 1]
 	Network.start_dedicated(port)
 	print("[KONG] dedicated server listening on UDP %d" % port)
-	_register_with_directory(dir_url.strip_edges(), port, advertise.strip_edges())
+	_register_with_directory(dir_url.strip_edges(), port, advertise.strip_edges(), room_code_arg.strip_edges())
 
 ## 向中心目录登记（拿房间码），并周期性心跳续命。未配置目录则提示按 IP 直连。
-func _register_with_directory(url: String, port: int, advertise := "") -> void:
+func _register_with_directory(url: String, port: int, advertise := "", fixed_code := "") -> void:
 	if url.is_empty():
 		print("[KONG] no directory configured; players must join by IP")
 		return
@@ -43,4 +46,4 @@ func _register_with_directory(url: String, port: int, advertise := "") -> void:
 			t.start()
 		else:
 			print("[KONG] directory create failed: %s" % str(data.get("error", "?")))
-	dc.create_room(port, "dedicated", KongRules.MAX_PLAYERS, on_created, advertise)
+	dc.create_room(port, "dedicated", KongRules.MAX_PLAYERS, on_created, advertise, fixed_code)
