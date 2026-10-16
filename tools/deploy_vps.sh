@@ -107,9 +107,10 @@ WantedBy=multi-user.target
 EOF
 
 sudo systemctl daemon-reload
-sudo systemctl enable --now kong-directory.service
+sudo systemctl enable kong-directory.service kong-server.service
+sudo systemctl restart kong-directory.service
 sleep 1
-sudo systemctl enable --now kong-server.service
+sudo systemctl restart kong-server.service
 
 log "6/6 防火墙（iptables，兼容 Oracle 自带规则）"
 # Oracle Ubuntu 镜像自带 iptables REJECT 规则，ufw 未必生效；直接插 ACCEPT 并持久化。
