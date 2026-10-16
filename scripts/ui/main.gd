@@ -842,6 +842,7 @@ var hint3d: Board3d = null
 var _hint_panel: Control = null
 var table3d: Node3D = null
 var _table3d_active := false
+var _view_defaulted_3d := false   # 首次进入对局时自动切到 3D（默认视图=3D）
 var _look_send_timer := 0.0
 var _last_look_dir := Vector3.ZERO
 var _last_look_zoom := false
@@ -1345,6 +1346,10 @@ func _on_state_updated(state: Dictionary) -> void:
 		interaction.reset_for_phase(state)
 	if int(state.phase) != last_phase:
 		last_phase = int(state.phase)
+	# 默认视图 = 3D：本局首次进入时自动切换到 3D（用户之后仍可用 F10/V 切回 2D）
+	if not _view_defaulted_3d and int(state.phase) != PHASE_LOBBY:
+		_view_defaulted_3d = true
+		_set_table3d(true)
 	lobby_panel.visible = false
 	game_panel.visible = not _table3d_active
 	# 兜底：离开 Q_DECISION 时翻回 hold 的看牌（请求被拒/异常流转），避免牌永久正面。

@@ -258,6 +258,7 @@ func reset_lobby() -> void:
 		for c in _slots_box.get_children():
 			c.queue_free()
 	_show_menu()
+	main._view_defaulted_3d = false  # 回到大厅 → 下一局重新默认 3D
 	main.lobby_panel.visible = true
 	main.game_panel.visible = false
 
