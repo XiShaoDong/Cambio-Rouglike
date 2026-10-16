@@ -16,3 +16,7 @@ docs/修改日志.md
 # Python 缓存（目录服务）
 __pycache__/
 *.pyc
+
+# 导出产物
+build/
+!build/.gitkeep

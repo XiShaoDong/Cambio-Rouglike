@@ -48,4 +48,5 @@ theme/default_font_multichannel_signed_distance_field=true
 
 [rendering]
 
+textures/vram_compression/import_etc2_astc=true
 rendering_device/driver.windows="d3d12"
