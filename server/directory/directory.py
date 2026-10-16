@@ -87,6 +87,7 @@ class DirectoryStore:
             if r is None:
                 return False
             r["last_seen"] = now
+            r["created"] = now  # 心跳续期：只要宿主活着，码就不因 TTL 过期
             return True
 
     def close(self, code):

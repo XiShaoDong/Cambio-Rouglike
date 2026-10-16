@@ -42,14 +42,16 @@ def test_heartbeat():
 
 
 def test_ttl():
-    # 心跳仍在也过期（码 TTL）
     s = DirectoryStore(ttl=100, hb_timeout=10**9)
     c = s.create("9.9.9.9", 7007, "dedicated", 4, now=1000)
-    s.heartbeat(c, now=1050)
+    _ok("新建立即可 join", s.join(c, now=1000) is not None)
+    s.heartbeat(c, now=1050)  # 心跳续期
+    _ok("心跳续期：超过原 TTL 仍有效", s.join(c, now=1101) is not None)  # 1101-1050=51<100
+    s.heartbeat(c, now=1140)
+    _ok("持续心跳长期有效", s.join(c, now=1200) is not None)
+    _ok("停止心跳后过期", s.join(c, now=1140 + 100 + 1) is None)  # 1241-1140>100
     _c = s.create("203.0.113.9", 7007, "dedicated", 4)
-    _ok("显式 host 覆盖源 IP（专用服务器上报公网 IP）",
-        s.join(_c)["host"] == "203.0.113.9")
-    _ok("码 TTL 过期（心跳无效）", s.join(c, now=1101) is None)  # created=1000, +101 > 100
+    _ok("显式 host 覆盖源 IP（专用服务器上报公网 IP）", s.join(_c)["host"] == "203.0.113.9")
 
 
 def test_rate_limit():
