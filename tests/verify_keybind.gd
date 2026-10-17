@@ -19,6 +19,7 @@ func _check(name: String, ok: bool) -> void:
 
 func _run() -> void:
 	_test_model()
+	_test_store()
 
 func _test_model() -> void:
 	var m: Dictionary = KeybindModel.defaults()
@@ -45,3 +46,25 @@ func _test_model() -> void:
 	var bad: Dictionary = KeybindModel.from_dict({"kb_stats": KEY_SPACE, "ghost": KEY_Z})
 	_check("非法保留值回退默认", int(bad["kb_stats"]) == KEY_S)
 	_check("未知 id 不进入", not bad.has("ghost"))
+
+func _test_store() -> void:
+	var p := "user://test_keybinds.cfg"
+	# 清理上一轮残留
+	DirAccess.remove_absolute(p)
+	var store := KeybindStore.new(p)
+	store.load()
+	_check("缺文件→默认", int(store.key_of("kb_manual")) == KEY_TAB)
+	_check("action_for 默认", store.action_for(KEY_TAB) == "kb_manual")
+	var r: Dictionary = KeybindModel.rebind(store.map, "kb_stats", KEY_T)
+	store.apply(r["map"])
+	store.save()
+	var store2 := KeybindStore.new(p)
+	store2.load()
+	_check("save/load 持久化", int(store2.key_of("kb_stats")) == KEY_T)
+	_check("load 后 action_for", store2.action_for(KEY_T) == "kb_stats")
+	# apply 不落盘：改内存后未 save，重新 load 应读到旧值
+	store2.apply(KeybindModel.defaults())
+	var store3 := KeybindStore.new(p)
+	store3.load()
+	_check("apply 不落盘", int(store3.key_of("kb_stats")) == KEY_T)
+	DirAccess.remove_absolute(p)
