@@ -70,6 +70,7 @@
 - **罚牌附加卡布局**：前 4 张主网格固定 2 列永不位移；第 5+ 张在 `ExtraLayer` 按**槽号固定绝对定位**（统一向上增长、行列固定，加新罚牌已存在卡不移动）。
 - Git：仓库 `git@github.com:XiShaoDong/Cambio-Rouglike.git`，分支 `main`。
 - 项目路径：`~/dev/gameDev/cambio-rouglike/`。
+- **按键映射页签 + 手册页部分穿透（分支 `agent/feature-uiboard2`，纯客户端展示层，规则/协议/快照零改动）**：手册面板新增第三页签「按键」（默认 **K** 打开），列出界面/展示类按键（Tab 手册 / S Stats / K 按键映射 / M 说话 / Command·Alt 放大 / V 切 3D）并可重绑——点键行进入捕获、按新键即改（冲突**自动交换**、**保留键**（空格/Enter/Esc/F10/Alt）拒绝），底部「保存」经**页内确认浮层**后落盘 `user://keybinds.cfg`（仅本机用户，预留 `profile` 供未来账户绑定）。键处理抽到纯函数 `KeybindModel`（`scripts/core/keybind_model.gd`）+ 薄壳 `KeybindStore`（`scripts/core/keybind_store.gd`，可注入路径）；页内容 `KeymapBoard`（`scripts/ui/keymap_board.gd`）。**手册/Stats/按键页打开时不再完全接管点击**：`Board3d.interactive_at` 只让带 `meta("board_interactive")` 的控件（页签/按钮/键行）接管，`main._board_hit` 对非交互处穿透到牌桌——可一边看手册一边点卡牌。测试 `verify_keybind`（新增）。
 
 ## 3. 架构不变量（禁止无理由重构）
 
@@ -165,6 +166,8 @@ UI 层已拆分（main.gd 是组合根）：
 | `key_hint_panel.gd` | 3D 左下角按键提示（说明纯白无边框 + 按键 chip 圆角半透明灰底+边框黑字，content-fit）：`放大 【Command】`/`手册 【Tab】` |
 | `manual_model.gd` | **纯函数**：手册数据 `rows()`（牌序 A..K/Joker + 能力文案 + `KongRules.card_value` 分数），headless 可测 |
 | `manual_panel.gd` + `scenes/ui/manual_panel.tscn` | 手册/Stats 面板（3D 全息看板弹在面前）：透明毛玻璃 + 顶部页签（**① 手册** 三列 牌/能力/分数，**② Stats** 灰牌堆统计）；`set_tab`/`setup_stats`；Tab 开手册页、S 开 Stats 页 |
+| `keybind_model.gd` / `keybind_store.gd` | **纯函数/薄壳**：界面按键动作表 + `resolve`/`rebind`（自动交换/保留键拒绝）/`from_dict` 回退；`user://keybinds.cfg` 读写（可注入路径，`scripts/core/`） |
+| `keymap_board.gd` | 按键映射页内容（`KeymapBoard`：键行 + 捕获态 + 保存按钮；可交互控件带 `board_interactive` 标记） |
 | `bell_model.gd` | Kong 铃铛模型包装：实例化 `assets/3Dmodels/call-bell.glb` + `bell_metal.gdshader`（按局部 Y 三段：黑底座/金钟体/银顶钮），`set_glow` 可用性金光；`table3d_view._bind` 挂载并隐藏旧占位 Base/Dome/Knob |
 | `deck_pile.gd`（`DeckPile`） | 牌堆视觉：把 N 张卡边薄盒叠成一摞；`with_back=true`（抽牌堆，顶面贴合卡背）/`false`（弃牌堆，只画卡边，正面朝上）；`set_count` 仅在变化时重建 |
 | `stats_board.gd`（`StatsBoard`） | **Stats 面板内容**：把 `discard_history` 去重后按 4 行花色（♠♥♣♦，红 Joker→♥/黑 Joker→♠、A..K **固定槽位**）扇形展开（沿 X 叠 `STEP_FRAC`、微弧 `ARC` + 倾角 `TILT_DEG`），复用 `CardFactory`/`CardView` |
