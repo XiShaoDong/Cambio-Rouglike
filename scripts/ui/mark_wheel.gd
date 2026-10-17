@@ -8,7 +8,7 @@ const Mark3dMathScript := preload("res://scripts/ui/mark3d_math.gd")
 
 const INNER_RATIO := 0.16   # 中空内半径 = min(屏幕边)/2 * ratio
 const OUTER_RATIO := 0.34
-const OUTER2_RATIO := 0.52  # 外圈（数字展开）外半径
+const OUTER2_RATIO := 0.61  # 外圈（数字展开）外半径（环带比原来加厚 1/2，转动时不易划出）
 const FONT_SIZE := 28
 const OUTER_FONT_SIZE := 18
 const BG := Color(0.06, 0.07, 0.10, 0.72)
