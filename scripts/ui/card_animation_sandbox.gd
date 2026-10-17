@@ -22,6 +22,10 @@ var crosshair: Crosshair
 var hovered := -1
 var auto_hover := true
 var _hud: Label
+## 沙盒 hover 手感覆写（不改 config 默认值 → 对局不受影响）。
+@export var hover_lift := 0.16
+@export var hover_out_dur := 0.35
+@export var no_tilt := true
 
 func _ready() -> void:
 	_build()
@@ -50,6 +54,7 @@ func _build() -> void:
 		add_child(actor)
 		# 基准拾取盒（不随动画移动）挂 pick 元数据供准星拾取
 		actor.set_pick({"kind": "card", "index": i})
+		_apply_sandbox_config(actor)
 		actors.append(actor)
 	var layer := CanvasLayer.new()
 	layer.name = "UI"
@@ -63,6 +68,14 @@ func _build() -> void:
 	_hud.position = Vector2(12, 8)
 	_hud.add_theme_color_override("font_color", Color(1, 1, 1, 0.85))
 	layer.add_child(_hud)
+
+## 覆写单卡 config：纯竖直抬起、平稳降落（compose/math 与 config 默认值均不改）。
+func _apply_sandbox_config(a: CardAnimation) -> void:
+	a.config.hover_lift = hover_lift
+	a.config.hover_out_dur = hover_out_dur
+	if no_tilt:
+		a.config.hover_pitch = 0.0
+		a.config.max_tilt = 0.0
 
 func _process(_delta: float) -> void:
 	if crosshair == null:
