@@ -41,11 +41,12 @@ const ACTIONS := [
   {"id": "kb_stats",    "label": "Stats",    "desc": "开/关 弃牌堆 Stats 页",     "default": KEY_S},
   {"id": "kb_keymap",   "label": "按键映射", "desc": "开/关 按键映射页",          "default": KEY_K},
   {"id": "kb_talk",     "label": "说话",     "desc": "按住/切换 说话（嘴开合）",   "default": KEY_M},
-  {"id": "kb_zoom",     "label": "放大",     "desc": "按住 拉近视场（放大）",      "default": KEY_META},   # 同时接受 KEY_ALT
+  {"id": "kb_zoom",     "label": "放大",     "desc": "按住 拉近视场（放大）",      "default": KEY_META},
   {"id": "kb_toggle3d", "label": "切换 3D",  "desc": "在 2D 与 3D 桌面间切换",    "default": KEY_V},
 ]
-# 保留键：不可被界面动作绑定（游戏操作 / 系统）
-const RESERVED := [KEY_SPACE, KEY_ENTER, KEY_KP_ENTER, KEY_ESCAPE, KEY_F10]
+# 保留键：不可被界面动作绑定（游戏操作 / 系统 / 修饰键）
+# KEY_ALT 为 kb_zoom 的固定第二键（与默认的 KEY_META 等价），故列入保留、不允许再被别的动作绑定。
+const RESERVED := [KEY_SPACE, KEY_ENTER, KEY_KP_ENTER, KEY_ESCAPE, KEY_F10, KEY_ALT]
 
 static func defaults() -> Dictionary                 # {id: keycode}
 static func action_ids() -> Array                    # 有序 id 列表（供 UI）
@@ -301,8 +302,8 @@ main 初始化: keybinds.load()
 | --- | --- | --- |
 | `TAB_MANUAL / TAB_STATS / TAB_KEYS` | `0 / 1 / 2` | 页签索引 |
 | `kb_manual / kb_stats / kb_keymap` | Tab / S / K | 三页开关默认键 |
-| `kb_talk / kb_zoom / kb_toggle3d` | M / Command·Alt / V | 说话 / 放大 / 切 3D |
-| `RESERVED` | 空格·Enter·KP_Enter·Esc·F10 | 保留键（不可绑定） |
+| `kb_talk / kb_zoom / kb_toggle3d` | M / Command / V | 说话 / 放大（ALT 为固定第二键）/ 切 3D |
+| `RESERVED` | 空格·Enter·KP_Enter·Esc·F10·Alt | 保留键（不可绑定） |
 | `PATH / SECTION / VERSION` | `user://keybinds.cfg` / `keybinds` / `1` | 存储 |
 | `CAPTURE_HINT_TEXT` | 「按键中…」 | 捕获态 chip 文案 |
 | `RESERVED_ERROR_TEXT` | 「保留键，不可绑定」 | 拒绝提示 |
