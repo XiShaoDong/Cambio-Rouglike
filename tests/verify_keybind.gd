@@ -20,6 +20,7 @@ func _check(name: String, ok: bool) -> void:
 func _run() -> void:
 	_test_model()
 	_test_store()
+	await _test_board()
 
 func _test_model() -> void:
 	var m: Dictionary = KeybindModel.defaults()
@@ -68,3 +69,32 @@ func _test_store() -> void:
 	store3.load()
 	_check("apply 不落盘", int(store3.key_of("kb_stats")) == KEY_T)
 	DirAccess.remove_absolute(p)
+
+func _test_board() -> void:
+	var board := KeymapBoard.new()
+	add_child(board)
+	await get_tree().process_frame
+	board.setup(KeybindModel.defaults(), KeybindModel.RESERVED)
+	await get_tree().process_frame
+	_check("行数=动作数", board.row_count() == KeybindModel.action_ids().size())
+	_check("chip 显示 Tab", board.chip_text("kb_manual") == OS.get_keycode_string(KEY_TAB))
+	_check("初始无改动", not board.has_changes())
+	# 捕获
+	board.begin_capture("kb_stats")
+	_check("进入捕获", board.capturing() == "kb_stats")
+	_check("捕获态 chip 文案", board.chip_text("kb_stats") == KeymapBoard.CAPTURE_TEXT)
+	board.capture_key(KEY_T)
+	_check("捕获后 chip=T", board.chip_text("kb_stats") == OS.get_keycode_string(KEY_T))
+	_check("结束捕获", board.capturing() == "")
+	_check("有待保存改动", board.has_changes())
+	# 保留键
+	board.begin_capture("kb_talk")
+	board.capture_key(KEY_SPACE)
+	_check("保留键留在捕获态", board.capturing() == "kb_talk")
+	_check("保留键提示", board.status_text("kb_talk") == KeymapBoard.RESERVED_TEXT)
+	board.cancel_capture()
+	_check("取消捕获", board.capturing() == "" and board.chip_text("kb_talk") == OS.get_keycode_string(KEY_M))
+	# commit 后无改动
+	board.commit()
+	_check("commit 后无改动", not board.has_changes())
+	board.queue_free()
