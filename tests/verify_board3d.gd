@@ -25,6 +25,7 @@ func _run() -> void:
 	await _test_modals_dim()
 	await _test_ready_click()
 	await _test_main_routing()
+	await _test_interactive_at()
 
 ## 3D 开局记忆：Ready 在提示板上；提示板与模态板同锚点（贴手牌上方），对准后准星可点到。
 func _test_ready_click() -> void:
@@ -346,3 +347,33 @@ class KeyCatcher extends Control:
 	func _unhandled_input(event: InputEvent) -> void:
 		if event is InputEventKey:
 			events.append(event.keycode)
+
+
+## 手册页部分穿透：仅带 meta("board_interactive") 的控件处才"接管点击"。
+func _test_interactive_at() -> void:
+	var b := Board3d.new()
+	add_child(b)
+	await get_tree().process_frame
+	var panel := PanelContainer.new()
+	var vb := VBoxContainer.new()
+	var lbl := Label.new()
+	lbl.name = "Lbl"
+	lbl.text = "read only"
+	lbl.custom_minimum_size = Vector2(120, 30)
+	vb.add_child(lbl)
+	var btn := Button.new()
+	btn.name = "Btn"
+	btn.text = "x"
+	btn.custom_minimum_size = Vector2(80, 40)
+	btn.set_meta("board_interactive", true)
+	vb.add_child(btn)
+	panel.add_child(vb)
+	b.mount_panel(panel)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var br: Rect2 = btn.get_global_rect()
+	_check("命中可交互控件", b.interactive_at(Vector2i(br.position + br.size * 0.5)))
+	var lr: Rect2 = lbl.get_global_rect()
+	_check("无 meta 标签不命中", not b.interactive_at(Vector2i(lr.position + Vector2(2, 2))))
+	_check("空白区域不命中", not b.interactive_at(Vector2i(0, 0)))
+	b.queue_free()
