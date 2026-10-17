@@ -114,6 +114,25 @@ func _run() -> void:
 	main_node._toggle_manual(ManualPanel.TAB_STATS)
 	await get_tree().process_frame
 	_check("再按 S 关闭 Stats", main_node.manual_panel == null)
+	# K：打开按键映射页（第三页签）
+	main_node._toggle_manual(ManualPanel.TAB_KEYS)
+	await get_tree().process_frame
+	_check("K 打开按键页", main_node.manual_panel != null and main_node.manual_panel.current_tab() == ManualPanel.TAB_KEYS)
+	var km = main_node.manual_panel.keymap_board()
+	_check("按键板存在且可见", km != null and km.visible)
+	_check("按键页行数=动作数", km != null and km.row_count() == KeybindModel.action_ids().size())
+	_check("按键页时手册网格隐藏", not (main_node.manual_panel.get_node("Center/Panel/VBox/Grid") as Control).visible)
+	var tab_manual: Button = main_node.manual_panel.get_node("Center/Panel/VBox/Tabs").get_child(0)
+	_check("页签带 board_interactive", tab_manual.has_meta("board_interactive") and bool(tab_manual.get_meta("board_interactive")))
+	# 保存确认浮层
+	_check("初始无确认浮层", not main_node.manual_panel.confirm_visible())
+	main_node.manual_panel.open_confirm()
+	_check("打开确认浮层", main_node.manual_panel.confirm_visible())
+	main_node.manual_panel.on_confirm_cancel()
+	_check("取消关闭浮层", not main_node.manual_panel.confirm_visible())
+	main_node._toggle_manual(ManualPanel.TAB_KEYS)
+	await get_tree().process_frame
+	_check("再按 K 关闭按键页", main_node.manual_panel == null)
 	# StatsBoard：分组 + 去重
 	var sb := StatsBoard.new()
 	add_child(sb)
