@@ -404,11 +404,12 @@ func _board_hit() -> Dictionary:
 		return {}
 	var cam: Camera3D = table3d.camera.camera_node()
 	for host in [board3d, hint3d]:
-		if host == board3d and _manual_transparent():
-			continue  # 手册/Stats 点击穿透
 		if host != null and is_instance_valid(host) and host.visible:
 			var c: Vector2i = host.hit_viewport_coord(cam)
 			if c.x >= 0:
+				# 手册/Stats/按键页：仅可交互控件（页签/按钮/键行）接管点击，其余穿透到牌桌
+				if host == board3d and _manual_transparent() and not board3d.interactive_at(c):
+					continue
 				return {"host": host, "coord": c}
 	return {}
 
@@ -494,29 +495,43 @@ func _set_table3d(on: bool) -> void:
 func _input(event: InputEvent) -> void:
 	if not _table3d_active:
 		return
+	# 按键捕获：正在重绑时拦截键盘/点击，不给游戏与牌桌
+	if manual_panel != null and is_instance_valid(manual_panel) and manual_panel.capturing() != "":
+		if event is InputEventKey and event.pressed and not event.echo:
+			if event.keycode == KEY_ESCAPE:
+				manual_panel.cancel_capture()
+			else:
+				manual_panel.capture_key(event.keycode)
+			get_viewport().set_input_as_handled()
+			return
+		if event is InputEventMouseButton and event.pressed:
+			get_viewport().set_input_as_handled()
+			return
 	var board_panel := _board_has_panel()
-	# 按住 Command/Alt：拉近视场（放大）；松开恢复。不标记 handled，避免影响其他快捷键。
-	if event is InputEventKey and not event.echo and (event.keycode == KEY_META or event.keycode == KEY_ALT):
+	var act := keybinds.action_for(event.keycode) if event is InputEventKey else ""
+	# 按住 Command/Alt（或自定义 kb_zoom）：拉近视场（放大）；松开恢复。不标记 handled。
+	if event is InputEventKey and not event.echo and (act == "kb_zoom" or event.keycode == KEY_ALT):
 		if table3d != null and is_instance_valid(table3d):
 			table3d.camera.set_zoom(event.pressed)
 	if event is InputEventKey and event.pressed and not event.echo:
-		# F10/V 任何时候都可切回 2D（含看板面板打开时；面板会被重挂回 2D）。
-		if event.keycode == KEY_F10 or event.keycode == KEY_V:
+		# F10 固定别名 + kb_toggle3d：任何时候都可切回 2D
+		if event.keycode == KEY_F10 or act == "kb_toggle3d":
 			_set_table3d(false)
 			get_viewport().set_input_as_handled()
 			return
-		# Tab：开/关手册（3D 全息看板）
-		if event.keycode == KEY_TAB:
+		if act == "kb_manual":
 			_toggle_manual(ManualPanel.TAB_MANUAL)
 			get_viewport().set_input_as_handled()
 			return
-		# S：开/关 Stats 页（弃牌堆出现过的牌）
-		if event.keycode == KEY_S:
+		if act == "kb_stats":
 			_toggle_manual(ManualPanel.TAB_STATS)
 			get_viewport().set_input_as_handled()
 			return
-		# M：切换说话（嘴开合，同步给其他玩家看你的角色）
-		if event.keycode == KEY_M:
+		if act == "kb_keymap":
+			_toggle_manual(ManualPanel.TAB_KEYS)
+			get_viewport().set_input_as_handled()
+			return
+		if act == "kb_talk":
 			_talking_local = not _talking_local
 			get_viewport().set_input_as_handled()
 			return
@@ -525,7 +540,7 @@ func _input(event: InputEvent) -> void:
 			_close_manual()
 			get_viewport().set_input_as_handled()
 			return
-		# 有看板面板时，Enter/Esc 交给面板（Joker/商店）；否则 Esc 退出 3D。
+		# 有模态面板时，Enter/Esc 交给面板；否则 Esc 退出 3D。
 		if board_panel and (event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER or event.keycode == KEY_ESCAPE):
 			if board3d != null and is_instance_valid(board3d):
 				board3d.push_key(event)
@@ -740,6 +755,7 @@ var settlement_page: Control = null
 var shop_panel: Control = null
 var joker_panel: Control = null
 var manual_panel: Control = null
+var keybinds := KeybindStore.new()
 var _key_hints: KeyHintPanel = null
 var _round_badge: Control = null
 var _hint_hud: HintHud = null
@@ -806,6 +822,7 @@ func _ready() -> void:
 	get_tree().set_auto_accept_quit(false)
 	# 启动即应用持久化主题，保证 UI 用正确 token 构建
 	UITheme.switch_theme(str(Settings.get_setting("display", "theme", "dark")))
+	keybinds.load()
 	interaction = GameInteraction.new(self)
 	lobby = LobbyView.new(self)
 	game_view = GameView.new(self)
@@ -1256,6 +1273,7 @@ func _toggle_manual(tab := ManualPanel.TAB_MANUAL) -> void:
 		if manual_panel.current_tab() == tab:
 			_close_manual()
 		else:
+			manual_panel.setup_keymap(keybinds.map, KeybindModel.RESERVED)
 			manual_panel.set_tab(tab)
 			manual_panel.setup_stats(latest_state.get("discard_history", []))
 	else:
@@ -1263,6 +1281,7 @@ func _toggle_manual(tab := ManualPanel.TAB_MANUAL) -> void:
 
 func _open_manual(tab := ManualPanel.TAB_MANUAL) -> void:
 	if manual_panel != null and is_instance_valid(manual_panel):
+		manual_panel.setup_keymap(keybinds.map, KeybindModel.RESERVED)
 		manual_panel.set_tab(tab)
 		manual_panel.setup_stats(latest_state.get("discard_history", []))
 		return
@@ -1271,6 +1290,8 @@ func _open_manual(tab := ManualPanel.TAB_MANUAL) -> void:
 	panel.z_index = 92
 	_mount_modal(panel)
 	manual_panel = panel
+	manual_panel.save_confirmed.connect(_on_keymap_saved)
+	manual_panel.setup_keymap(keybinds.map, KeybindModel.RESERVED)
 	manual_panel.set_tab(tab)
 	manual_panel.setup_stats(latest_state.get("discard_history", []))
 
@@ -1281,6 +1302,11 @@ func _close_manual() -> void:
 			board3d.unmount_panel(manual_panel)
 		manual_panel.queue_free()
 	manual_panel = null
+
+func _on_keymap_saved(new_map: Dictionary) -> void:
+	keybinds.apply(new_map)
+	keybinds.save()
+	_show_toast("按键已保存")
 
 ## 商店裁决结果一次性 toast（每个 shop_result 只提示一次）。
 func _show_shop_result_toast(state: Dictionary) -> void:

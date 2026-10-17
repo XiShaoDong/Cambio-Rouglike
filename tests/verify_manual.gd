@@ -133,6 +133,23 @@ func _run() -> void:
 	main_node._toggle_manual(ManualPanel.TAB_KEYS)
 	await get_tree().process_frame
 	_check("再按 K 关闭按键页", main_node.manual_panel == null)
+	# main 集成：keybinds 存在；K 经 keybinds 打开按键页；保存落盘
+	_check("main 持有 keybinds", main_node.keybinds != null)
+	main_node.keybinds.reset_to_defaults()   # 防开发者本机 keybinds.cfg 干扰断言
+	main_node._toggle_manual(ManualPanel.TAB_KEYS)
+	await get_tree().process_frame
+	_check("K 键动作解析为 kb_keymap", main_node.keybinds.action_for(KEY_K) == "kb_keymap")
+	var km2 = main_node.manual_panel.keymap_board()
+	km2.begin_capture("kb_stats")
+	km2.capture_key(KEY_T)
+	main_node.manual_panel.open_confirm()
+	main_node.manual_panel.on_confirm_save()
+	await get_tree().process_frame
+	_check("确认保存后 kb_stats=T 已生效", int(main_node.keybinds.key_of("kb_stats")) == KEY_T)
+	# 还原默认，避免污染后续
+	main_node.keybinds.reset_to_defaults()
+	main_node._toggle_manual(ManualPanel.TAB_KEYS)
+	await get_tree().process_frame
 	# StatsBoard：分组 + 去重
 	var sb := StatsBoard.new()
 	add_child(sb)
