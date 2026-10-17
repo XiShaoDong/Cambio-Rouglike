@@ -78,6 +78,7 @@ func _test_board() -> void:
 	await get_tree().process_frame
 	_check("行数=动作数", board.row_count() == KeybindModel.action_ids().size())
 	_check("chip 显示 Tab", board.chip_text("kb_manual") == OS.get_keycode_string(KEY_TAB))
+	_check("原始列显示默认 Tab", board.default_text("kb_manual") == OS.get_keycode_string(KEY_TAB))
 	_check("初始无改动", not board.has_changes())
 	# 捕获
 	board.begin_capture("kb_stats")
@@ -85,6 +86,7 @@ func _test_board() -> void:
 	_check("捕获态 chip 文案", board.chip_text("kb_stats") == KeymapBoard.CAPTURE_TEXT)
 	board.capture_key(KEY_T)
 	_check("捕获后 chip=T", board.chip_text("kb_stats") == OS.get_keycode_string(KEY_T))
+	_check("原始列仍为 S（只读）", board.default_text("kb_stats") == OS.get_keycode_string(KEY_S))
 	_check("结束捕获", board.capturing() == "")
 	_check("有待保存改动", board.has_changes())
 	# 保留键
