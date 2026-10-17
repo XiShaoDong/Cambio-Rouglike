@@ -1,7 +1,7 @@
 class_name KeymapBoard
 extends Control
-## 按键映射页内容（3D 全息看板第三页）：每行左右两格——左=你绑定的新键（可点重绑），
-## 右=原始默认键（只读参考）；底部保存按钮。
+## 按键映射页内容（3D 全息看板第三页）：每行左右两格——左=原始默认键（只读参考），
+## 右=你绑定的新键（可点重绑）；底部保存按钮。
 ## 纯展示 + 本地待保存状态；真正落盘由 ManualPanel/main 驱动。
 ## 可交互控件（左键 chip / 保存按钮）带 meta("board_interactive")，供 Board3d 部分穿透判定。
 
@@ -59,7 +59,7 @@ func setup(current_map: Dictionary, _reserved: Array = []) -> void:
 	vb.add_child(_save_btn)
 	custom_minimum_size = vb.get_combined_minimum_size()
 
-## 表头：左「新按键」右「原始」，与数据行的两格对齐。
+## 表头：左「原始」右「新按键」，与数据行的两格对齐。
 func _make_header() -> HBoxContainer:
 	var head := HBoxContainer.new()
 	head.name = "Header"
@@ -67,8 +67,8 @@ func _make_header() -> HBoxContainer:
 	var pad := Control.new()
 	pad.custom_minimum_size = Vector2(LABEL_COL_W + 10.0 + DESC_COL_W, 0)
 	head.add_child(pad)
-	head.add_child(_head_cell("新按键"))
 	head.add_child(_head_cell("原始"))
+	head.add_child(_head_cell("新按键"))
 	return head
 
 func _head_cell(text: String) -> Label:
@@ -94,7 +94,17 @@ func _make_row(id: String, def: Dictionary) -> HBoxContainer:
 	d.custom_minimum_size = Vector2(DESC_COL_W, 0)
 	d.add_theme_font_size_override("font_size", 15)
 	row.add_child(d)
-	# 左：可重绑的新键（点它进入捕获）
+	# 左：原始默认键（只读参考，变暗、不可点）
+	var dchip := KeyHintPanel.make_chip(OS.get_keycode_string(int(def.get("default", 0))), 16)
+	dchip.name = "Default"
+	dchip.custom_minimum_size = Vector2(KEY_COL_W, 32)
+	dchip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	dchip.modulate = Color(1, 1, 1, 0.55)
+	var dkey: Label = dchip.get_node_or_null("Key")
+	if dkey != null:
+		dkey.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(dchip)
+	# 右：可重绑的新键（点它进入捕获）
 	var chip := Button.new()
 	chip.name = "Chip"
 	chip.text = OS.get_keycode_string(int(_pending.get(id, 0)))
@@ -106,16 +116,6 @@ func _make_row(id: String, def: Dictionary) -> HBoxContainer:
 	chip.add_theme_color_override("font_color", KeyHintPanel.chip_text_color())
 	chip.pressed.connect(begin_capture.bind(id))
 	row.add_child(chip)
-	# 右：原始默认键（只读参考，变暗、不可点）
-	var dchip := KeyHintPanel.make_chip(OS.get_keycode_string(int(def.get("default", 0))), 16)
-	dchip.name = "Default"
-	dchip.custom_minimum_size = Vector2(KEY_COL_W, 32)
-	dchip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	dchip.modulate = Color(1, 1, 1, 0.55)
-	var dkey: Label = dchip.get_node_or_null("Key")
-	if dkey != null:
-		dkey.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	row.add_child(dchip)
 	var status := Label.new()
 	status.name = "Status"
 	status.add_theme_font_size_override("font_size", 14)
