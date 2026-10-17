@@ -152,6 +152,31 @@ func _test_wheel() -> void:
 	w.update_cursor(Vector2(400, 300))
 	_check("轮盘 中空=''", w.selected() == "")
 	_check("轮盘 数字文本", w._number_text == "5")
+
+	# ===== 外圈（数字展开）：A~K + 红/黑 Joker =====
+	var r2: float = w._outer2_px()
+	_check("外圈项数=15", w.OUTER_ITEMS.size() == 15)
+	w.update_cursor(Vector2(400, 300 + ro * 0.7))     # 内圈数字
+	_check("悬停数字 → 外圈展开", w.selected() == "number" and w._outer_active and w._outer_index == -1)
+	_check("未选外圈 → selected_text=''", w.selected_text() == "")
+	w.update_cursor(Vector2(400 + ro * 0.7, 300))    # 内圈右（问）
+	_check("离开数字 → 外圈收起", not w._outer_active and w.selected() == "question")
+	# 回数字后移入外圈带（正上 = 索引 0 = "A"）
+	w.update_cursor(Vector2(400, 300 + ro * 0.7))
+	w.update_cursor(Vector2(400, 300 - ((ro + r2) * 0.5)))
+	_check("外圈正上=索引0('A')，图标仍 number", w.selected() == "number" and w.selected_text() == "A")
+	# 顺时针走一格 = 索引 1 = "2"
+	var a1: float = deg_to_rad(-90.0 + 24.0)
+	var mid: float = (ro + r2) * 0.5
+	w.update_cursor(Vector2(400, 300) + Vector2(cos(a1), sin(a1)) * mid)
+	_check("外圈顺时针第二格='2'", w.selected_text() == "2")
+	# 红 Joker / 黑 Joker 位置
+	var aj: float = deg_to_rad(-90.0 + 24.0 * float(w.RED_JOKER_IDX))
+	w.update_cursor(Vector2(400, 300) + Vector2(cos(aj), sin(aj)) * mid)
+	_check("红 Joker 位显示 Jk", w.selected_text() == "Jk" and w._outer_index == w.RED_JOKER_IDX)
+	# 超出外圈 → 无选择
+	w.update_cursor(Vector2(400, 300 + r2 * 1.4))
+	_check("超出外圈=''", w.selected() == "")
 	w.close()
 	_check("轮盘 close 隐藏", not w.visible)
 	w.queue_free()

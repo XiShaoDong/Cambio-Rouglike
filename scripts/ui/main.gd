@@ -114,14 +114,19 @@ func _finish_wheel() -> void:
 				_send_emote(seat_e, idx)
 		return
 	var sel := ""
+	var picked := ""
 	if _mark_wheel != null and is_instance_valid(_mark_wheel):
 		sel = _mark_wheel.selected()
+		picked = _mark_wheel.selected_text()
 		_mark_wheel.close()
 	_sync_table3d_pointer()
 	if sel == "":
 		return
 	var style := "nose" if _nose_enabled() else "ripple"
-	var text := _discard_number_text() if sel == "number" else ""
+	# 数字扇区：外圈选了具体牌值就用它，否则默认弃牌堆顶。
+	var text := ""
+	if sel == "number":
+		text = picked if not picked.is_empty() else _discard_number_text()
 	var seat := int(latest_state.get("viewer_id", -1))
 	if seat < 0:
 		return
