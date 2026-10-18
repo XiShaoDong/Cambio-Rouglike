@@ -13,12 +13,11 @@ const CARD_DIR := "res://assets/Cards/"
 const SUIT_FILE := {"♠": "spades", "♥": "hearts", "♣": "clubs", "♦": "diamonds"}
 const RANK_FILE := {"A": "ace", "J": "jack", "Q": "queen", "K": "king", "10": "10"}
 
-## 外发光层：{grow=相对卡边的外扩距离, alpha=该层不透明度}，从外到内。
+## 外发光：单层圆角矩形（{grow=相对卡边的外扩距离, alpha=不透明度}）。
 const GLOW_LAYERS := [
-	{"grow": 0.10, "alpha": 0.15},
-	{"grow": 0.06, "alpha": 0.25},
-	{"grow": 0.03, "alpha": 0.40},
+	{"grow": 0.06, "alpha": 0.45},
 ]
+const GLOW_RADIUS := 0.09            # 外发光圆角半径
 
 ## 炫光呼吸闪烁（作用于所有炫光态：黄/红/绿/紫）。谷值 = 亮度 ×(1-AMP)。
 const GLOW_FLICKER_AMP := 0.35
@@ -28,10 +27,11 @@ const GLOW_FLICKER_SPEED := 4.0      # 角速度 rad/s
 const BORDER_WHITE := Color(1.0, 1.0, 1.0, 0.9)
 const BORDER_GAP := 0.06             # 边框距卡边外扩（贴近卡边）
 const BORDER_T := 0.018              # 线粗
-const BORDER_DASH := 0.05            # 每段长（BORDER_DASHED=true 时用）
-const BORDER_SPACE := 0.04           # 段间隙（BORDER_DASHED=true 时用）
+const BORDER_DASH := 0.05            # 每段长
+const BORDER_SPACE := 0.04           # 段间隙
 const BORDER_Y := 0.006              # 离桌面（位于卡外，不被遮挡）
-const BORDER_DASHED := true          # 虚线框
+const BORDER_RADIUS := 0.09          # 边框圆角半径
+const BORDER_STEP := 0.01            # 圆角/边采样步长
 
 static var _back_tex: Texture2D = null
 static var _peek_hidden_tex: Texture2D = null
@@ -95,28 +95,26 @@ func _build() -> void:
 	_flip = Node3D.new()
 	_flip.name = "Flip"
 	_visual.add_child(_flip)
-	# 外发光层：垫在卡面下方、略大的平面，仅在卡边露出（随卡朝向/朝向一致）。
-	for i in GLOW_LAYERS.size():
-		var spec: Dictionary = GLOW_LAYERS[i]
-		var grow := float(spec["grow"])
-		var glow := MeshInstance3D.new()
-		glow.name = "Glow%d" % i
-		var gplane := PlaneMesh.new()
-		gplane.orientation = PlaneMesh.FACE_Y
-		gplane.size = Vector2(
-			Table3dLayout.BLOCK_SIZE.x + grow * 2.0,
-			Table3dLayout.BLOCK_SIZE.z + grow * 2.0)
-		glow.mesh = gplane
-		glow.position = Vector3(0.0, -0.002 * float(i + 1), 0.0)
-		var gmat := StandardMaterial3D.new()
-		gmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		gmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		gmat.cull_mode = BaseMaterial3D.CULL_DISABLED
-		gmat.albedo_color = Color(1.0, 1.0, 1.0, 0.0)
-		glow.material_override = gmat
-		glow.visible = false
-		_visual.add_child(glow)
-		_glow_nodes.append({"node": glow, "mat": gmat, "alpha": float(spec["alpha"])})
+	# 外发光：单层圆角矩形（垫在卡面下、仅在卡边露出圆角外圈）。
+	var spec: Dictionary = GLOW_LAYERS[0]
+	var grow := float(spec["grow"])
+	var glow := MeshInstance3D.new()
+	glow.name = "Glow0"
+	var gim := ImmediateMesh.new()
+	gim.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+	_emit_rounded_fill(gim, Table3dLayout.BLOCK_SIZE.x * 0.5 + grow, Table3dLayout.BLOCK_SIZE.z * 0.5 + grow, GLOW_RADIUS)
+	gim.surface_end()
+	glow.mesh = gim
+	glow.position = Vector3(0.0, -0.002, 0.0)
+	var gmat := StandardMaterial3D.new()
+	gmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	gmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	gmat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	gmat.albedo_color = Color(1.0, 1.0, 1.0, 0.0)
+	glow.material_override = gmat
+	glow.visible = false
+	_visual.add_child(glow)
+	_glow_nodes.append({"node": glow, "mat": gmat, "alpha": float(spec["alpha"])})
 	_build_border()
 	_mesh = MeshInstance3D.new()
 	_mesh.name = "Mesh"
@@ -443,17 +441,7 @@ func _build_border() -> void:
 	var hz := Table3dLayout.BLOCK_SIZE.z * 0.5 + BORDER_GAP
 	var t := BORDER_T * 0.5
 	im.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
-	if BORDER_DASHED:
-		for zs in [-1.0, 1.0]:
-			_emit_dashes(im, Vector2(-hx, hz * zs), Vector2(hx, hz * zs), t, true)
-		for xs in [-1.0, 1.0]:
-			_emit_dashes(im, Vector2(hx * xs, -hz), Vector2(hx * xs, hz), t, false)
-	else:
-		# 连续矩形框：上下两条（沿 X）+ 左右两条（沿 Z）。
-		for zs in [-1.0, 1.0]:
-			_emit_quad(im, -hx, hz * zs - t, hx, hz * zs + t)
-		for xs in [-1.0, 1.0]:
-			_emit_quad(im, hx * xs - t, -hz, hx * xs + t, hz)
+	_emit_dashed_ring(im, hx, hz, BORDER_RADIUS, t)
 	im.surface_end()
 	_border_mesh.mesh = im
 	_border_mat = StandardMaterial3D.new()
@@ -466,37 +454,84 @@ func _build_border() -> void:
 	_border_mesh.visible = false
 	add_child(_border_mesh)
 
-## 在 a→b 线段上布满 dash 小矩形（along_x=true 时线段沿 X，粗度沿 Z；否则相反）。
-func _emit_dashes(im: ImmediateMesh, a: Vector2, b: Vector2, half_t: float, along_x: bool) -> void:
-	var span := absf(b.x - a.x) if along_x else absf(b.y - a.y)
-	var period := BORDER_DASH + BORDER_SPACE
-	var n := int(floor(span / period))
-	if n <= 0:
-		return
-	var base := a.x if along_x else a.y
-	var start := base + (span - n * period) * 0.5   # 从边的负端算起（修位置偏移）
-	for i in n:
-		var s0 := start + i * period
-		var s1 := s0 + BORDER_DASH
-		if along_x:
-			var z := a.y
-			_emit_quad(im, s0, z - half_t, s1, z + half_t)
-		else:
-			var x := a.x
-			_emit_quad(im, x - half_t, s0, x + half_t, s1)
+## 圆角矩形周长采样点（XZ 平面，顺时针，含 4 段圆角 + 4 条直边，间距≈step）。
+static func _rounded_rect_samples(hx: float, hz: float, r: float, step: float) -> PackedVector2Array:
+	var rr := clampf(r, 0.0, minf(hx, hz))
+	var pts := PackedVector2Array()
+	var corners := [
+		[Vector2(hx - rr, -hz + rr), -PI * 0.5],
+		[Vector2(hx - rr, hz - rr), 0.0],
+		[Vector2(-hx + rr, hz - rr), PI * 0.5],
+		[Vector2(-hx + rr, -hz + rr), PI],
+	]
+	var n := corners.size()
+	for k in n:
+		var cc: Vector2 = corners[k][0]
+		var a0: float = corners[k][1]
+		var arc_n := maxi(2, int(ceil((PI * 0.5 * rr) / step)))
+		for i in range(arc_n + 1):
+			var ang := a0 + (PI * 0.5) * float(i) / float(arc_n)
+			pts.append(cc + Vector2(cos(ang), sin(ang)) * rr)
+		var nc: Vector2 = corners[(k + 1) % n][0]
+		var a1: float = corners[(k + 1) % n][1]
+		var e0 := cc + Vector2(cos(a0 + PI * 0.5), sin(a0 + PI * 0.5)) * rr
+		var e1 := nc + Vector2(cos(a1), sin(a1)) * rr
+		var en := maxi(1, int(ceil(e0.distance_to(e1) / step)))
+		for i in range(1, en):
+			pts.append(e0.lerp(e1, float(i) / float(en)))
+	return pts
 
-## 在 XZ 平面 y=0 处加一个矩形（两三角）。
-func _emit_quad(im: ImmediateMesh, x0: float, z0: float, x1: float, z1: float) -> void:
-	var p00 := Vector3(x0, 0.0, z0)
-	var p10 := Vector3(x1, 0.0, z0)
-	var p11 := Vector3(x1, 0.0, z1)
-	var p01 := Vector3(x0, 0.0, z1)
-	im.surface_add_vertex(p00)
-	im.surface_add_vertex(p10)
-	im.surface_add_vertex(p11)
-	im.surface_add_vertex(p00)
-	im.surface_add_vertex(p11)
-	im.surface_add_vertex(p01)
+## 填充圆角矩形（中心扇形三角化）。
+func _emit_rounded_fill(im: ImmediateMesh, hx: float, hz: float, r: float) -> void:
+	var path := _rounded_rect_samples(hx, hz, r, 0.04)
+	for i in path.size():
+		var a := path[i]
+		var b := path[(i + 1) % path.size()]
+		im.surface_add_vertex(Vector3(0.0, 0.0, 0.0))
+		im.surface_add_vertex(Vector3(a.x, 0.0, a.y))
+		im.surface_add_vertex(Vector3(b.x, 0.0, b.y))
+
+## 沿圆角矩形周长生成虚线（按弧长 BORDER_DASH 亮 / BORDER_SPACE 空）。
+func _emit_dashed_ring(im: ImmediateMesh, hx: float, hz: float, r: float, half_t: float) -> void:
+	var path := _rounded_rect_samples(hx, hz, r, BORDER_STEP)
+	var period := BORDER_DASH + BORDER_SPACE
+	var acc := 0.0
+	var in_dash := false
+	var run_start := Vector2.ZERO
+	for i in path.size():
+		var a := path[i]
+		var b := path[(i + 1) % path.size()]
+		var seg := a.distance_to(b)
+		if seg <= 0.00001:
+			continue
+		var want := fposmod(acc, period) < BORDER_DASH
+		if want and not in_dash:
+			in_dash = true
+			run_start = a
+		elif not want and in_dash:
+			in_dash = false
+			_emit_segment_quad(im, run_start, a, half_t)
+		acc += seg
+	if in_dash:
+		_emit_segment_quad(im, run_start, path[0], half_t)
+
+## 单段 dash：p→q 沿线、垂直方向半宽 half_t 的矩形。
+func _emit_segment_quad(im: ImmediateMesh, p: Vector2, q: Vector2, half_t: float) -> void:
+	var dir := q - p
+	if dir.length_squared() < 1e-9:
+		return
+	dir = dir.normalized()
+	var nrm := Vector2(-dir.y, dir.x) * half_t
+	var v0 := Vector3(p.x + nrm.x, 0.0, p.y + nrm.y)
+	var v1 := Vector3(q.x + nrm.x, 0.0, q.y + nrm.y)
+	var v2 := Vector3(q.x - nrm.x, 0.0, q.y - nrm.y)
+	var v3 := Vector3(p.x - nrm.x, 0.0, p.y - nrm.y)
+	im.surface_add_vertex(v0)
+	im.surface_add_vertex(v1)
+	im.surface_add_vertex(v2)
+	im.surface_add_vertex(v0)
+	im.surface_add_vertex(v2)
+	im.surface_add_vertex(v3)
 
 func _apply_border() -> void:
 	if _border_mesh == null:
