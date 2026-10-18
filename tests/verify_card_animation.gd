@@ -30,7 +30,7 @@ func _test_config() -> void:
 	var c := CardAnimationConfig.new()
 	_check("config 默认值合法", c.validate().is_empty())
 	_check("config to_dict 键数", c.to_dict().size() == CardAnimationConfig.KEYS.size())
-	_check("config 默认 hover_lift", is_equal_approx(c.hover_lift, 0.12))
+	_check("config 默认 hover_lift", is_equal_approx(c.hover_lift, 0.16))
 	_check("config 默认 hover_clearance", is_equal_approx(c.hover_clearance, 0.03))
 	var bad := CardAnimationConfig.new()
 	bad.hover_lift = -1.0
@@ -87,8 +87,9 @@ func _test_height_shadow_compose() -> void:
 	var cf := M.compose({"hover": 0.0, "press": 0.0, "flip": 0.5, "land": 0.0}, cd, 0.0, Vector2.ZERO)
 	_check("compose flip_deg 90", is_equal_approx(float(cf["flip_deg"]), 90.0))
 	_check("compose flip 高度峰值", is_equal_approx((cf["visual_pos"] as Vector3).y, cd["flip_lift"]))
-	var ct := M.compose({"hover": 0.0, "press": 0.0, "flip": 0.0, "land": 0.0}, cd, 0.0, Vector2(0.5, -0.5))
-	_check("compose 准星 tilt 方向", (ct["visual_rot_deg"] as Vector3).x > 0.0 and (ct["visual_rot_deg"] as Vector3).y > 0.0)
+	var ct0 := M.compose({"hover": 0.0, "press": 0.0, "flip": 0.0, "land": 0.0}, cd, 0.0, Vector2.ZERO)
+	var ct1 := M.compose({"hover": 0.0, "press": 0.0, "flip": 0.0, "land": 0.0}, cd, 0.0, Vector2(0.5, -0.5))
+	_check("compose 默认不随准星倾斜", (ct0["visual_rot_deg"] as Vector3).is_equal_approx(ct1["visual_rot_deg"]))
 
 func _test_show_back() -> void:
 	var b := CardBlock.new()
@@ -166,8 +167,8 @@ func _test_sandbox() -> void:
 	s.play(0, "hover")
 	await get_tree().create_timer(s.actors[0].config.hover_in_dur + 0.05).timeout
 	_check("沙盒 play hover 抬升", s.actors[0].visual.position.y > 0.0)
-	_check("沙盒覆写：无倾斜参数", is_equal_approx(s.actors[0].config.hover_pitch, 0.0) and is_equal_approx(s.actors[0].config.max_tilt, 0.0))
-	_check("沙盒覆写：抬起高度≈hover_lift", absf(s.actors[0].visual.position.y - s.actors[0].config.hover_lift) < 0.03)
+	_check("沙盒 hover 默认无倾斜", is_equal_approx(s.actors[0].config.hover_pitch, 0.0) and is_equal_approx(s.actors[0].config.max_tilt, 0.0))
+	_check("沙盒 hover 高度≈hover_lift", absf(s.actors[0].visual.position.y - s.actors[0].config.hover_lift) < 0.03)
 	_check("沙盒 hover 纯竖直（无旋转）", absf(s.actors[0].visual.rotation.x) < 0.01 and absf(s.actors[0].visual.rotation.z) < 0.01)
 	s.play(0, "flip")
 	await get_tree().create_timer(s.actors[0].config.press_dur + s.actors[0].config.flip_dur + s.actors[0].config.land_dur + 0.15).timeout
