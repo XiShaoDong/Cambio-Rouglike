@@ -26,12 +26,12 @@ const GLOW_FLICKER_SPEED := 4.0      # 角速度 rad/s
 
 ## hover 外延虚线边框（卡外一圈虚线；颜色由 table3d_view 按状态给）。
 const BORDER_WHITE := Color(1.0, 1.0, 1.0, 0.9)
-const BORDER_GAP := 0.14             # 边框距卡边外扩
-const BORDER_T := 0.02               # 线粗
-const BORDER_DASH := 0.06            # 每段长（BORDER_DASHED=true 时用）
-const BORDER_SPACE := 0.05           # 段间隙（BORDER_DASHED=true 时用）
+const BORDER_GAP := 0.06             # 边框距卡边外扩（贴近卡边）
+const BORDER_T := 0.018              # 线粗
+const BORDER_DASH := 0.05            # 每段长（BORDER_DASHED=true 时用）
+const BORDER_SPACE := 0.04           # 段间隙（BORDER_DASHED=true 时用）
 const BORDER_Y := 0.006              # 离桌面（位于卡外，不被遮挡）
-const BORDER_DASHED := false         # 先做连续矩形框；true 时改为 dash
+const BORDER_DASHED := true          # 虚线框
 
 static var _back_tex: Texture2D = null
 static var _peek_hidden_tex: Texture2D = null
