@@ -26,11 +26,12 @@ const GLOW_FLICKER_SPEED := 4.0      # 角速度 rad/s
 
 ## hover 外延虚线边框（卡外一圈虚线；颜色由 table3d_view 按状态给）。
 const BORDER_WHITE := Color(1.0, 1.0, 1.0, 0.9)
-const BORDER_GAP := 0.14             # 虚线距卡边外扩
+const BORDER_GAP := 0.14             # 边框距卡边外扩
 const BORDER_T := 0.02               # 线粗
-const BORDER_DASH := 0.06            # 每段长
-const BORDER_SPACE := 0.05           # 段间隙
+const BORDER_DASH := 0.06            # 每段长（BORDER_DASHED=true 时用）
+const BORDER_SPACE := 0.05           # 段间隙（BORDER_DASHED=true 时用）
 const BORDER_Y := 0.006              # 离桌面（位于卡外，不被遮挡）
+const BORDER_DASHED := false         # 先做连续矩形框；true 时改为 dash
 
 static var _back_tex: Texture2D = null
 static var _peek_hidden_tex: Texture2D = null
@@ -442,10 +443,17 @@ func _build_border() -> void:
 	var hz := Table3dLayout.BLOCK_SIZE.z * 0.5 + BORDER_GAP
 	var t := BORDER_T * 0.5
 	im.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
-	for zs in [-1.0, 1.0]:
-		_emit_dashes(im, Vector2(-hx, hz * zs), Vector2(hx, hz * zs), t, true)
-	for xs in [-1.0, 1.0]:
-		_emit_dashes(im, Vector2(hx * xs, -hz), Vector2(hx * xs, hz), t, false)
+	if BORDER_DASHED:
+		for zs in [-1.0, 1.0]:
+			_emit_dashes(im, Vector2(-hx, hz * zs), Vector2(hx, hz * zs), t, true)
+		for xs in [-1.0, 1.0]:
+			_emit_dashes(im, Vector2(hx * xs, -hz), Vector2(hx * xs, hz), t, false)
+	else:
+		# 连续矩形框：上下两条（沿 X）+ 左右两条（沿 Z）。
+		for zs in [-1.0, 1.0]:
+			_emit_quad(im, -hx, hz * zs - t, hx, hz * zs + t)
+		for xs in [-1.0, 1.0]:
+			_emit_quad(im, hx * xs - t, -hz, hx * xs + t, hz)
 	im.surface_end()
 	_border_mesh.mesh = im
 	_border_mat = StandardMaterial3D.new()
@@ -465,7 +473,8 @@ func _emit_dashes(im: ImmediateMesh, a: Vector2, b: Vector2, half_t: float, alon
 	var n := int(floor(span / period))
 	if n <= 0:
 		return
-	var start := (span - n * period) * 0.5
+	var base := a.x if along_x else a.y
+	var start := base + (span - n * period) * 0.5   # 从边的负端算起（修位置偏移）
 	for i in n:
 		var s0 := start + i * period
 		var s1 := s0 + BORDER_DASH

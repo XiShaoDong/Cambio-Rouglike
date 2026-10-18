@@ -39,7 +39,7 @@ const BORDER_Y := 0.006              # 离桌面（卡外，不被遮挡）
 
 - **闪烁**：`_glow_pulse() -> float = 1.0 - GLOW_FLICKER_AMP * 0.5 * (1.0 - cos(_glow_t*GLOW_FLICKER_SPEED))`。`_apply_glow_layers()` 每层 alpha 乘 pulse。`_process` 推进 `_glow_t` 并在 `_glow_base.a>0` 时重放（`_apply_glow_layers(_glow_base)`）；`_paint_glow()` 在炫光开启时 `set_process(true)`；`_process` 的自动停机条件加 `and _glow_base.a <= 0.0`。
 - **虚线边框**（`_build()` 内建，挂 **root**（非 `_visual`），铺在桌面平面）：
-  - `ImmediateMesh`（`PRIMITIVE_TRIANGLES`）绕卡周 4 边生成小矩形 dash（沿边 `BORDER_DASH` 亮 + `BORDER_SPACE` 空，居中布满每边）。
+  - `ImmediateMesh`（`PRIMITIVE_TRIANGLES`）绕卡周 4 边生成边框：**默认连续矩形框**（`BORDER_DASHED=false`，上下/左右各一条）；`BORDER_DASHED=true` 时改 dash（`BORDER_DASH` 亮 + `BORDER_SPACE` 空，自边负端起算）。
   - 单材质 `StandardMaterial3D`（unshaded/alpha/cull-disabled）；`position = (0, BORDER_Y, 0)`；初始 `visible=false`。
 - **`set_hover(on, color := BORDER_WHITE)`**：改为驱动边框（`_show_border=on`、`_border_color=color`、`_apply_border()`）；**不再**影响炫光。
 - `_paint_glow()` 去掉 `hover` 分支：`flash > reveal > protected > actionable > off`。
