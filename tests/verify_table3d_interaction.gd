@@ -203,9 +203,33 @@ func _test_view() -> void:
 	await get_tree().physics_frame
 	_check("准星瞄向抽牌堆命中", str(view.pick_center().get("kind", "")) == "deck")
 	_check("hover 命中可点目标", view.update_hover())
-	_check("hover 边缘高亮", deck_block.has_glow())
+	_check("hover 显示虚线边框", deck_block.has_border())
+	_check("无选择上下文边框=白", deck_block.border_color() == CardBlock.BORDER_WHITE)
 	view.clear_hover()
-	_check("取消 hover 清除高亮", not deck_block.has_glow())
+	_check("取消 hover 清除边框", not deck_block.has_border())
+	# hover 边框颜色映射（table3d_view 按"选择上下文 + 目标可操作"决定）
+	var bc := CardBlock.new()
+	add_child(bc)
+	bc.setup({"card_id": "x"})
+	view._sel_active = false
+	_check("无上下文边框=白", view._hover_border_color(bc) == Table3dView.BORDER_WHITE)
+	view._sel_active = true
+	bc.set_actionable(true)
+	_check("上下文+可操作边框=绿", view._hover_border_color(bc) == Table3dView.BORDER_GREEN)
+	bc.set_actionable(false)
+	_check("上下文+不可操作边框=红", view._hover_border_color(bc) == Table3dView.BORDER_RED)
+	bc.queue_free()
+	# 炫光呼吸闪烁：只改 alpha，基色/开关不变，且期间保持 process
+	var fb2 := CardBlock.new()
+	add_child(fb2)
+	fb2.setup({"card_id": "x"})
+	fb2.set_actionable(true)
+	var g0: Color = fb2.glow_color()
+	fb2._process(0.2)
+	fb2._process(0.2)
+	_check("闪烁不改变炫光基色", fb2.glow_color() == g0 and fb2.has_glow())
+	_check("闪烁期间保持处理", fb2.is_processing())
+	fb2.queue_free()
 	# 悬停对象被释放后应安全（历史：带类型形参传已释放对象会报错并中断 clear_hover）
 	var tmp := CardBlock.new()
 	add_child(tmp)

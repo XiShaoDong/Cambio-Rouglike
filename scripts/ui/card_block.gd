@@ -20,6 +20,18 @@ const GLOW_LAYERS := [
 	{"grow": 0.03, "alpha": 0.40},
 ]
 
+## 炫光呼吸闪烁（作用于所有炫光态：黄/红/绿/紫）。谷值 = 亮度 ×(1-AMP)。
+const GLOW_FLICKER_AMP := 0.35
+const GLOW_FLICKER_SPEED := 4.0      # 角速度 rad/s
+
+## hover 外延虚线边框（卡外一圈虚线；颜色由 table3d_view 按状态给）。
+const BORDER_WHITE := Color(1.0, 1.0, 1.0, 0.9)
+const BORDER_GAP := 0.14             # 虚线距卡边外扩
+const BORDER_T := 0.02               # 线粗
+const BORDER_DASH := 0.06            # 每段长
+const BORDER_SPACE := 0.05           # 段间隙
+const BORDER_Y := 0.006              # 离桌面（位于卡外，不被遮挡）
+
 static var _back_tex: Texture2D = null
 static var _peek_hidden_tex: Texture2D = null
 static var _face_cache := {}
@@ -43,9 +55,12 @@ var _glow_nodes: Array = []      # [{node: MeshInstance3D, mat: StandardMaterial
 var _glow_base := Color(0, 0, 0, 0)
 var _flash_color := Color(0, 0, 0, 0)
 var _reveal_color := Color(0, 0, 0, 0)   # 揭示炫光色（绿/红/蓝），优先于 actionable/hover
-var _hovered := false
 var _upright := false
-var _hover_color := Color(0.7, 0.95, 1.0)
+var _border_mesh: MeshInstance3D
+var _border_mat: StandardMaterial3D
+var _show_border := false
+var _border_color := BORDER_WHITE
+var _glow_t := 0.0
 var _flip_tween: Tween = null
 static var _anim_cfg: CardAnimationConfig = null
 var hover_anim_enabled := false
@@ -101,6 +116,7 @@ func _build() -> void:
 		glow.visible = false
 		_visual.add_child(glow)
 		_glow_nodes.append({"node": glow, "mat": gmat, "alpha": float(spec["alpha"])})
+	_build_border()
 	_mesh = MeshInstance3D.new()
 	_mesh.name = "Mesh"
 	# 卡面用平面（UV 完整 0–1）。BoxMesh 的 UV 是十字展开，顶面只采样一条线 → 贴图被裁。
@@ -219,12 +235,24 @@ func set_actionable(on: bool) -> void:
 	_actionable = on
 	_paint_glow()
 
-## 准星悬停高亮（青色边缘发光；有更强状态时被覆盖）。
-func set_hover(on: bool, color := Color(0.7, 0.95, 1.0)) -> void:
+## 准星悬停反馈：卡外一圈虚线边框（颜色由 table3d_view 按状态给：白/绿/红）。
+## 注意：hover 不再驱动炫光（炫光留给 黄=可用 / 红·绿=贴牌对错 / 紫=护盾 提示）。
+func set_hover(on: bool, color := BORDER_WHITE) -> void:
 	_build()
-	_hovered = on
-	_hover_color = color
-	_paint_glow()
+	_show_border = on
+	_border_color = color
+	_apply_border()
+
+## 该卡当前是否可操作（供 table3d_view 决定 hover 边框红/绿）。
+func is_actionable() -> bool:
+	return _actionable
+
+## hover 虚线边框是否存在。
+func has_border() -> bool:
+	return _border_mesh != null and _border_mesh.visible
+
+func border_color() -> Color:
+	return _border_color
 
 ## 揭示翻转到 card（写到底面板，几何连续换面）；color.a>0 时用该色边缘发光。
 ## from_p 为起始翻转进度：0（默认）= 从背面播放完整翻转；>0 用于跨 render 重放时**续播**
@@ -374,6 +402,7 @@ func show_back(back: bool) -> void:
 ## 按优先级决定边缘发光颜色：flash > reveal（揭示绿/红/蓝）> protected > hover > actionable。
 ## reveal 最高（仅次于 flash）：贴牌对错炫光不被选中/hover/可点高亮覆盖（B38）。
 ## hover 高于 actionable：可点目标（金）在准星悬停时改显浅蓝，便于确认"是否对准了"（否则金光盖住蓝光无法确认选中）。
+## 炫光优先级：flash > reveal > protected > actionable（hover 已改为虚线边框，不再走炫光）。
 func _paint_glow() -> void:
 	if _flash_color.a > 0.0:
 		_apply_glow_layers(_flash_color)
@@ -381,23 +410,92 @@ func _paint_glow() -> void:
 		_apply_glow_layers(_reveal_color)
 	elif bool(_last_slot.get("protected", false)):
 		_apply_glow_layers(PROTECTED_COLOR)
-	elif _hovered:
-		_apply_glow_layers(_hover_color)
 	elif _actionable:
 		_apply_glow_layers(Table3dLayout.ACTIONABLE_COLOR)
 	else:
 		_apply_glow_layers(Color(0, 0, 0, 0))
+	if _glow_base.a > 0.0:
+		set_process(true)
 
-## color.a<=0 关闭；否则每层用自身 alpha，颜色取 color.rgb。
+## 呼吸闪烁系数：正弦，峰=1.0、谷=1-AMP。
+func _glow_pulse() -> float:
+	return 1.0 - GLOW_FLICKER_AMP * 0.5 * (1.0 - cos(_glow_t * GLOW_FLICKER_SPEED))
+
+## color.a<=0 关闭；否则每层用自身 alpha × 闪烁系数，颜色取 color.rgb。
 func _apply_glow_layers(color: Color) -> void:
 	_glow_base = color
 	var on := color.a > 0.0
+	var pulse := _glow_pulse()
 	for g in _glow_nodes:
 		var node: MeshInstance3D = g["node"]
 		node.visible = on
 		if on:
 			var mat: StandardMaterial3D = g["mat"]
-			mat.albedo_color = Color(color.r, color.g, color.b, float(g["alpha"]))
+			mat.albedo_color = Color(color.r, color.g, color.b, float(g["alpha"]) * pulse)
+
+## hover 虚线边框：绕卡周 4 边生成小矩形 dash（ImmediateMesh），一次性构建。
+func _build_border() -> void:
+	_border_mesh = MeshInstance3D.new()
+	_border_mesh.name = "HoverBorder"
+	var im := ImmediateMesh.new()
+	var hx := Table3dLayout.BLOCK_SIZE.x * 0.5 + BORDER_GAP
+	var hz := Table3dLayout.BLOCK_SIZE.z * 0.5 + BORDER_GAP
+	var t := BORDER_T * 0.5
+	im.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+	for zs in [-1.0, 1.0]:
+		_emit_dashes(im, Vector2(-hx, hz * zs), Vector2(hx, hz * zs), t, true)
+	for xs in [-1.0, 1.0]:
+		_emit_dashes(im, Vector2(hx * xs, -hz), Vector2(hx * xs, hz), t, false)
+	im.surface_end()
+	_border_mesh.mesh = im
+	_border_mat = StandardMaterial3D.new()
+	_border_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_border_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_border_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_border_mat.albedo_color = BORDER_WHITE
+	_border_mesh.material_override = _border_mat
+	_border_mesh.position = Vector3(0.0, BORDER_Y, 0.0)
+	_border_mesh.visible = false
+	add_child(_border_mesh)
+
+## 在 a→b 线段上布满 dash 小矩形（along_x=true 时线段沿 X，粗度沿 Z；否则相反）。
+func _emit_dashes(im: ImmediateMesh, a: Vector2, b: Vector2, half_t: float, along_x: bool) -> void:
+	var span := absf(b.x - a.x) if along_x else absf(b.y - a.y)
+	var period := BORDER_DASH + BORDER_SPACE
+	var n := int(floor(span / period))
+	if n <= 0:
+		return
+	var start := (span - n * period) * 0.5
+	for i in n:
+		var s0 := start + i * period
+		var s1 := s0 + BORDER_DASH
+		if along_x:
+			var z := a.y
+			_emit_quad(im, s0, z - half_t, s1, z + half_t)
+		else:
+			var x := a.x
+			_emit_quad(im, x - half_t, s0, x + half_t, s1)
+
+## 在 XZ 平面 y=0 处加一个矩形（两三角）。
+func _emit_quad(im: ImmediateMesh, x0: float, z0: float, x1: float, z1: float) -> void:
+	var p00 := Vector3(x0, 0.0, z0)
+	var p10 := Vector3(x1, 0.0, z0)
+	var p11 := Vector3(x1, 0.0, z1)
+	var p01 := Vector3(x0, 0.0, z1)
+	im.surface_add_vertex(p00)
+	im.surface_add_vertex(p10)
+	im.surface_add_vertex(p11)
+	im.surface_add_vertex(p00)
+	im.surface_add_vertex(p11)
+	im.surface_add_vertex(p01)
+
+func _apply_border() -> void:
+	if _border_mesh == null:
+		return
+	var on := _show_border and _border_color.a > 0.0
+	_border_mesh.visible = on
+	if on:
+		_border_mat.albedo_color = _border_color
 
 static func _back_texture() -> Texture2D:
 	if _back_tex == null:
@@ -525,12 +623,15 @@ func set_hover_pose(on: bool, ray_local: Vector2, immediate := false) -> void:
 	_hover_tween = create_tween()
 	_hover_tween.tween_property(self, "_hover_p", target, dur).set_trans(trans).set_ease(Tween.EASE_OUT)
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	_glow_t += delta
 	_apply_hover_pose()
 	_apply_flip_pose()
+	if _glow_base.a > 0.0:
+		_apply_glow_layers(_glow_base)   # 每帧按闪烁系数重放炫光 alpha
 	var hb := _hover_tween != null and _hover_tween.is_valid()
 	var fb := _flip_tween != null and _flip_tween.is_valid()
-	if not hb and not fb and _hover_p <= 0.0 and _reveal_p <= 0.0:
+	if not hb and not fb and _hover_p <= 0.0 and _reveal_p <= 0.0 and _glow_base.a <= 0.0:
 		set_process(false)
 
 ## 用 compose 的位移/旋转驱动 `_visual`（不写 scale，避免与揭示翻转抢属性）。

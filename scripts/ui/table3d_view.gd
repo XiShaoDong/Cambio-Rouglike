@@ -11,7 +11,11 @@ const SEAT_COUNT := 4
 const HUD_OFFSET := 0.55
 const HUD_HEIGHT := 0.5
 const AVATAR_DIM_COLOR := Color(0.0, 0.0, 0.0, 0.55)     # 出局/离线变暗
-const HOVER_COLOR := Color(0.7, 0.95, 1.0, 0.35)         # 准星悬停目标高亮
+const HOVER_COLOR := Color(0.7, 0.95, 1.0, 0.35)         # 非卡牌目标（HUD 等）的叠加薄色
+## hover 虚线边框颜色：无选择上下文=白；有上下文且目标可操作=绿；否则=红。
+const BORDER_WHITE := Color(1.0, 1.0, 1.0, 0.9)
+const BORDER_GREEN := Color(0.53, 0.85, 0.63)
+const BORDER_RED := Color(1.0, 0.48, 0.48)
 const STAT_VIEWPORT_SIZE := Vector2i(320, 120)
 const STAT_PANEL_OFFSET := Vector3(0.0, 0.75, 0.0)
 const STAT_PANEL_PIXEL_SIZE := 0.005
@@ -40,6 +44,7 @@ var _pending_block = null  # CardBlock（场景 Center/Pending）
 var _hud = null  # Table3dHud（场景 Hud）
 var _card_blocks := {}  # {seat: {slot: CardBlock}}
 var _viewer := 0
+var _sel_active := false           # 当前是否有"选择"上下文（决定 hover 边框红/绿/白）
 var _hover_slot := {}
 var _hover_ray_local := Vector2.ZERO
 var _avatar_dim_mat: StandardMaterial3D = null
@@ -745,8 +750,10 @@ func _find_block(seat_id: int, slot: int):
 	var block = _card_blocks[seat_id][slot]
 	return block if is_instance_valid(block) else null
 
-## 每帧准星悬停：命中可点对象时高亮它，返回是否命中。命中目标未变则不重复操作。
-func update_hover() -> bool:
+## 每帧准星悬停：命中可点对象时显示边框，返回是否命中。命中目标未变则不重复操作。
+## selection_active：当前是否处于"需要选择"的上下文（interaction.action_mode != ""）。
+func update_hover(selection_active := false) -> bool:
+	_sel_active = selection_active
 	if camera == null:
 		return false
 	var center := get_viewport().get_visible_rect().size * 0.5
@@ -791,7 +798,7 @@ func clear_hover() -> void:
 	_hover_collider = null
 	_leave_hover_slot()
 
-## 高亮/取消：作用于该拾取对象父节点下所有 MeshInstance3D。
+## 高亮/取消：卡牌类（CardBlock）显示外延虚线边框（白/绿/红）；其余用叠加薄色。
 ## 形参不标注类型：可能是已释放对象（传参处不做类型检查，函数内 is_instance_valid 兜底）。
 func _apply_hover(collider, on: bool) -> void:
 	if collider == null or not is_instance_valid(collider):
@@ -799,14 +806,23 @@ func _apply_hover(collider, on: bool) -> void:
 	var parent = (collider as Node).get_parent()
 	if parent == null or not is_instance_valid(parent):
 		return
-	# 卡牌类（CardBlock）走边缘发光，与状态高亮同一套；其余（HUD 按钮等）用叠加薄色。
 	if parent.has_method("set_hover"):
-		parent.call("set_hover", on, HOVER_COLOR)
+		var col := Color(0, 0, 0, 0)
+		if on:
+			col = _hover_border_color(parent)
+		parent.call("set_hover", on, col)
 		return
 	var meshes: Array = []
 	_collect_meshes(parent, meshes)
 	for m in meshes:
 		m.material_overlay = _hover_material() if on else null
+
+## hover 边框颜色：无选择上下文=白；有上下文且目标可操作=绿；否则=红。
+func _hover_border_color(block) -> Color:
+	if not _sel_active:
+		return BORDER_WHITE
+	var actionable: bool = block.has_method("is_actionable") and bool(block.call("is_actionable"))
+	return BORDER_GREEN if actionable else BORDER_RED
 
 func _collect_meshes(node: Node, out: Array) -> void:
 	if node is MeshInstance3D:

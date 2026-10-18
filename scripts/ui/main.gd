@@ -586,7 +586,7 @@ func _process(delta: float) -> void:
 		if _crosshair != null and is_instance_valid(_crosshair):
 			_crosshair.set_active(true)
 		return
-	var on_target: bool = table3d.update_hover()
+	var on_target: bool = table3d.update_hover(interaction.action_mode != "")
 	if _crosshair != null and is_instance_valid(_crosshair):
 		_crosshair.set_active(on_target)
 
