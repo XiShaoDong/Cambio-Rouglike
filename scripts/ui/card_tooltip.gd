@@ -1,20 +1,21 @@
 class_name CardTooltip
 extends Control
-## 3D 大牌 hover 的聊天气泡（屏幕空间）：圆角气泡 + 指向卡牌的尾巴。
+## 3D 大牌 hover 的聊天气泡（屏幕空间）：圆角气泡 + 指向卡牌的三角形尖角。
 ## 位置由 main 用相机投影的大牌屏幕矩形喂入（默认放在卡牌右上角外侧）。
 
 const FONT := 18
 const BG := Color(0.08, 0.09, 0.12, 0.92)
 const BORDER := Color(1.0, 1.0, 1.0, 0.25)
 const TEXT := Color(0.95, 0.97, 1.0)
-const TAIL := 10.0
+const TAIL := 9.0          # 尖角底边半宽
 const MAX_W := 320.0
-const GAP_X := 18.0
-const GAP_Y := 12.0
+const GAP_X := 26.0        # 气泡在卡牌右侧的外扩
+const GAP_Y := 20.0        # 气泡在卡牌上方的外扩
 const ABOVE_GAP := 26.0
 
 var _bubble: PanelContainer
 var _label: Label
+var _tail: Polygon2D
 var _target := Vector2.ZERO
 var _shown := false
 
@@ -39,9 +40,14 @@ func _ready() -> void:
 	_label.add_theme_color_override("font_color", TEXT)
 	_bubble.add_child(_label)
 	add_child(_bubble)
+	# 尖角单独用 Polygon2D（在气泡之后添加 → 画在气泡上层，保证可见）。
+	_tail = Polygon2D.new()
+	_tail.name = "Tail"
+	_tail.color = BG
+	add_child(_tail)
 	visible = false
 
-## 放在卡牌屏幕矩形的**右上角外侧**，尾巴指向卡牌右上角。
+## 放在卡牌屏幕矩形的**右上角外侧**，尖角指向卡牌右上角。
 func show_beside(text: String, card_rect: Rect2) -> void:
 	if text.is_empty():
 		hide_tip()
@@ -64,7 +70,8 @@ func show_text(text: String, target: Vector2) -> void:
 func hide_tip() -> void:
 	_shown = false
 	visible = false
-	queue_redraw()
+	if _tail != null:
+		_tail.polygon = PackedVector2Array()
 
 func text() -> String:
 	return _label.text if _label != null else ""
@@ -74,6 +81,9 @@ func is_shown() -> bool:
 
 func bubble_size() -> Vector2:
 	return _bubble.get_combined_minimum_size() if _bubble != null else Vector2.ZERO
+
+func tail_points() -> PackedVector2Array:
+	return _tail.polygon if _tail != null else PackedVector2Array()
 
 ## 先量出文本宽度，给 Label 一个非零最小宽度（否则 autowrap 的最小宽为 0 → 气泡没宽度）。
 func _prepare(text: String) -> void:
@@ -92,16 +102,15 @@ func _place(pos: Vector2, sz: Vector2, tail_target: Vector2) -> void:
 	_target = tail_target
 	_shown = true
 	visible = true
-	queue_redraw()
+	_update_tail(Rect2(pos, sz), tail_target)
 
-func _draw() -> void:
-	if not _shown or _bubble == null:
-		return
-	var b := Rect2(_bubble.position, _bubble.size)
-	var cp := Vector2(clampf(_target.x, b.position.x, b.end.x), clampf(_target.y, b.position.y, b.end.y))
-	var dir := _target - cp
+## 尖角：锚在气泡下边缘（避开圆角），三角形指向目标点。
+func _update_tail(b: Rect2, target: Vector2) -> void:
+	var anchor := Vector2(clampf(target.x, b.position.x + 16.0, b.end.x - 16.0), b.end.y)
+	var dir := target - anchor
 	if dir.length() < 0.5:
-		return
+		dir = Vector2(0.0, 1.0)
+		anchor = Vector2(b.position.x + 16.0, b.end.y)
 	dir = dir.normalized()
 	var nrm := Vector2(-dir.y, dir.x) * TAIL
-	draw_colored_polygon(PackedVector2Array([cp - nrm, cp + nrm, _target]), BG)
+	_tail.polygon = PackedVector2Array([anchor - nrm, anchor + nrm, target])
