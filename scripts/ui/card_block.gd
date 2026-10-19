@@ -19,8 +19,8 @@ const GLOW_LAYERS := [
 ]
 const GLOW_RADIUS := 0.09            # 外发光圆角半径
 
-## 炫光呼吸闪烁（作用于所有炫光态：黄/红/绿/紫）。谷值 = 亮度 ×(1-AMP)。
-const GLOW_FLICKER_AMP := 0.35
+## 炫光呼吸闪烁（作用于所有炫光态：黄/红/绿/紫）。从**全灭(0)**到**最亮(AMP)**。
+const GLOW_FLICKER_AMP := 1.0
 const GLOW_FLICKER_SPEED := 4.0      # 角速度 rad/s
 
 ## hover 外延虚线边框（卡外一圈虚线；颜色由 table3d_view 按状态给）。
@@ -65,6 +65,7 @@ var _border_mesh: MeshInstance3D
 var _border_mat: StandardMaterial3D
 var _show_border := false
 var _border_color := BORDER_WHITE
+var _border_offset_y := 0.0     # 边框相对卡面的额外高度（如抽牌堆要压到牌堆底部）
 var _glow_t := 0.0
 var _flip_tween: Tween = null
 static var _anim_cfg: CardAnimationConfig = null
@@ -420,9 +421,9 @@ func _paint_glow() -> void:
 	if _glow_base.a > 0.0:
 		set_process(true)
 
-## 呼吸闪烁系数：正弦，峰=1.0、谷=1-AMP。
+## 呼吸闪烁系数：正弦，从 0（全灭）到 AMP（最亮）。
 func _glow_pulse() -> float:
-	return 1.0 - GLOW_FLICKER_AMP * 0.5 * (1.0 - cos(_glow_t * GLOW_FLICKER_SPEED))
+	return GLOW_FLICKER_AMP * 0.5 * (1.0 - cos(_glow_t * GLOW_FLICKER_SPEED))
 
 ## color.a<=0 关闭；否则每层用自身 alpha × 闪烁系数，颜色取 color.rgb。
 func _apply_glow_layers(color: Color) -> void:
@@ -454,9 +455,15 @@ func _build_border() -> void:
 	_border_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_border_mat.albedo_color = BORDER_WHITE
 	_border_mesh.material_override = _border_mat
-	_border_mesh.position = Vector3(0.0, BORDER_Y, 0.0)
+	_border_mesh.position = Vector3(0.0, BORDER_Y + _border_offset_y, 0.0)
 	_border_mesh.visible = false
 	add_child(_border_mesh)
+
+## 设置边框相对卡面的高度偏移（如抽牌堆把 dash line 压到牌堆底部：传 -堆高）。
+func set_border_offset(dy: float) -> void:
+	_border_offset_y = dy
+	if _border_mesh != null and is_instance_valid(_border_mesh):
+		_border_mesh.position = Vector3(0.0, BORDER_Y + dy, 0.0)
 
 ## 圆角矩形周长采样点（XZ 平面，顺时针，含 4 段圆角 + 4 条直边，间距≈step）。
 static func _rounded_rect_samples(hx: float, hz: float, r: float, step: float) -> PackedVector2Array:

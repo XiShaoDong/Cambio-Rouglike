@@ -258,6 +258,9 @@ func render(state: Dictionary, actionable := Callable()) -> void:
 		_deck_pile.set_count(maxi(draw_n - 1, 0))
 	if _deck_node != null and is_instance_valid(_deck_node):
 		_deck_node.position.y = draw_n * DeckPile.CARD_THICKNESS
+		# 抽牌堆：hover 虚线圈压到牌堆底部（贴桌面），而不是浮在顶牌上
+		if _deck_node.has_method("set_border_offset"):
+			_deck_node.set_border_offset(-_deck_node.position.y)
 	# 抽牌堆：轮到自己抽牌（TURN_DRAW）时金色光晕
 	if _deck_block != null and is_instance_valid(_deck_block):
 		_deck_block.set_actionable(ActionModel.draw_available(state))
