@@ -106,13 +106,13 @@ func _interaction_ctx() -> Dictionary:
 		"selected_own_slot": interaction.selected_own_slot,
 	}
 
-## 3D 激活时恒定捕获鼠标（看板交互走准星），准星恒显示。
+## 3D 激活时恒定捕获鼠标（看板交互走准星）。准星默认隐藏，仅按住放大时显示。
 func _sync_table3d_pointer() -> void:
 	if not _table3d_active:
 		return
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	if _crosshair != null and is_instance_valid(_crosshair):
-		_crosshair.visible = true
+		_crosshair.visible = false
 
 ## 3D 自己面板（屏幕右下角）：生命/金钱/卡牌数（无名字）。
 func _ensure_self_panel() -> void:
@@ -607,6 +607,9 @@ func _process(delta: float) -> void:
 		return
 	if table3d == null or not is_instance_valid(table3d):
 		return
+	# 准星默认隐藏，仅按住放大（Command/Alt）时出现。
+	if _crosshair != null and is_instance_valid(_crosshair):
+		_crosshair.visible = bool(table3d.camera.zoomed)
 	_place_boards()
 	_auto_aim_board()
 	var cam: Camera3D = table3d.camera.camera_node()

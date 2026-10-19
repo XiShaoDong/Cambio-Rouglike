@@ -71,6 +71,14 @@ func _run() -> void:
 	main_node.latest_state = _state()
 	main_node._set_table3d(true)
 	await get_tree().process_frame
+	# 准星默认隐藏，仅按住放大时显示
+	_check("3D 准星默认隐藏", main_node._crosshair != null and not main_node._crosshair.visible)
+	main_node.table3d.camera.set_zoom(true)
+	await get_tree().process_frame
+	_check("放大时准星显示", main_node._crosshair.visible)
+	main_node.table3d.camera.set_zoom(false)
+	await get_tree().process_frame
+	_check("松开后准星隐藏", not main_node._crosshair.visible)
 	_check("3D 左下角按键提示存在", main_node._key_hints != null and is_instance_valid(main_node._key_hints))
 	_check("3D 按键提示可见", main_node._key_hints.visible)
 	_check("3D 按键提示 2 行", main_node._key_hints.row_count() == 2)
