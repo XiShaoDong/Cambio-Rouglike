@@ -178,7 +178,7 @@ func _update_card_tooltip() -> void:
 	var source := ""
 	if str((table3d.hovered_pick() as Dictionary).get("kind", "")) == "pending":
 		source = str((latest_state.get("pending", {}) as Dictionary).get("source", "draw"))
-	var info := CardAbilityText.info(rank, source)
+	var text := CardAbilityText.text(rank, source)
 	var cam: Camera3D = table3d.camera.camera_node()
 	if cam == null:
 		_hide_card_tooltip()
@@ -189,7 +189,7 @@ func _update_card_tooltip() -> void:
 		var sx := size.x / vp.x
 		var sy := size.y / vp.y
 		rect = Rect2(Vector2(rect.position.x * sx, rect.position.y * sy), Vector2(rect.size.x * sx, rect.size.y * sy))
-	_card_tooltip.show_card(info, rect)
+	_card_tooltip.show_line(text, rect)
 
 ## 驱动 HintHud：文本随 hint 变化，进入新回合（key 变化）时重置 30 并播进场。
 func _update_hint_hud(phase: int, viewer: int, current: int) -> void:
