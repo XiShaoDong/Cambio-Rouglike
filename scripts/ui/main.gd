@@ -163,6 +163,22 @@ func _hide_card_tooltip() -> void:
 	if _card_tooltip != null and is_instance_valid(_card_tooltip):
 		_card_tooltip.hide_tip()
 
+## 右下角「牌序」面板（3D）：标题 + SHIFT 开关 + 黑桃卡序（堆叠）。
+func _ensure_card_order_panel() -> void:
+	if _card_order_panel != null and is_instance_valid(_card_order_panel):
+		return
+	_card_order_panel = CardOrderPanel.new()
+	_card_order_panel.name = "CardOrderPanel"
+	_card_order_panel.z_index = 80
+	add_child(_card_order_panel)
+	var m := int(round(_corner_margin()))
+	_card_order_panel.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT, Control.PRESET_MODE_MINSIZE, m)
+	_card_order_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_card_order_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	# 放在右下自身状态面板上方，避免重叠
+	_card_order_panel.offset_top -= 76
+	_card_order_panel.offset_bottom -= 76
+
 ## 悬停在"牌面已知"的牌上（自己手牌/大牌/弃牌顶/已揭示）→ 在牌旁弹信息气泡。
 func _update_card_tooltip() -> void:
 	if _card_tooltip == null or not is_instance_valid(_card_tooltip):
@@ -500,6 +516,8 @@ func _set_table3d(on: bool) -> void:
 		_key_hints.visible = true
 		_ensure_round_badge()
 		_round_badge.visible = true
+		_ensure_card_order_panel()
+		_card_order_panel.visible = true
 		background.visible = false
 		game_panel.visible = false
 	else:
@@ -517,6 +535,8 @@ func _set_table3d(on: bool) -> void:
 			_key_hints.visible = false
 		if _round_badge != null and is_instance_valid(_round_badge):
 			_round_badge.visible = false
+		if _card_order_panel != null and is_instance_valid(_card_order_panel):
+			_card_order_panel.visible = false
 		if _hint_hud != null and is_instance_valid(_hint_hud):
 			_hint_hud.show_hud(false)
 		_hide_card_tooltip()
@@ -766,6 +786,7 @@ var _last_look_talk := false
 var _talking_local := false
 var _crosshair: Control = null
 var _card_tooltip: CardTooltip = null
+var _card_order_panel: CardOrderPanel = null
 var _self_panel: PlayerStatPanel = null
 var is_dev_join := false
 var start_button: Button = null
