@@ -726,7 +726,7 @@ const PHASE_SHOP := 10
 const _HUD_ACTIVE_PHASES := [PHASE_TURN_DRAW, PHASE_TURN_DECISION, PHASE_Q_DECISION, PHASE_SLAP_EXCHANGE, PHASE_SLAP_DUEL]
 
 const CORNER_MARGIN := 75.0     # 3D 四个角 HUD 到屏幕边缘的统一边距（目标=屏幕像素）
-const CARD_ORDER_LIFT := 68.0   # 左下角「牌序」面板占用的高度（按键提示上移量）
+const CARD_ORDER_LIFT := 100.0  # 左下角「牌序」面板占用的高度（按键提示上移量）
 const BOARD_DIST := 3.0        # 回退用：看板沿"相机→桌心"连线距相机的距离（无座位锚点时）
 ## 模态看板锚点（贴玩家、不靠后）：本机座位→桌心的 0..1 深度（用户 0-10 标度的 2/10）。
 const BOARD_DEPTH := 0.2
