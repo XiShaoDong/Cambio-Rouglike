@@ -15,7 +15,7 @@ const RANK_FILE := {"A": "ace", "J": "jack", "Q": "queen", "K": "king", "10": "1
 
 ## 外发光：单层圆角矩形（{grow=相对卡边的外扩距离, alpha=不透明度}）。
 const GLOW_LAYERS := [
-	{"grow": 0.03, "alpha": 0.45},
+	{"grow": 0.06, "alpha": 0.45},
 ]
 const GLOW_RADIUS := 0.09            # 外发光圆角半径
 

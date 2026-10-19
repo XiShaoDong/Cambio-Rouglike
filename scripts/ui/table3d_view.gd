@@ -16,6 +16,8 @@ const HOVER_COLOR := Color(0.7, 0.95, 1.0, 0.35)         # 非卡牌目标（HUD
 const BORDER_WHITE := Color(1.0, 1.0, 1.0, 0.9)
 const BORDER_GREEN := Color(0.53, 0.85, 0.63)
 const BORDER_RED := Color(1.0, 0.48, 0.48)
+## 手牌槽距放大倍数（列距/行距 = (卡尺寸+间隙) × 该值）；默认 +1/3。
+const HAND_SPACING_SCALE := 4.0 / 3.0
 const STAT_VIEWPORT_SIZE := Vector2i(320, 120)
 const STAT_PANEL_OFFSET := Vector3(0.0, 0.75, 0.0)
 const STAT_PANEL_PIXEL_SIZE := 0.005
@@ -888,10 +890,13 @@ func slot_xform(seat_id: int, slot: int) -> Transform3D:
 ## 主牌 2 列（grid.x 0/1）以列中点对齐座位 x 中轴（x=0），故两列落在 ±半个列距。
 func _slot_local(slot: int) -> Transform3D:
 	var grid := Table3dLayout.slot_grid_pos(slot)
+	var pitch := Vector2(
+		Table3dLayout.BLOCK_SIZE.x + Table3dLayout.BLOCK_GAP.x,
+		Table3dLayout.BLOCK_SIZE.z + Table3dLayout.BLOCK_GAP.z) * HAND_SPACING_SCALE
 	return Transform3D(Basis.IDENTITY, Vector3(
-		(0.5 - grid.x) * (Table3dLayout.BLOCK_SIZE.x + Table3dLayout.BLOCK_GAP.x),
+		(0.5 - grid.x) * pitch.x,
 		0.0,
-		(1.0 - grid.y) * (Table3dLayout.BLOCK_SIZE.z + Table3dLayout.BLOCK_GAP.z)))
+		(1.0 - grid.y) * pitch.y))
 
 ## 中央节点世界变换（"deck" | "discard" | "pending"）。
 func center_xform(kind: String) -> Transform3D:
