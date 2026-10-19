@@ -1,7 +1,7 @@
 class_name CardTooltip
 extends Control
-## 3D 大牌 hover 的聊天气泡（屏幕空间）：圆角气泡 + 指向卡牌的小尾巴。
-## 只做展示；位置由 main 用相机投影的大牌屏幕坐标喂入。
+## 3D 大牌 hover 的聊天气泡（屏幕空间）：圆角气泡 + 指向卡牌的尾巴。
+## 位置由 main 用相机投影的大牌屏幕矩形喂入（默认放在卡牌右上角外侧）。
 
 const FONT := 18
 const BG := Color(0.08, 0.09, 0.12, 0.92)
@@ -9,7 +9,9 @@ const BORDER := Color(1.0, 1.0, 1.0, 0.25)
 const TEXT := Color(0.95, 0.97, 1.0)
 const TAIL := 10.0
 const MAX_W := 320.0
-const GAP := 26.0
+const GAP_X := 18.0
+const GAP_Y := 12.0
+const ABOVE_GAP := 26.0
 
 var _bubble: PanelContainer
 var _label: Label
@@ -39,21 +41,30 @@ func _ready() -> void:
 	add_child(_bubble)
 	visible = false
 
-## 在 target（屏幕坐标）附近显示气泡；每帧可重复调用以跟随相机。
+## 放在卡牌屏幕矩形的**右上角外侧**，尾巴指向卡牌右上角。
+func show_beside(text: String, card_rect: Rect2) -> void:
+	if text.is_empty():
+		hide_tip()
+		return
+	_prepare(text)
+	var sz := _bubble.get_combined_minimum_size()
+	var pos := Vector2(card_rect.end.x + GAP_X, card_rect.position.y - sz.y - GAP_Y)
+	_place(pos, sz, Vector2(card_rect.end.x, card_rect.position.y))
+
+## 在 target 正上方显示（备用/测试）。
 func show_text(text: String, target: Vector2) -> void:
 	if text.is_empty():
 		hide_tip()
 		return
-	_label.text = text
-	_target = target
-	_shown = true
-	visible = true
-	_layout()
+	_prepare(text)
+	var sz := _bubble.get_combined_minimum_size()
+	var pos := target + Vector2(-sz.x * 0.5, -sz.y - ABOVE_GAP)
+	_place(pos, sz, target)
 
 func hide_tip() -> void:
 	_shown = false
 	visible = false
-	queued_draw_clear()
+	queue_redraw()
 
 func text() -> String:
 	return _label.text if _label != null else ""
@@ -61,30 +72,36 @@ func text() -> String:
 func is_shown() -> bool:
 	return _shown
 
-func _layout() -> void:
-	_label.custom_minimum_size.x = 0.0
-	var sz := _bubble.get_combined_minimum_size()
-	if sz.x > MAX_W:
-		_label.custom_minimum_size.x = MAX_W - 24.0
-		sz = _bubble.get_combined_minimum_size()
-	var pos := _target + Vector2(-sz.x * 0.5, -sz.y - GAP)
+func bubble_size() -> Vector2:
+	return _bubble.get_combined_minimum_size() if _bubble != null else Vector2.ZERO
+
+## 先量出文本宽度，给 Label 一个非零最小宽度（否则 autowrap 的最小宽为 0 → 气泡没宽度）。
+func _prepare(text: String) -> void:
+	_label.text = text
+	var font := _label.get_theme_font("font")
+	var fs := _label.get_theme_font_size("font_size")
+	if font != null:
+		var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+		_label.custom_minimum_size.x = minf(MAX_W - 24.0, w + 2.0)
+
+func _place(pos: Vector2, sz: Vector2, tail_target: Vector2) -> void:
 	pos.x = clampf(pos.x, 8.0, maxf(8.0, size.x - sz.x - 8.0))
 	pos.y = clampf(pos.y, 8.0, maxf(8.0, size.y - sz.y - 8.0))
 	_bubble.position = pos
 	_bubble.size = sz
+	_target = tail_target
+	_shown = true
+	visible = true
 	queue_redraw()
 
 func _draw() -> void:
-	if not _shown:
+	if not _shown or _bubble == null:
 		return
 	var b := Rect2(_bubble.position, _bubble.size)
-	var from := Vector2(b.position.x + b.size.x * 0.5, b.end.y)
-	var tri := PackedVector2Array([
-		from + Vector2(-TAIL, 0.0),
-		from + Vector2(TAIL, 0.0),
-		_target,
-	])
-	draw_colored_polygon(tri, BG)
-
-func queued_draw_clear() -> void:
-	queue_redraw()
+	var cp := Vector2(clampf(_target.x, b.position.x, b.end.x), clampf(_target.y, b.position.y, b.end.y))
+	var dir := _target - cp
+	if dir.length() < 0.5:
+		return
+	dir = dir.normalized()
+	var nrm := Vector2(-dir.y, dir.x) * TAIL
+	draw_colored_polygon(PackedVector2Array([cp - nrm, cp + nrm, _target]), BG)

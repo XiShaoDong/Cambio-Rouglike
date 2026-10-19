@@ -41,6 +41,10 @@ func _test_tooltip() -> void:
 	tip.show_text("9：看别人一张牌", Vector2(200, 200))
 	_check("show 后可见", tip.is_shown() and tip.visible)
 	_check("文本正确", tip.text() == "9：看别人一张牌")
+	_check("气泡有宽度", tip.bubble_size().x > 0.0)
+	tip.show_beside("Q：看别人一张牌，再看自己一张，决定是否交换", Rect2(100, 100, 60, 80))
+	_check("show_beside 可见", tip.is_shown() and tip.visible)
+	_check("长文本气泡有宽度", tip.bubble_size().x > 0.0)
 	tip.hide_tip()
 	_check("hide 后隐藏", not tip.is_shown() and not tip.visible)
 	# 空文本不显示

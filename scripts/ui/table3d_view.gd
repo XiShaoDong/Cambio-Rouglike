@@ -822,6 +822,21 @@ func pending_global_position() -> Vector3:
 		return Vector3.ZERO
 	return _pending_block.global_position
 
+## 中央大牌投影到屏幕的外接矩形（视口像素坐标）。
+func pending_screen_rect(cam: Camera3D) -> Rect2:
+	if _pending_block == null or not is_instance_valid(_pending_block) or cam == null:
+		return Rect2()
+	var xf: Transform3D = _pending_block.global_transform
+	var hx := Table3dLayout.BLOCK_SIZE.x * 0.5
+	var hz := Table3dLayout.BLOCK_SIZE.z * 0.5
+	var mn := Vector2(INF, INF)
+	var mx := Vector2(-INF, -INF)
+	for p in [Vector3(-hx, 0.0, -hz), Vector3(hx, 0.0, -hz), Vector3(hx, 0.0, hz), Vector3(-hx, 0.0, hz)]:
+		var sp := cam.unproject_position(xf * p)
+		mn = Vector2(minf(mn.x, sp.x), minf(mn.y, sp.y))
+		mx = Vector2(maxf(mx.x, sp.x), maxf(mx.y, sp.y))
+	return Rect2(mn, mx - mn)
+
 ## 高亮/取消：卡牌类（CardBlock）显示外延虚线边框（白/绿/红）；其余用叠加薄色。
 ## 形参不标注类型：可能是已释放对象（传参处不做类型检查，函数内 is_instance_valid 兜底）。
 func _apply_hover(collider, on: bool) -> void:

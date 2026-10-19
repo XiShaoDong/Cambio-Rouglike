@@ -182,11 +182,13 @@ func _update_pending_tooltip() -> void:
 	if cam == null:
 		_hide_card_tooltip()
 		return
-	var sp := cam.unproject_position(table3d.pending_global_position())
 	var vp := get_viewport().get_visible_rect().size
+	var rect: Rect2 = table3d.pending_screen_rect(cam)
 	if vp.x > 0.0 and vp.y > 0.0:
-		sp = Vector2(sp.x / vp.x * size.x, sp.y / vp.y * size.y)
-	_card_tooltip.show_text(text, sp)
+		var sx := size.x / vp.x
+		var sy := size.y / vp.y
+		rect = Rect2(Vector2(rect.position.x * sx, rect.position.y * sy), Vector2(rect.size.x * sx, rect.size.y * sy))
+	_card_tooltip.show_beside(text, rect)
 
 ## 驱动 HintHud：文本随 hint 变化，进入新回合（key 变化）时重置 30 并播进场。
 func _update_hint_hud(phase: int, viewer: int, current: int) -> void:
