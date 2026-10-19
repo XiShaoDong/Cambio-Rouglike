@@ -91,7 +91,7 @@ func _run() -> void:
 	_check("回合徽标左右内边距更宽", (main_node._round_badge.get_theme_stylebox("panel") as StyleBoxFlat).content_margin_left >= 12.0)
 	# 四个角 UI 统一边距（目标屏幕像素 75 → 补偿拉伸后的设计坐标）
 	var m: float = float(int(round(main_node._corner_margin())))
-	_check("左下角边距=75px 换算值", is_equal_approx(main_node._key_hints.offset_left, m) and is_equal_approx(main_node._key_hints.offset_bottom, -m))
+	_check("左下角边距=75px 换算值（按键提示上移让出牌序面板）", is_equal_approx(main_node._key_hints.offset_left, m) and is_equal_approx(main_node._key_hints.offset_bottom, -(m + main_node.CARD_ORDER_LIFT)))
 	_check("右上角边距=75px 换算值", is_equal_approx(main_node._round_badge.offset_right, -m) and is_equal_approx(main_node._round_badge.offset_top, m))
 	_check("右下角边距=75px 换算值", is_equal_approx(main_node._self_panel.offset_right, -m) and is_equal_approx(main_node._self_panel.offset_bottom, -m))
 	# 背景纯白（保留透明度）+ 字体纯白

@@ -172,12 +172,9 @@ func _ensure_card_order_panel() -> void:
 	_card_order_panel.z_index = 80
 	add_child(_card_order_panel)
 	var m := int(round(_corner_margin()))
-	_card_order_panel.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT, Control.PRESET_MODE_MINSIZE, m)
-	_card_order_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_card_order_panel.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE, m)
+	_card_order_panel.grow_horizontal = Control.GROW_DIRECTION_END
 	_card_order_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	# 放在右下自身状态面板上方，避免重叠
-	_card_order_panel.offset_top -= 76
-	_card_order_panel.offset_bottom -= 76
 
 ## 悬停在"牌面已知"的牌上（自己手牌/大牌/弃牌顶/已揭示）→ 在牌旁弹信息气泡。
 func _update_card_tooltip() -> void:
@@ -238,6 +235,9 @@ func _ensure_key_hints() -> void:
 	_key_hints.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE, int(round(_corner_margin())))
 	_key_hints.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	_key_hints.grow_horizontal = Control.GROW_DIRECTION_END
+	# 让出左下角最底部给「牌序」面板
+	_key_hints.offset_top -= CARD_ORDER_LIFT
+	_key_hints.offset_bottom -= CARD_ORDER_LIFT
 	_key_hints.setup([["放大", "Command"], ["手册", "Tab"]])
 
 ## 3D 右上角回合徽标（与按键 chip 同款圆角灰底+边框，字号 = Command chip ×2）。
@@ -577,6 +577,12 @@ func _input(event: InputEvent) -> void:
 		if table3d != null and is_instance_valid(table3d):
 			table3d.camera.set_zoom(event.pressed)
 	if event is InputEventKey and event.pressed and not event.echo:
+		# Shift：开/关左下角「牌序」卡序
+		if event.keycode == KEY_SHIFT:
+			if _card_order_panel != null and is_instance_valid(_card_order_panel):
+				_card_order_panel.toggle()
+			get_viewport().set_input_as_handled()
+			return
 		# F10 固定别名 + kb_toggle3d：任何时候都可切回 2D
 		if event.keycode == KEY_F10 or act == "kb_toggle3d":
 			_set_table3d(false)
@@ -720,6 +726,7 @@ const PHASE_SHOP := 10
 const _HUD_ACTIVE_PHASES := [PHASE_TURN_DRAW, PHASE_TURN_DECISION, PHASE_Q_DECISION, PHASE_SLAP_EXCHANGE, PHASE_SLAP_DUEL]
 
 const CORNER_MARGIN := 75.0     # 3D 四个角 HUD 到屏幕边缘的统一边距（目标=屏幕像素）
+const CARD_ORDER_LIFT := 68.0   # 左下角「牌序」面板占用的高度（按键提示上移量）
 const BOARD_DIST := 3.0        # 回退用：看板沿"相机→桌心"连线距相机的距离（无座位锚点时）
 ## 模态看板锚点（贴玩家、不靠后）：本机座位→桌心的 0..1 深度（用户 0-10 标度的 2/10）。
 const BOARD_DEPTH := 0.2

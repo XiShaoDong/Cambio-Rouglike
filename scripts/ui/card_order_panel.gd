@@ -1,8 +1,7 @@
 class_name CardOrderPanel
-extends VBoxContainer
-## 右下角「牌序」面板：左标题 + 右 SHIFT 开关（带底），点击 SHIFT 展开/收起下方卡序。
-## 卡序按点数从大到小：Q J 10 9 8 7 6 5 4 3 2 A Joker K；只显示黑桃，卡牌堆叠排列。
-## 纯展示层。
+extends HBoxContainer
+## 左下角「牌序」面板：左侧竖排 牌序 / SHIFT（开关），右侧细箭头 + 黑桃卡序（卡牌在最下方）。
+## 卡序按点数从大到小：Q J 10 9 8 7 6 5 4 3 2 A Joker K；卡牌堆叠排列。纯展示层。
 
 signal toggled(expanded: bool)
 
@@ -26,57 +25,68 @@ const FILES := {
 
 const CARD_W := 34.0
 const CARD_H := 48.0
-const STEP := 0.6           # 堆叠步进（占卡宽比例，<1 = 重叠）
-const ARROW_H := 10.0
-const ARROW_COLOR := Color(1.0, 1.0, 1.0, 0.85)
+const STEP := 0.78          # 堆叠步进（占卡宽比例；越大遮挡越少）
+const ARROW_H := 8.0
 
 var _expanded := true
 var _shift_btn: Button
 var _cards: Control
-var _arrow: Control
+var _arrow: ThinArrow
 
 func _ready() -> void:
-	add_theme_constant_override("separation", 6)
+	add_theme_constant_override("separation", 10)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	alignment = BoxContainer.ALIGNMENT_BEGIN
 	_build_header()
-	_build_cards()
-	_build_arrow()
+	_build_content()
 	set_expanded(true)
 
+## 左侧：牌序（上）/ SHIFT（下，最底）。
 func _build_header() -> void:
-	var row := HBoxContainer.new()
-	row.name = "Header"
-	row.add_theme_constant_override("separation", 10)
-	add_child(row)
+	var col := VBoxContainer.new()
+	col.name = "Header"
+	col.add_theme_constant_override("separation", 6)
+	col.size_flags_vertical = Control.SIZE_SHRINK_END
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(col)
 	var title := Label.new()
 	title.name = "Title"
 	title.text = "牌序"
 	title.add_theme_font_size_override("font_size", 18)
 	title.add_theme_color_override("font_color", Color(1, 1, 1))
-	row.add_child(title)
-	var spacer := Control.new()
-	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	row.add_child(spacer)
+	col.add_child(title)
 	_shift_btn = Button.new()
 	_shift_btn.name = "Shift"
 	_shift_btn.text = "SHIFT"
 	_shift_btn.focus_mode = Control.FOCUS_NONE
+	_shift_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	for st_name in ["normal", "hover", "pressed", "disabled"]:
 		_shift_btn.add_theme_stylebox_override(st_name, KeyHintPanel.chip_style_box())
 	_shift_btn.add_theme_color_override("font_color", KeyHintPanel.chip_text_color())
 	_shift_btn.add_theme_font_size_override("font_size", 15)
 	_shift_btn.pressed.connect(toggle)
-	row.add_child(_shift_btn)
+	col.add_child(_shift_btn)
 
-func _build_cards() -> void:
+## 右侧：细箭头（上）+ 卡序（下，最底）。
+func _build_content() -> void:
+	var col := VBoxContainer.new()
+	col.name = "Content"
+	col.add_theme_constant_override("separation", 3)
+	col.size_flags_vertical = Control.SIZE_SHRINK_END
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(col)
+	var step := CARD_W * STEP
+	var total_w := CARD_W + step * float(ORDER.size() - 1)
+	_arrow = ThinArrow.new()
+	_arrow.name = "Arrow"
+	_arrow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_arrow.custom_minimum_size = Vector2(total_w, ARROW_H)
+	col.add_child(_arrow)
 	_cards = Control.new()
 	_cards.name = "Cards"
 	_cards.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var step := CARD_W * STEP
-	var total_w := CARD_W + step * float(ORDER.size() - 1)
 	_cards.custom_minimum_size = Vector2(total_w, CARD_H)
-	add_child(_cards)
+	col.add_child(_cards)
 	for i in ORDER.size():
 		var rank: String = ORDER[i]
 		var tr := TextureRect.new()
@@ -88,28 +98,6 @@ func _build_cards() -> void:
 		tr.position = Vector2(step * float(i), 0.0)
 		tr.size = Vector2(CARD_W, CARD_H)
 		_cards.add_child(tr)
-
-func _build_arrow() -> void:
-	var step := CARD_W * STEP
-	var total_w := CARD_W + step * float(ORDER.size() - 1)
-	_arrow = ThinArrow.new()
-	_arrow.name = "Arrow"
-	_arrow.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_arrow.custom_minimum_size = Vector2(total_w, ARROW_H)
-	add_child(_arrow)
-
-## 很细的指向右箭头。
-class ThinArrow extends Control:
-	func _ready() -> void:
-		resized.connect(queue_redraw)
-
-	func _draw() -> void:
-		var w := size.x
-		var y := size.y * 0.5
-		var c := Color(1.0, 1.0, 1.0, 0.85)
-		draw_line(Vector2(0.0, y), Vector2(w, y), c, 1.0)
-		draw_line(Vector2(w - 7.0, y - 3.0), Vector2(w, y), c, 1.0)
-		draw_line(Vector2(w - 7.0, y + 3.0), Vector2(w, y), c, 1.0)
 
 func toggle() -> void:
 	set_expanded(not _expanded)
@@ -133,3 +121,16 @@ func card_count() -> int:
 
 func rank_at(i: int) -> String:
 	return ORDER[i] if i >= 0 and i < ORDER.size() else ""
+
+## 很细的指向右箭头。
+class ThinArrow extends Control:
+	func _ready() -> void:
+		resized.connect(queue_redraw)
+
+	func _draw() -> void:
+		var w := size.x
+		var y := size.y * 0.5
+		var c := Color(1.0, 1.0, 1.0, 0.85)
+		draw_line(Vector2(0.0, y), Vector2(w, y), c, 1.0)
+		draw_line(Vector2(w - 7.0, y - 3.0), Vector2(w, y), c, 1.0)
+		draw_line(Vector2(w - 7.0, y + 3.0), Vector2(w, y), c, 1.0)
