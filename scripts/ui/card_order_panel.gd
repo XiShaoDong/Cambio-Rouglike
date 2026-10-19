@@ -47,8 +47,10 @@ func _ready() -> void:
 func _build_header() -> void:
 	var row := HBoxContainer.new()
 	row.name = "Header"
-	row.add_theme_constant_override("separation", 10)
-	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_theme_constant_override("separation", 8)
+	# 标题行按内容收缩（不与下方卡牌同宽），位置仍在左侧不变。
+	row.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(row)
 	var title := Label.new()
 	title.name = "Title"
@@ -56,10 +58,6 @@ func _build_header() -> void:
 	title.add_theme_font_size_override("font_size", 18)
 	title.add_theme_color_override("font_color", Color(1, 1, 1))
 	row.add_child(title)
-	var spacer := Control.new()
-	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	row.add_child(spacer)
 	_shift_btn = Button.new()
 	_shift_btn.name = "Shift"
 	_shift_btn.text = "SHIFT"
