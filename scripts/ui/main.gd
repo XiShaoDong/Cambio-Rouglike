@@ -762,6 +762,7 @@ var _hint_hud: HintHud = null
 var _hud_turn_key := ""
 var _shop_result_shown := ""
 var _pending_winner_sfx := false
+var _pending_winner_sfx_index := -1   # 服务器下发的胜利曲目索引（保证全员一致）
 # Q 能力：下一次收到的看牌揭示保持正面（不自动翻回），直到玩家确认交换/不交换。
 var _hold_next_reveal := false
 var _q_hold_active := false
@@ -1062,6 +1063,12 @@ func _on_sfx(kind: String) -> void:
 			AudioManager.play_bell()
 		"winner":
 			_pending_winner_sfx = true
+			_pending_winner_sfx_index = -1
+		_:
+			# 服务器下发 "winner:<index>" → 全员播同一首
+			if kind.begins_with("winner:"):
+				_pending_winner_sfx = true
+				_pending_winner_sfx_index = int(kind.substr(7))
 
 func _entered_name() -> String:
 	var chosen := name_input.text.strip_edges().left(16)
@@ -1331,8 +1338,9 @@ func _show_shop_result_toast(state: Dictionary) -> void:
 ## 冠军时刻：若服务器已广播过 winner 音效事件，此刻播放（延迟到冠军出场）。
 func _play_pending_winner() -> void:
 	if _pending_winner_sfx:
-		AudioManager.play_winner()
+		AudioManager.play_winner(_pending_winner_sfx_index)
 		_pending_winner_sfx = false
+		_pending_winner_sfx_index = -1
 
 ## 结算页「再来一局」→ 服务器开新局。
 func _request_next_match() -> void:

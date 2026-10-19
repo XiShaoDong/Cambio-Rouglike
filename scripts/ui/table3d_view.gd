@@ -16,6 +16,8 @@ const HOVER_COLOR := Color(0.7, 0.95, 1.0, 0.35)         # 非卡牌目标（HUD
 const BORDER_WHITE := Color(1.0, 1.0, 1.0, 0.9)
 const BORDER_GREEN := Color(0.53, 0.85, 0.63)
 const BORDER_RED := Color(1.0, 0.48, 0.48)
+## 弃牌堆"用能力"（弃掉抽到的牌发动 7/8/9/10/J/Q）的提示色：橙色（区别于取弃牌顶的金色）。
+const USE_POWER_COLOR := Color(1.0, 0.55, 0.15)
 ## 手牌槽距放大倍数（列距/行距 = (卡尺寸+间隙) × 该值）；默认 +1/10。
 const HAND_SPACING_SCALE := 1.1
 const STAT_VIEWPORT_SIZE := Vector2i(320, 120)
@@ -273,8 +275,9 @@ func render(state: Dictionary, actionable := Callable()) -> void:
 		_discard_pile.set_count(maxi(discard_count - 1, 0))
 	if _discard_node != null and is_instance_valid(_discard_node):
 		_discard_node.position.y = discard_count * DeckPile.CARD_THICKNESS
-	# 弃牌堆可点：取弃牌顶（TURN_DRAW）或 弃掉大牌/用能力（TURN_DECISION）；可点时金色光晕
+	# 弃牌堆可点：取弃牌顶（金）/ 弃掉抽到的牌·用能力（橙）；可点时对应光晕
 	var discard_actionable := ActionModel.discard_pile_actionable(state)
+	var use_power := ActionModel.pending_discard_available(state)
 	if _discard_hold:
 		# 顶牌变换动画期间：保留显示"上一张"，避免下方为空（无上一张则隐藏）
 		var held: Dictionary = _discard_shown if not _discard_shown.is_empty() else discard
@@ -288,6 +291,7 @@ func render(state: Dictionary, actionable := Callable()) -> void:
 		_discard_block.setup({"card": discard} if not discard.is_empty() else {})
 		_discard_block.set_pick({"kind": "discard"})
 		_discard_block.set_pick_enabled(discard_actionable)
+		_discard_block.set_actionable_color(USE_POWER_COLOR if use_power else Table3dLayout.ACTIONABLE_COLOR)
 		_discard_block.set_actionable(discard_actionable)
 	var pending: Dictionary = state.get("pending", {})
 	_detect_draw(pending, discard)

@@ -404,7 +404,7 @@ func _test_discard_pile_actionable() -> void:
 	view.render(s2)
 	await get_tree().process_frame
 	_check("TURN_DECISION 弃牌堆可点（弃大牌）", disc.is_pick_enabled())
-	_check("TURN_DECISION 弃牌堆金色光晕", disc.has_glow() and disc.glow_color() == Table3dLayout.ACTIONABLE_COLOR)
+	_check("TURN_DECISION 弃牌堆橙色光晕（用能力）", disc.has_glow() and disc.glow_color() == Table3dView.USE_POWER_COLOR)
 	_check("大牌本身不再可点", not view._pending_block.is_pick_enabled())
 	# 非当前玩家 → 弃牌堆不可点/不光晕
 	var s3 := _base_state()

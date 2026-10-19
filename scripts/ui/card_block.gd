@@ -54,6 +54,7 @@ var _area: Area3D
 var _pick_shape: CollisionShape3D
 var _last_slot: Dictionary = {}
 var _actionable := false
+var _actionable_color := Table3dLayout.ACTIONABLE_COLOR
 var _pick_enabled := true
 var _showing_back := true
 var _glow_nodes: Array = []      # [{node: MeshInstance3D, mat: StandardMaterial3D, alpha: float}]
@@ -67,6 +68,7 @@ var _show_border := false
 var _border_color := BORDER_WHITE
 var _border_offset_y := 0.0     # 边框相对卡面的额外高度（如抽牌堆要压到牌堆底部）
 var _glow_t := 0.0
+var _glow_on := false
 var _flip_tween: Tween = null
 static var _anim_cfg: CardAnimationConfig = null
 var hover_anim_enabled := false
@@ -233,11 +235,17 @@ func set_pick_enabled(on: bool) -> void:
 func is_pick_enabled() -> bool:
 	return _pick_enabled
 
-## 可操作高亮（金色边缘发光）。
+## 可操作高亮（默认金色边缘发光）。
 func set_actionable(on: bool) -> void:
 	_build()
 	_actionable = on
 	_paint_glow()
+
+## 可操作高亮的颜色（如弃牌堆"用能力"用橙色、取弃牌顶用金色）。
+func set_actionable_color(c: Color) -> void:
+	_actionable_color = c
+	if _actionable:
+		_paint_glow()
 
 ## 准星悬停反馈：卡外一圈虚线边框（颜色由 table3d_view 按状态给：白/绿/红）。
 ## 注意：hover 不再驱动炫光（炫光留给 黄=可用 / 红·绿=贴牌对错 / 紫=护盾 提示）。
@@ -415,7 +423,7 @@ func _paint_glow() -> void:
 	elif bool(_last_slot.get("protected", false)):
 		_apply_glow_layers(PROTECTED_COLOR)
 	elif _actionable:
-		_apply_glow_layers(Table3dLayout.ACTIONABLE_COLOR)
+		_apply_glow_layers(_actionable_color)
 	else:
 		_apply_glow_layers(Color(0, 0, 0, 0))
 	if _glow_base.a > 0.0:
@@ -427,8 +435,12 @@ func _glow_pulse() -> float:
 
 ## color.a<=0 关闭；否则每层用自身 alpha × 闪烁系数，颜色取 color.rgb。
 func _apply_glow_layers(color: Color) -> void:
-	_glow_base = color
 	var on := color.a > 0.0
+	# 炫光从关闭→开启时直接置到最亮相位，避免"刚亮起时看起来没亮"（之后继续呼吸到全灭）。
+	if on and not _glow_on:
+		_glow_t = PI / GLOW_FLICKER_SPEED
+	_glow_on = on
+	_glow_base = color
 	var pulse := _glow_pulse()
 	for g in _glow_nodes:
 		var node: MeshInstance3D = g["node"]

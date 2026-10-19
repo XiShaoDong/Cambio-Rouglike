@@ -21,6 +21,8 @@ enum Phase { LOBBY, INITIAL_PEEK, TURN_DRAW, TURN_DECISION, Q_DECISION, SLAP_WIN
 
 const PROTOCOL_VERSION := 1 
 const MAX_ACTION_HISTORY := 64
+## 结算胜利曲目数量（与 AudioManager.winner_sfx 槽位一致）；服务器随机选一个并下发索引 → 全员一致。
+const WINNER_SFX_COUNT := 4
 
 enum RejectCode {
 	PROTOCOL_VERSION_MISMATCH,
@@ -1289,7 +1291,7 @@ func _finish_game(reason := "") -> void:
 		players[entry].wins = int(players[entry].get("wins", 0)) + 1
 	if _series_finished():
 		last_result["series"] = {"finished": true, "ranking": SeriesRanking.final_ranking(players, turn_order)}
-	_broadcast_sfx("winner")
+	_broadcast_sfx("winner:%d" % (randi() % WINNER_SFX_COUNT))
 	_broadcast_state()
 	if not last_result.get("ranking", []).is_empty() and not _series_finished():
 		_start_series_timer()
@@ -1480,7 +1482,7 @@ func _finish_game_over_hand(failed_seat: int) -> void:
 		players[entry].wins = int(players[entry].get("wins", 0)) + 1
 	if _series_finished():
 		last_result["series"] = {"finished": true, "ranking": SeriesRanking.final_ranking(players, turn_order)}
-	_broadcast_sfx("winner")
+	_broadcast_sfx("winner:%d" % (randi() % WINNER_SFX_COUNT))
 	_broadcast_state()
 	# R-07 超限结束同样要启动"结算→商店"自动推进，否则会卡在结算进不了商店。
 	if not last_result.get("ranking", []).is_empty() and not _series_finished():
