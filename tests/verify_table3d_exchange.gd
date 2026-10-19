@@ -406,7 +406,7 @@ func _test_discard_pile_actionable() -> void:
 	_check("TURN_DECISION 弃牌堆可点（弃大牌）", disc.is_pick_enabled())
 	_check("TURN_DECISION 弃牌堆橙色光晕（用能力）", disc.has_glow() and disc.glow_color() == Table3dView.USE_POWER_COLOR)
 	_check("空弃牌堆略高于桌面（橙光不被桌面遮住）", (view.get_node("Center/DiscardTop") as Node3D).position.y >= Table3dView.STACK_BASE_LIFT - 0.0001)
-	_check("大牌本身不再可点", not view._pending_block.is_pick_enabled())
+	_check("大牌保留 hover 拾取（用于解释气泡）", view._pending_block.is_pick_enabled())
 	# 非当前玩家 → 弃牌堆不可点/不光晕
 	var s3 := _base_state()
 	s3["phase"] = 3

@@ -150,6 +150,44 @@ func _ensure_hint_hud() -> void:
 	_hint_hud.z_index = 80
 	add_child(_hint_hud)
 
+## 大牌 hover 解释气泡（屏幕空间，跟随大牌投影位置）。
+func _ensure_card_tooltip() -> void:
+	if _card_tooltip != null and is_instance_valid(_card_tooltip):
+		return
+	_card_tooltip = CardTooltip.new()
+	_card_tooltip.name = "CardTooltip"
+	_card_tooltip.z_index = 85
+	add_child(_card_tooltip)
+
+func _hide_card_tooltip() -> void:
+	if _card_tooltip != null and is_instance_valid(_card_tooltip):
+		_card_tooltip.hide_tip()
+
+## 悬停在中央大牌上且牌面已知（当前玩家、来自抽牌堆）→ 在牌附近弹能力说明。
+func _update_pending_tooltip() -> void:
+	if _card_tooltip == null or not is_instance_valid(_card_tooltip):
+		return
+	if table3d == null or not is_instance_valid(table3d):
+		_hide_card_tooltip()
+		return
+	if str((table3d.hovered_pick() as Dictionary).get("kind", "")) != "pending":
+		_hide_card_tooltip()
+		return
+	var pending: Dictionary = latest_state.get("pending", {})
+	var text := CardAbilityText.bubble_text(str(pending.get("rank", "")), str(pending.get("source", "draw")))
+	if text.is_empty():
+		_hide_card_tooltip()
+		return
+	var cam: Camera3D = table3d.camera.camera_node()
+	if cam == null:
+		_hide_card_tooltip()
+		return
+	var sp := cam.unproject_position(table3d.pending_global_position())
+	var vp := get_viewport().get_visible_rect().size
+	if vp.x > 0.0 and vp.y > 0.0:
+		sp = Vector2(sp.x / vp.x * size.x, sp.y / vp.y * size.y)
+	_card_tooltip.show_text(text, sp)
+
 ## 驱动 HintHud：文本随 hint 变化，进入新回合（key 变化）时重置 30 并播进场。
 func _update_hint_hud(phase: int, viewer: int, current: int) -> void:
 	if _hint_hud == null or not is_instance_valid(_hint_hud):
@@ -450,6 +488,7 @@ func _set_table3d(on: bool) -> void:
 		_sync_table3d_pointer()
 		_ensure_hint_hud()
 		_hint_hud.show_hud(true)
+		_ensure_card_tooltip()
 		_refresh_hint_panel()
 		_ensure_self_panel()
 		_self_panel.visible = true
@@ -477,6 +516,7 @@ func _set_table3d(on: bool) -> void:
 			_round_badge.visible = false
 		if _hint_hud != null and is_instance_valid(_hint_hud):
 			_hint_hud.show_hud(false)
+		_hide_card_tooltip()
 		if _slap_burst != null and is_instance_valid(_slap_burst):
 			_slap_burst.queue_free()
 			_slap_burst = null
@@ -578,15 +618,18 @@ func _process(delta: float) -> void:
 	var on_board := _update_board_hover()
 	if _board_has_panel():
 		table3d.clear_hover()
+		_hide_card_tooltip()
 		if _crosshair != null and is_instance_valid(_crosshair):
 			_crosshair.set_active(on_board)
 		return
 	if on_board:
 		table3d.clear_hover()
+		_hide_card_tooltip()
 		if _crosshair != null and is_instance_valid(_crosshair):
 			_crosshair.set_active(true)
 		return
 	var on_target: bool = table3d.update_hover(interaction.action_mode != "")
+	_update_pending_tooltip()
 	if _crosshair != null and is_instance_valid(_crosshair):
 		_crosshair.set_active(on_target)
 
@@ -716,6 +759,7 @@ var _last_look_zoom := false
 var _last_look_talk := false
 var _talking_local := false
 var _crosshair: Control = null
+var _card_tooltip: CardTooltip = null
 var _self_panel: PlayerStatPanel = null
 var is_dev_join := false
 var start_button: Button = null

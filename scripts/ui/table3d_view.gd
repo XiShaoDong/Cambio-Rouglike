@@ -303,8 +303,8 @@ func render(state: Dictionary, actionable := Callable()) -> void:
 	_pending_seen = true
 	_pending_block.visible = not pending.is_empty() and not _pending_hold
 	_pending_block.set_pick({"kind": "pending"})
-	# 大牌不再直接可点（弃牌/用能力改由弃牌堆触发）；禁用拾取避免准星误标为可点
-	_pending_block.set_pick_enabled(false)
+	# 大牌不可点（弃牌/用能力由弃牌堆触发），但保留拾取用于 hover 解释气泡
+	_pending_block.set_pick_enabled(not pending.is_empty())
 	if not pending.is_empty():
 		_pending_block.setup({"card": pending} if pending.has("rank") else {})
 	# HUD 放在 viewer 座位内侧、朝向 viewer
@@ -810,10 +810,25 @@ func clear_hover() -> void:
 	_hover_collider = null
 	_leave_hover_slot()
 
+## 当前悬停对象的 pick 元数据（{} = 无）。
+func hovered_pick() -> Dictionary:
+	if _hover_collider == null or not is_instance_valid(_hover_collider):
+		return {}
+	return _hover_collider.get_meta("pick", {}) if _hover_collider.has_meta("pick") else {}
+
+## 中央大牌的世界坐标（用于把解释气泡投影到屏幕上）。
+func pending_global_position() -> Vector3:
+	if _pending_block == null or not is_instance_valid(_pending_block):
+		return Vector3.ZERO
+	return _pending_block.global_position
+
 ## 高亮/取消：卡牌类（CardBlock）显示外延虚线边框（白/绿/红）；其余用叠加薄色。
 ## 形参不标注类型：可能是已释放对象（传参处不做类型检查，函数内 is_instance_valid 兜底）。
 func _apply_hover(collider, on: bool) -> void:
 	if collider == null or not is_instance_valid(collider):
+		return
+	# 大牌（pending）只用于 hover 解释气泡，不显示虚线边框。
+	if collider.has_meta("pick") and str((collider.get_meta("pick") as Dictionary).get("kind", "")) == "pending":
 		return
 	var parent = (collider as Node).get_parent()
 	if parent == null or not is_instance_valid(parent):
