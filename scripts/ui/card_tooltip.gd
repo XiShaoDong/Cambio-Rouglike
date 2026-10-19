@@ -1,21 +1,24 @@
 class_name CardTooltip
 extends Control
-## 3D 大牌 hover 的聊天气泡（屏幕空间）：圆角气泡 + 指向卡牌的三角形尖角。
+## 3D 大牌 hover 的聊天气泡（屏幕空间），两段式：
+## ① 半圆/胶囊形文字框；② 指向卡牌的 V 字形箭头。
 ## 位置由 main 用相机投影的大牌屏幕矩形喂入（默认放在卡牌右上角外侧）。
 
 const FONT := 18
 const BG := Color(0.08, 0.09, 0.12, 0.92)
 const BORDER := Color(1.0, 1.0, 1.0, 0.25)
 const TEXT := Color(0.95, 0.97, 1.0)
-const TAIL := 9.0          # 尖角底边半宽
 const MAX_W := 320.0
 const GAP_X := 26.0        # 气泡在卡牌右侧的外扩
 const GAP_Y := 20.0        # 气泡在卡牌上方的外扩
-const ABOVE_GAP := 26.0
+const ABOVE_GAP := 30.0
+const V_WIDTH := 3.0       # V 箭头线宽
+const V_ARM := 12.0        # V 两臂在气泡底边的半间距
 
 var _bubble: PanelContainer
 var _label: Label
-var _tail: Polygon2D
+var _style: StyleBoxFlat
+var _arrow: Line2D
 var _target := Vector2.ZERO
 var _shown := false
 
@@ -25,13 +28,13 @@ func _ready() -> void:
 	_bubble = PanelContainer.new()
 	_bubble.name = "Bubble"
 	_bubble.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var style := StyleBoxFlat.new()
-	style.bg_color = BG
-	style.set_corner_radius_all(14)
-	style.set_content_margin_all(12)
-	style.border_color = BORDER
-	style.set_border_width_all(1)
-	_bubble.add_theme_stylebox_override("panel", style)
+	_style = StyleBoxFlat.new()
+	_style.bg_color = BG
+	_style.set_corner_radius_all(18)
+	_style.set_content_margin_all(12)
+	_style.border_color = BORDER
+	_style.set_border_width_all(1)
+	_bubble.add_theme_stylebox_override("panel", _style)
 	_label = Label.new()
 	_label.name = "Text"
 	_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -40,14 +43,19 @@ func _ready() -> void:
 	_label.add_theme_color_override("font_color", TEXT)
 	_bubble.add_child(_label)
 	add_child(_bubble)
-	# 尖角单独用 Polygon2D（在气泡之后添加 → 画在气泡上层，保证可见）。
-	_tail = Polygon2D.new()
-	_tail.name = "Tail"
-	_tail.color = BG
-	add_child(_tail)
+	# V 字形箭头（在气泡之后添加 → 画在上层）。
+	_arrow = Line2D.new()
+	_arrow.name = "Arrow"
+	_arrow.width = V_WIDTH
+	_arrow.default_color = BG
+	_arrow.joint_mode = Line2D.LINE_JOINT_ROUND
+	_arrow.begin_cap_mode = Line2D.LINE_CAP_ROUND
+	_arrow.end_cap_mode = Line2D.LINE_CAP_ROUND
+	_arrow.antialiased = true
+	add_child(_arrow)
 	visible = false
 
-## 放在卡牌屏幕矩形的**右上角外侧**，尖角指向卡牌右上角。
+## 放在卡牌屏幕矩形的**右上角外侧**，V 箭头指向卡牌右上角。
 func show_beside(text: String, card_rect: Rect2) -> void:
 	if text.is_empty():
 		hide_tip()
@@ -70,8 +78,8 @@ func show_text(text: String, target: Vector2) -> void:
 func hide_tip() -> void:
 	_shown = false
 	visible = false
-	if _tail != null:
-		_tail.polygon = PackedVector2Array()
+	if _arrow != null:
+		_arrow.points = PackedVector2Array()
 
 func text() -> String:
 	return _label.text if _label != null else ""
@@ -82,8 +90,9 @@ func is_shown() -> bool:
 func bubble_size() -> Vector2:
 	return _bubble.get_combined_minimum_size() if _bubble != null else Vector2.ZERO
 
+## 箭头折线点（3 点 = 一个 V）。
 func tail_points() -> PackedVector2Array:
-	return _tail.polygon if _tail != null else PackedVector2Array()
+	return _arrow.points if _arrow != null else PackedVector2Array()
 
 ## 先量出文本宽度，给 Label 一个非零最小宽度（否则 autowrap 的最小宽为 0 → 气泡没宽度）。
 func _prepare(text: String) -> void:
@@ -99,18 +108,16 @@ func _place(pos: Vector2, sz: Vector2, tail_target: Vector2) -> void:
 	pos.y = clampf(pos.y, 8.0, maxf(8.0, size.y - sz.y - 8.0))
 	_bubble.position = pos
 	_bubble.size = sz
+	# 半圆/胶囊感：圆角取高度一半（有上限，避免超高时过圆）。
+	_style.set_corner_radius_all(int(minf(sz.y * 0.5, 28.0)))
 	_target = tail_target
 	_shown = true
 	visible = true
-	_update_tail(Rect2(pos, sz), tail_target)
+	_update_arrow(Rect2(pos, sz), tail_target)
 
-## 尖角：锚在气泡下边缘（避开圆角），三角形指向目标点。
-func _update_tail(b: Rect2, target: Vector2) -> void:
-	var anchor := Vector2(clampf(target.x, b.position.x + 16.0, b.end.x - 16.0), b.end.y)
-	var dir := target - anchor
-	if dir.length() < 0.5:
-		dir = Vector2(0.0, 1.0)
-		anchor = Vector2(b.position.x + 16.0, b.end.y)
-	dir = dir.normalized()
-	var nrm := Vector2(-dir.y, dir.x) * TAIL
-	_tail.polygon = PackedVector2Array([anchor - nrm, anchor + nrm, target])
+## V 形箭头：两臂从气泡底边出发，汇聚在指向卡牌的尖端。
+func _update_arrow(b: Rect2, target: Vector2) -> void:
+	var ax := clampf(target.x, b.position.x + V_ARM + 4.0, b.end.x - V_ARM - 4.0)
+	var left := Vector2(ax - V_ARM, b.end.y)
+	var right := Vector2(ax + V_ARM, b.end.y)
+	_arrow.points = PackedVector2Array([left, target, right])
