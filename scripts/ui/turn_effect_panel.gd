@@ -36,8 +36,8 @@ func _build() -> void:
 	style.bg_color = BG
 	style.set_corner_radius_all(14)
 	style.set_content_margin_all(12)
-	style.border_color = BORDER
-	style.set_border_width_all(1)
+	# 无边框
+	style.set_border_width_all(0)
 	add_theme_stylebox_override("panel", style)
 	var vb := VBoxContainer.new()
 	vb.name = "VBox"
@@ -46,7 +46,7 @@ func _build() -> void:
 	_title = Label.new()
 	_title.name = "Title"
 	_title.text = "本局效果"
-	_title.add_theme_font_size_override("font_size", 18)
+	_title.add_theme_font_size_override("font_size", 16)
 	_title.add_theme_color_override("font_color", Color(1, 1, 1))
 	vb.add_child(_title)
 	var row := HBoxContainer.new()
@@ -75,7 +75,7 @@ func _build() -> void:
 	_desc.name = "Desc"
 	_desc.custom_minimum_size.x = DESC_W
 	_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_desc.add_theme_font_size_override("font_size", 15)
+	_desc.add_theme_font_size_override("font_size", 13)
 	_desc.add_theme_color_override("font_color", Color(0.92, 0.95, 1.0))
 	_desc.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	row.add_child(_desc)
@@ -105,7 +105,7 @@ func reveal(effect: Dictionary, center: Vector2, dock: Vector2) -> void:
 	position = center - sz * 0.5
 	_kill_tween()
 	_revealing = true
-	var end_pos := dock - sz
+	var end_pos := Vector2(dock.x - sz.x, dock.y)   # 面板右上角贴住 dock 点
 	_tween = create_tween()
 	_tween.tween_interval(HOLD_SECS)
 	_tween.tween_property(self, "position", end_pos, MOVE_SECS).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
@@ -122,7 +122,7 @@ func dock_at(dock: Vector2) -> void:
 	reset_size()
 	pivot_offset = size * 0.5
 	scale = Vector2.ONE
-	position = dock - size
+	position = Vector2(dock.x - size.x, dock.y)
 	visible = true
 	_kill_tween()
 	_revealing = false

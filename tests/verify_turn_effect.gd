@@ -47,6 +47,7 @@ func _test_panel() -> void:
 	p.dock_at(Vector2(1100, 75))
 	_check("dock 后不再播放", not p.is_revealing() and p.visible)
 	_check("dock 缩放 1", is_equal_approx(p.scale.x, 1.0))
+	_check("dock 右上角贴住 dock 点（不跑出屏幕）", is_equal_approx(p.position.x + p.size.x, 1100.0) and is_equal_approx(p.position.y, 75.0))
 	p.hide_panel()
 	_check("hide 后不可见", not p.visible)
 	p.queue_free()
