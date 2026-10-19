@@ -15,13 +15,13 @@ const RANK_FILE := {"A": "ace", "J": "jack", "Q": "queen", "K": "king", "10": "1
 
 ## 外发光：单层圆角矩形（{grow=相对卡边的外扩距离, alpha=不透明度}）。
 const GLOW_LAYERS := [
-	{"grow": 0.06, "alpha": 0.45},
+	{"grow": 0.03, "alpha": 0.45},
 ]
 const GLOW_RADIUS := 0.09            # 外发光圆角半径
 
 ## 炫光呼吸闪烁（作用于所有炫光态：黄/红/绿/紫）。从**全灭(0)**到**最亮(AMP)**。
 const GLOW_FLICKER_AMP := 1.0
-const GLOW_FLICKER_SPEED := 4.0      # 角速度 rad/s
+const GLOW_FLICKER_SPEED := 2.0      # 角速度 rad/s
 
 ## hover 外延虚线边框（卡外一圈虚线；颜色由 table3d_view 按状态给）。
 const BORDER_WHITE := Color(1.0, 1.0, 1.0, 0.9)
