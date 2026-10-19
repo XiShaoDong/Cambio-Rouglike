@@ -27,11 +27,15 @@ const GLOW_FLICKER_SPEED := 4.0      # 角速度 rad/s
 const BORDER_WHITE := Color(1.0, 1.0, 1.0, 0.9)
 const BORDER_GAP := 0.06             # 边框距卡边外扩（贴近卡边）
 const BORDER_T := 0.018              # 线粗
-const BORDER_DASH := 0.05            # 每段长
-const BORDER_SPACE := 0.04           # 段间隙
+const BORDER_DASH := 0.05            # 每段基准长
+const BORDER_SPACE := 0.04           # 段基准间隙
 const BORDER_Y := 0.006              # 离桌面（位于卡外，不被遮挡）
 const BORDER_RADIUS := 0.09          # 边框圆角半径
-const BORDER_STEP := 0.01            # 圆角/边采样步长
+const BORDER_STEP := 0.01            # 路径采样步长
+const BORDER_DASH_VARY := 0.15       # dash 长度 ±15%（手绘感）
+const BORDER_GAP_VARY := 0.20        # 间隙 ±20%
+const BORDER_SEED := 20261016        # 固定随机种子（每帧/每次重建一致）
+const BORDER_CAP := true             # 段端极轻微圆头
 
 static var _back_tex: Texture2D = null
 static var _peek_hidden_tex: Texture2D = null
@@ -491,29 +495,65 @@ func _emit_rounded_fill(im: ImmediateMesh, hx: float, hz: float, r: float) -> vo
 		im.surface_add_vertex(Vector3(a.x, 0.0, a.y))
 		im.surface_add_vertex(Vector3(b.x, 0.0, b.y))
 
-## 沿圆角矩形周长生成虚线（按弧长 BORDER_DASH 亮 / BORDER_SPACE 空）。
+## 沿「完整圆角矩形路径」按累计弧长 s 依次布 dash：dash 用多段折线跟随曲线（过弯连续），
+## 长度/间隙/粗细轻微随机（固定种子，每帧一致），端部极轻微圆头。不整体抖动。
 func _emit_dashed_ring(im: ImmediateMesh, hx: float, hz: float, r: float, half_t: float) -> void:
 	var path := _rounded_rect_samples(hx, hz, r, BORDER_STEP)
-	var period := BORDER_DASH + BORDER_SPACE
-	var acc := 0.0
-	var in_dash := false
-	var run_start := Vector2.ZERO
-	for i in path.size():
-		var a := path[i]
-		var b := path[(i + 1) % path.size()]
-		var seg := a.distance_to(b)
-		if seg <= 0.00001:
-			continue
-		var want := fposmod(acc, period) < BORDER_DASH
-		if want and not in_dash:
-			in_dash = true
-			run_start = a
-		elif not want and in_dash:
-			in_dash = false
-			_emit_segment_quad(im, run_start, a, half_t)
-		acc += seg
-	if in_dash:
-		_emit_segment_quad(im, run_start, path[0], half_t)
+	var n := path.size()
+	if n < 2:
+		return
+	var cum := PackedFloat32Array()
+	cum.resize(n + 1)
+	cum[0] = 0.0
+	for i in n:
+		cum[i + 1] = cum[i] + path[i].distance_to(path[(i + 1) % n])
+	var total := cum[n]
+	var rng := RandomNumberGenerator.new()
+	rng.seed = BORDER_SEED
+	var s := 0.0
+	while s < total - 0.001:
+		var dash_len := BORDER_DASH * rng.randf_range(1.0 - BORDER_DASH_VARY, 1.0 + BORDER_DASH_VARY)
+		var thick := half_t * rng.randf_range(0.9, 1.1)
+		var e := minf(s + dash_len, total)
+		_emit_path_strip(im, path, cum, s, e, thick)
+		if BORDER_CAP:
+			_emit_cap(im, _point_at_len(path, cum, s), thick)
+			_emit_cap(im, _point_at_len(path, cum, e), thick)
+		s = e + BORDER_SPACE * rng.randf_range(1.0 - BORDER_GAP_VARY, 1.0 + BORDER_GAP_VARY)
+
+## 沿路径弧长 s 取点（线性插值）。
+func _point_at_len(path: PackedVector2Array, cum: PackedFloat32Array, s: float) -> Vector2:
+	var n := path.size()
+	var total := cum[n]
+	s = clampf(s, 0.0, total)
+	var i := 0
+	while i < n - 1 and cum[i + 1] < s:
+		i += 1
+	var seg := cum[i + 1] - cum[i]
+	var t := 0.0 if seg <= 0.0 else (s - cum[i]) / seg
+	return path[i].lerp(path[(i + 1) % n], t)
+
+## 弧长区间 [s0,s1] 的 dash：细分为折线，逐段出四边形（经过圆角时自动跟随曲线）。
+func _emit_path_strip(im: ImmediateMesh, path: PackedVector2Array, cum: PackedFloat32Array, s0: float, s1: float, half_t: float) -> void:
+	if s1 <= s0:
+		return
+	var steps := maxi(2, int(ceil((s1 - s0) / BORDER_STEP)))
+	var prev := _point_at_len(path, cum, s0)
+	for k in range(1, steps + 1):
+		var s := lerpf(s0, s1, float(k) / float(steps))
+		var cur := _point_at_len(path, cum, s)
+		_emit_segment_quad(im, prev, cur, half_t)
+		prev = cur
+
+## 极轻微圆头（正八边形小圆盘，半径 = 线半宽）。
+func _emit_cap(im: ImmediateMesh, c: Vector2, r: float) -> void:
+	var seg := 8
+	for i in seg:
+		var a0 := TAU * float(i) / float(seg)
+		var a1 := TAU * float(i + 1) / float(seg)
+		im.surface_add_vertex(Vector3(c.x, 0.0, c.y))
+		im.surface_add_vertex(Vector3(c.x + cos(a0) * r, 0.0, c.y + sin(a0) * r))
+		im.surface_add_vertex(Vector3(c.x + cos(a1) * r, 0.0, c.y + sin(a1) * r))
 
 ## 单段 dash：p→q 沿线、垂直方向半宽 half_t 的矩形。
 func _emit_segment_quad(im: ImmediateMesh, p: Vector2, q: Vector2, half_t: float) -> void:
