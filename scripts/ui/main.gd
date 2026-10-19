@@ -176,6 +176,28 @@ func _ensure_card_order_panel() -> void:
 	_card_order_panel.grow_horizontal = Control.GROW_DIRECTION_END
 	_card_order_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
 
+## 每回合随机增强展示面板（3D，右上角）。
+func _ensure_turn_effect_panel() -> void:
+	if _turn_effect_panel != null and is_instance_valid(_turn_effect_panel):
+		return
+	_turn_effect_panel = TurnEffectPanel.new()
+	_turn_effect_panel.name = "TurnEffectPanel"
+	_turn_effect_panel.z_index = 90
+	add_child(_turn_effect_panel)
+
+## 新回合（进入 TURN_DRAW 且当前玩家变化）→ 抽一个随机效果并播「中央→右上」动画。
+func _maybe_new_turn_effect(phase: int, current: int) -> void:
+	if phase != PHASE_TURN_DRAW:
+		return
+	if phase == _effect_last_phase and current == _effect_last_current:
+		return
+	_effect_last_phase = phase
+	_effect_last_current = current
+	_ensure_turn_effect_panel()
+	_current_effect = TurnEffect.random()
+	var m := _corner_margin()
+	_turn_effect_panel.reveal(_current_effect, size * 0.5, Vector2(size.x - m, m))
+
 ## 悬停在"牌面已知"的牌上（自己手牌/大牌/弃牌顶/已揭示）→ 在牌旁弹信息气泡。
 func _update_card_tooltip() -> void:
 	if _card_tooltip == null or not is_instance_valid(_card_tooltip):
@@ -222,6 +244,7 @@ func _update_hint_hud(phase: int, viewer: int, current: int) -> void:
 		_hint_hud.reset_turn(HintHud.PHASE_TURN_SECONDS, text)
 	else:
 		_hint_hud.set_hint(text)
+	_maybe_new_turn_effect(phase, current)
 
 ## 3D 左下角按键提示（放大 Command / 手册 Tab）：说明纯白 + 圆角白底按键。
 func _ensure_key_hints() -> void:
@@ -249,8 +272,9 @@ func _ensure_round_badge() -> void:
 	_round_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_round_badge.z_index = 80
 	add_child(_round_badge)
-	_round_badge.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT, Control.PRESET_MODE_MINSIZE, int(round(_corner_margin())))
-	_round_badge.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	# 局数徽标移到左上角（右上角让给「本局效果」面板）。
+	_round_badge.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT, Control.PRESET_MODE_MINSIZE, int(round(_corner_margin())))
+	_round_badge.grow_horizontal = Control.GROW_DIRECTION_END
 	_round_badge.grow_vertical = Control.GROW_DIRECTION_END
 	_update_round_badge()
 
@@ -518,6 +542,11 @@ func _set_table3d(on: bool) -> void:
 		_round_badge.visible = true
 		_ensure_card_order_panel()
 		_card_order_panel.visible = true
+		_ensure_turn_effect_panel()
+		if not _current_effect.is_empty():
+			var em := _corner_margin()
+			_turn_effect_panel.set_effect(_current_effect)
+			_turn_effect_panel.dock_at(Vector2(size.x - em, em))
 		background.visible = false
 		game_panel.visible = false
 	else:
@@ -537,6 +566,8 @@ func _set_table3d(on: bool) -> void:
 			_round_badge.visible = false
 		if _card_order_panel != null and is_instance_valid(_card_order_panel):
 			_card_order_panel.visible = false
+		if _turn_effect_panel != null and is_instance_valid(_turn_effect_panel):
+			_turn_effect_panel.hide_panel()
 		if _hint_hud != null and is_instance_valid(_hint_hud):
 			_hint_hud.show_hud(false)
 		_hide_card_tooltip()
@@ -794,6 +825,10 @@ var _talking_local := false
 var _crosshair: Control = null
 var _card_tooltip: CardTooltip = null
 var _card_order_panel: CardOrderPanel = null
+var _turn_effect_panel: TurnEffectPanel = null
+var _current_effect: Dictionary = {}
+var _effect_last_phase := -1
+var _effect_last_current := -1
 var _self_panel: PlayerStatPanel = null
 var is_dev_join := false
 var start_button: Button = null

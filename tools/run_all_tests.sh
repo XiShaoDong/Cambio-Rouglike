@@ -99,6 +99,7 @@ run_single "manual"     res://tests/verify_manual.tscn
 run_single "keybind"    res://tests/verify_keybind.tscn
 run_single "card_tooltip" res://tests/verify_card_tooltip.tscn
 run_single "card_order"  res://tests/verify_card_order.tscn
+run_single "turn_effect" res://tests/verify_turn_effect.tscn
 run_single "board3d"    res://tests/verify_board3d.tscn
 run_single "hint"       res://tests/verify_hint.tscn
 run_single "hint_hud"   res://tests/verify_hint_hud.tscn

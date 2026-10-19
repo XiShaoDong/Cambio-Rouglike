@@ -82,8 +82,8 @@ func _run() -> void:
 	_check("3D 左下角按键提示存在", main_node._key_hints != null and is_instance_valid(main_node._key_hints))
 	_check("3D 按键提示可见", main_node._key_hints.visible)
 	_check("3D 按键提示 2 行", main_node._key_hints.row_count() == 2)
-	# 右上角回合徽标（同款 chip 样式，字号 = Command ×2，实时）
-	_check("3D 右上角回合徽标存在", main_node._round_badge != null and is_instance_valid(main_node._round_badge))
+	# 左上角回合徽标（原右上角移来）（同款 chip 样式，字号 = Command ×2，实时）
+	_check("3D 左上角回合徽标存在", main_node._round_badge != null and is_instance_valid(main_node._round_badge))
 	_check("回合徽标可见", main_node._round_badge.visible)
 	var rl: Label = main_node._round_badge.get_node_or_null("Key")
 	_check("回合徽标文本 回合 2/5", rl != null and rl.text == "回合 2/5")
@@ -92,7 +92,7 @@ func _run() -> void:
 	# 四个角 UI 统一边距（目标屏幕像素 75 → 补偿拉伸后的设计坐标）
 	var m: float = float(int(round(main_node._corner_margin())))
 	_check("左下角边距=75px 换算值（按键提示上移让出牌序面板）", is_equal_approx(main_node._key_hints.offset_left, m) and is_equal_approx(main_node._key_hints.offset_bottom, -(m + main_node.CARD_ORDER_LIFT)))
-	_check("右上角边距=75px 换算值", is_equal_approx(main_node._round_badge.offset_right, -m) and is_equal_approx(main_node._round_badge.offset_top, m))
+	_check("左上角边距=75px 换算值", is_equal_approx(main_node._round_badge.offset_left, m) and is_equal_approx(main_node._round_badge.offset_top, m))
 	_check("右下角边距=75px 换算值", is_equal_approx(main_node._self_panel.offset_right, -m) and is_equal_approx(main_node._self_panel.offset_bottom, -m))
 	# 背景纯白（保留透明度）+ 字体纯白
 	var chip_bg := KeyHintPanel.chip_style_box().bg_color
