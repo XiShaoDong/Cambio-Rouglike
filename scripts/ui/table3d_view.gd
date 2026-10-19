@@ -18,6 +18,8 @@ const BORDER_GREEN := Color(0.53, 0.85, 0.63)
 const BORDER_RED := Color(1.0, 0.48, 0.48)
 ## 弃牌堆"用能力"（弃掉抽到的牌发动 7/8/9/10/J/Q）的提示色：橙色（区别于取弃牌顶的金色）。
 const USE_POWER_COLOR := Color(1.0, 0.55, 0.15)
+## 中央牌堆顶牌相对桌面的极小抬升：贴桌（y=0）时炫光平面（本地 y=-0.002）会被桌面遮住。
+const STACK_BASE_LIFT := 0.004
 ## 手牌槽距放大倍数（列距/行距 = (卡尺寸+间隙) × 该值）；默认 +1/10。
 const HAND_SPACING_SCALE := 1.1
 const STAT_VIEWPORT_SIZE := Vector2i(320, 120)
@@ -261,7 +263,7 @@ func render(state: Dictionary, actionable := Callable()) -> void:
 	if _deck_pile != null and is_instance_valid(_deck_pile):
 		_deck_pile.set_count(maxi(draw_n - 1, 0))
 	if _deck_node != null and is_instance_valid(_deck_node):
-		_deck_node.position.y = draw_n * DeckPile.CARD_THICKNESS
+		_deck_node.position.y = draw_n * DeckPile.CARD_THICKNESS + STACK_BASE_LIFT
 		# 抽牌堆：hover 虚线圈压到牌堆底部（贴桌面），而不是浮在顶牌上
 		if _deck_node.has_method("set_border_offset"):
 			_deck_node.set_border_offset(-_deck_node.position.y)
@@ -274,7 +276,8 @@ func render(state: Dictionary, actionable := Callable()) -> void:
 	if _discard_pile != null and is_instance_valid(_discard_pile):
 		_discard_pile.set_count(maxi(discard_count - 1, 0))
 	if _discard_node != null and is_instance_valid(_discard_node):
-		_discard_node.position.y = discard_count * DeckPile.CARD_THICKNESS
+		# + 极小抬升：空弃牌堆贴桌时炫光会被桌面遮住（橙光/金光都看不到）。
+		_discard_node.position.y = discard_count * DeckPile.CARD_THICKNESS + STACK_BASE_LIFT
 	# 弃牌堆可点：取弃牌顶（金）/ 弃掉抽到的牌·用能力（橙）；可点时对应光晕
 	var discard_actionable := ActionModel.discard_pile_actionable(state)
 	var use_power := ActionModel.pending_discard_available(state)

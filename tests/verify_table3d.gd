@@ -104,7 +104,7 @@ func _test_view_render() -> void:
 	_check("抽牌堆有 DeckPile", deck_pile != null)
 	_check("牌堆张数 = draw_count-1（29）", deck_pile != null and deck_pile.count() == 29 and deck_pile.card_nodes() == 29)
 	_check("顶牌显示卡背", (view.get_node("Center/Deck") as CardBlock).has_back_texture())
-	_check("顶牌抬到堆顶（30×厚）", is_equal_approx((view.get_node("Center/Deck") as Node3D).position.y, 30.0 * DeckPile.CARD_THICKNESS))
+	_check("顶牌抬到堆顶（30×厚）", is_equal_approx((view.get_node("Center/Deck") as Node3D).position.y, 30.0 * DeckPile.CARD_THICKNESS + Table3dView.STACK_BASE_LIFT))
 	_check("viewer 座位可见", view._seat_nodes[0].visible)
 	_check("对手座位可见", view._seat_nodes[1].visible)
 	_check("空座位隐藏", not view._seat_nodes[2].visible and not view._seat_nodes[3].visible)
@@ -143,7 +143,7 @@ func _test_view_render() -> void:
 	_check("弃牌顶标签 7♣", (center.get_node("DiscardTop") as CardBlock).label_text() == "7♣")
 	_check("弃牌堆有 DiscardPile", center.get_node_or_null("DiscardPile") != null)
 	_check("弃牌堆张数 = discard_count-1（4）", center.get_node("DiscardPile").count() == 4 and center.get_node("DiscardPile").card_nodes() == 4)
-	_check("弃牌顶抬到堆顶（5×厚）", is_equal_approx((center.get_node("DiscardTop") as Node3D).position.y, 5.0 * DeckPile.CARD_THICKNESS))
+	_check("弃牌顶抬到堆顶（5×厚）", is_equal_approx((center.get_node("DiscardTop") as Node3D).position.y, 5.0 * DeckPile.CARD_THICKNESS + Table3dView.STACK_BASE_LIFT))
 	_check("pending 标签 Q♦", (center.get_node("Pending") as CardBlock).label_text() == "Q♦")
 	# pending 首次出现会触发抽牌飞牌（期间大牌隐藏），落地后才显示
 	await get_tree().create_timer(1.0).timeout
@@ -153,7 +153,7 @@ func _test_view_render() -> void:
 	var disc_n: Node3D = center.get_node("DiscardTop")
 	_check("两堆关于桌心对称", is_zero_approx(deck_n.position.x + disc_n.position.x) and is_zero_approx(deck_n.position.z - disc_n.position.z))
 	_check("抽牌后牌堆变矮（28）", deck_pile != null and deck_pile.count() == 28 and deck_pile.card_nodes() == 28)
-	_check("顶牌高度随张数（29×厚）", is_equal_approx(deck_n.position.y, 29.0 * DeckPile.CARD_THICKNESS))
+	_check("顶牌高度随张数（29×厚）", is_equal_approx(deck_n.position.y, 29.0 * DeckPile.CARD_THICKNESS + Table3dView.STACK_BASE_LIFT))
 	# 空槽（贴牌成功被清掉的牌）不渲染 → 卡牌消失
 	view.render({
 		"viewer_id": 0,
