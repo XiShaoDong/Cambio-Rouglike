@@ -27,12 +27,12 @@ const GLOW_FLICKER_SPEED := 4.0      # 角速度 rad/s
 const BORDER_WHITE := Color(1.0, 1.0, 1.0, 0.9)
 const BORDER_GAP := 0.06             # 边框距卡边外扩（贴近卡边）
 const BORDER_T := 0.018              # 线粗
-const BORDER_DASH := 0.05            # 每段基准长
+const BORDER_DASH_MIN := 0.025       # dash 长度下限（手绘感：长短不一）
+const BORDER_DASH_MAX := 0.085       # dash 长度上限
 const BORDER_SPACE := 0.04           # 段基准间隙
 const BORDER_Y := 0.006              # 离桌面（位于卡外，不被遮挡）
 const BORDER_RADIUS := 0.09          # 边框圆角半径
 const BORDER_STEP := 0.01            # 路径采样步长
-const BORDER_DASH_VARY := 0.15       # dash 长度 ±15%（手绘感）
 const BORDER_GAP_VARY := 0.20        # 间隙 ±20%
 const BORDER_SEED := 20261016        # 固定随机种子（每帧/每次重建一致）
 const BORDER_CAP := true             # 段端极轻微圆头
@@ -512,7 +512,7 @@ func _emit_dashed_ring(im: ImmediateMesh, hx: float, hz: float, r: float, half_t
 	rng.seed = BORDER_SEED
 	var s := 0.0
 	while s < total - 0.001:
-		var dash_len := BORDER_DASH * rng.randf_range(1.0 - BORDER_DASH_VARY, 1.0 + BORDER_DASH_VARY)
+		var dash_len := rng.randf_range(BORDER_DASH_MIN, BORDER_DASH_MAX)
 		var thick := half_t * rng.randf_range(0.9, 1.1)
 		var e := minf(s + dash_len, total)
 		_emit_path_strip(im, path, cum, s, e, thick)
