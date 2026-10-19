@@ -22,6 +22,8 @@ const USE_POWER_COLOR := Color(1.0, 0.55, 0.15)
 const STACK_BASE_LIFT := 0.004
 ## 手牌槽距放大倍数（列距/行距 = (卡尺寸+间隙) × 该值）；默认 +1/10。
 const HAND_SPACING_SCALE := 1.1
+## 铃铛拾取盒随模型一起缩小（避免误触）。
+const BELL_PICK_SCALE := 2.0 / 3.0
 const STAT_VIEWPORT_SIZE := Vector2i(320, 120)
 const STAT_PANEL_OFFSET := Vector3(0.0, 0.75, 0.0)
 const STAT_PANEL_PIXEL_SIZE := 0.005
@@ -147,6 +149,10 @@ func _bind() -> void:
 			bell_pick.collision_layer = Table3dLayout.PICK_MASK
 			bell_pick.collision_mask = 0
 			bell_pick.set_meta("pick", {"kind": "hud", "action": "kongbaya"})
+			# 拾取盒随铃铛一起缩小 1/3（降低误触）。
+			var pick_shape := bell_pick.get_node_or_null("PickShape") as CollisionShape3D
+			if pick_shape != null:
+				pick_shape.scale = Vector3.ONE * BELL_PICK_SCALE
 	if camera == null or _deck_label == null or _discard_block == null \
 			or _pending_block == null or _hud == null:
 		push_error("[Table3dView] 场景缺少必需节点：CameraRig/Center/DeckCount/DiscardTop/Pending/Hud")

@@ -278,6 +278,7 @@ func _test_view() -> void:
 	var hud_pick: Dictionary = view.pick_center()
 	_check("pick_center 命中 HUD", str(hud_pick.get("kind", "")) == "hud" and str(hud_pick.get("action", "")) == "ready")
 	_check("铃铛拾取标记", view.get_node("Center/KongBell/PickArea").get_meta("pick", {}).get("action", "") == "kongbaya")
+	_check("铃铛拾取盒随模型缩小 1/3", (view.get_node("Center/KongBell/PickArea/PickShape") as CollisionShape3D).scale.is_equal_approx(Vector3.ONE * Table3dView.BELL_PICK_SCALE))
 	var bell_node = view.get_node("Center/KongBell")
 	var bell_model = bell_node.get_node_or_null("BellModel")
 	_check("铃铛已挂 BellModel", bell_model != null)
