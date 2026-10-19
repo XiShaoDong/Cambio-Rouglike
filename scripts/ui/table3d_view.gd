@@ -822,11 +822,32 @@ func pending_global_position() -> Vector3:
 		return Vector3.ZERO
 	return _pending_block.global_position
 
+## 当前悬停卡牌的已知牌面（未知/非卡牌返回 {}）。
+func hovered_card() -> Dictionary:
+	if _hover_collider == null or not is_instance_valid(_hover_collider):
+		return {}
+	var parent = _hover_collider.get_parent()
+	if parent != null and parent.has_method("known_card"):
+		return parent.known_card()
+	return {}
+
+## 当前悬停卡牌的屏幕外接矩形（视口像素）。
+func hovered_screen_rect(cam: Camera3D) -> Rect2:
+	if _hover_collider == null or not is_instance_valid(_hover_collider):
+		return Rect2()
+	var parent = _hover_collider.get_parent()
+	if parent is Node3D:
+		return _node_screen_rect(parent, cam)
+	return Rect2()
+
 ## 中央大牌投影到屏幕的外接矩形（视口像素坐标）。
 func pending_screen_rect(cam: Camera3D) -> Rect2:
-	if _pending_block == null or not is_instance_valid(_pending_block) or cam == null:
+	return _node_screen_rect(_pending_block, cam)
+
+func _node_screen_rect(node: Node3D, cam: Camera3D) -> Rect2:
+	if node == null or not is_instance_valid(node) or cam == null:
 		return Rect2()
-	var xf: Transform3D = _pending_block.global_transform
+	var xf: Transform3D = node.global_transform
 	var hx := Table3dLayout.BLOCK_SIZE.x * 0.5
 	var hz := Table3dLayout.BLOCK_SIZE.z * 0.5
 	var mn := Vector2(INF, INF)

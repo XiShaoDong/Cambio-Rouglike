@@ -1,25 +1,30 @@
 class_name CardAbilityText
 extends RefCounted
-## 抽到的大牌（pending）能力解释文案（纯函数，headless 可测）。
-## 只有"从抽牌堆抽出"的牌可发动能力；从弃牌堆取到的 7–Q 只能替换，故返回空。
+## 卡牌信息气泡内容（纯函数，headless 可测）：
+## 第一行 左=牌名 / 右=分数（大字）；之后每行=能力说明；无能力=「无能力」。
+## source=="discard"（大牌取自弃牌堆）→ 能力不可发动。
 
-static func ability(rank: String, source: String) -> String:
+static func info(rank: String, source := "") -> Dictionary:
+	var lines: Array = []
 	if source == "discard":
-		return ""
-	match rank:
-		"7", "8":
-			return "看自己一张牌"
-		"9", "10":
-			return "看别人一张牌"
-		"J":
-			return "盲换：与自己一张牌交换"
-		"Q":
-			return "看别人一张牌，再看自己一张，决定是否交换"
-	return ""
+		lines = ["从弃牌堆取得：只能替换，不能发动能力"]
+	else:
+		match rank:
+			"7", "8":
+				lines = ["看自己一张牌"]
+			"9", "10":
+				lines = ["看别人一张牌"]
+			"J":
+				lines = ["盲换：与自己一张牌交换"]
+			"Q":
+				lines = ["查看两张牌，并选择是否交换", "不能对两个其他玩家生效"]
+			_:
+				lines = ["无能力"]
+	return {
+		"rank": display_rank(rank),
+		"value": KongRules.card_value(rank),
+		"lines": lines,
+	}
 
-## 聊天气泡正文：有解释时前缀点数，如「9：看别人一张牌」；无解释返回空串。
-static func bubble_text(rank: String, source: String) -> String:
-	var t := ability(rank, source)
-	if t.is_empty():
-		return ""
-	return "%s：%s" % [rank, t]
+static func display_rank(rank: String) -> String:
+	return "Joker" if rank == "JOKER" else rank

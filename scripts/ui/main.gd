@@ -163,32 +163,33 @@ func _hide_card_tooltip() -> void:
 	if _card_tooltip != null and is_instance_valid(_card_tooltip):
 		_card_tooltip.hide_tip()
 
-## 悬停在中央大牌上且牌面已知（当前玩家、来自抽牌堆）→ 在牌附近弹能力说明。
-func _update_pending_tooltip() -> void:
+## 悬停在"牌面已知"的牌上（自己手牌/大牌/弃牌顶/已揭示）→ 在牌旁弹信息气泡。
+func _update_card_tooltip() -> void:
 	if _card_tooltip == null or not is_instance_valid(_card_tooltip):
 		return
 	if table3d == null or not is_instance_valid(table3d):
 		_hide_card_tooltip()
 		return
-	if str((table3d.hovered_pick() as Dictionary).get("kind", "")) != "pending":
+	var card: Dictionary = table3d.hovered_card()
+	var rank := str(card.get("rank", ""))
+	if rank.is_empty():
 		_hide_card_tooltip()
 		return
-	var pending: Dictionary = latest_state.get("pending", {})
-	var text := CardAbilityText.bubble_text(str(pending.get("rank", "")), str(pending.get("source", "draw")))
-	if text.is_empty():
-		_hide_card_tooltip()
-		return
+	var source := ""
+	if str((table3d.hovered_pick() as Dictionary).get("kind", "")) == "pending":
+		source = str((latest_state.get("pending", {}) as Dictionary).get("source", "draw"))
+	var info := CardAbilityText.info(rank, source)
 	var cam: Camera3D = table3d.camera.camera_node()
 	if cam == null:
 		_hide_card_tooltip()
 		return
 	var vp := get_viewport().get_visible_rect().size
-	var rect: Rect2 = table3d.pending_screen_rect(cam)
+	var rect: Rect2 = table3d.hovered_screen_rect(cam)
 	if vp.x > 0.0 and vp.y > 0.0:
 		var sx := size.x / vp.x
 		var sy := size.y / vp.y
 		rect = Rect2(Vector2(rect.position.x * sx, rect.position.y * sy), Vector2(rect.size.x * sx, rect.size.y * sy))
-	_card_tooltip.show_beside(text, rect)
+	_card_tooltip.show_card(info, rect)
 
 ## 驱动 HintHud：文本随 hint 变化，进入新回合（key 变化）时重置 30 并播进场。
 func _update_hint_hud(phase: int, viewer: int, current: int) -> void:
@@ -634,7 +635,7 @@ func _process(delta: float) -> void:
 			_crosshair.set_active(true)
 		return
 	var on_target: bool = table3d.update_hover(interaction.action_mode != "")
-	_update_pending_tooltip()
+	_update_card_tooltip()
 	if _crosshair != null and is_instance_valid(_crosshair):
 		_crosshair.set_active(on_target)
 

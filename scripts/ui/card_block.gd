@@ -53,6 +53,7 @@ var _material: StandardMaterial3D
 var _area: Area3D
 var _pick_shape: CollisionShape3D
 var _last_slot: Dictionary = {}
+var _reveal_known: Dictionary = {}   # 临时揭示的牌面（看牌/贴牌），供 hover 气泡读取
 var _actionable := false
 var _actionable_color := Table3dLayout.ACTIONABLE_COLOR
 var _pick_enabled := true
@@ -195,6 +196,7 @@ func setup(slot: Dictionary) -> void:
 	_kill_flip()
 	_reveal_p = 0.0
 	_reveal_color = Color(0, 0, 0, 0)
+	_reveal_known = {}
 	if _flip != null:
 		_flip.transform = Transform3D.IDENTITY
 	if _hover_tween != null and _hover_tween.is_valid():
@@ -259,6 +261,13 @@ func set_hover(on: bool, color := BORDER_WHITE) -> void:
 func is_actionable() -> bool:
 	return _actionable
 
+## 当前"对该 viewer 已知"的牌面（槽位公开牌 或 临时揭示牌）；未知返回 {}。
+func known_card() -> Dictionary:
+	var slot_card: Dictionary = _last_slot.get("card", {})
+	if not slot_card.is_empty():
+		return slot_card
+	return _reveal_known
+
 ## hover 虚线边框是否存在。
 func has_border() -> bool:
 	return _border_mesh != null and _border_mesh.visible
@@ -275,6 +284,7 @@ func reveal(card: Dictionary, color := Color(0, 0, 0, 0), from_p := 0.0) -> void
 	_back_material.albedo_color = Color.WHITE
 	_back_is_back = card.is_empty()
 	_set_label_text(card_text(card))
+	_reveal_known = card.duplicate() if not card.is_empty() else {}
 	_reveal_color = color
 	_paint_glow()
 	if from_p <= 0.0:
@@ -286,6 +296,7 @@ func reveal(card: Dictionary, color := Color(0, 0, 0, 0), from_p := 0.0) -> void
 ## 用于 7/8/9/10/Q 看牌时向其他玩家表达"此牌正被人看"，比单纯蓝光更明显。
 func reveal_hidden(color := Color(0, 0, 0, 0), from_p := 0.0) -> void:
 	_build()
+	_reveal_known = {}
 	_back_material.albedo_texture = _peek_hidden_texture()
 	_back_material.albedo_color = Color.WHITE
 	_back_is_back = false
@@ -330,6 +341,7 @@ func _reveal_from(from_p: float) -> void:
 func restore() -> void:
 	_build()
 	_reveal_color = Color(0, 0, 0, 0)
+	_reveal_known = {}
 	var card: Dictionary = _last_slot.get("card", {})
 	_set_label_text("" if card.is_empty() else card_text(card))
 	_paint_glow()

@@ -1,5 +1,5 @@
 extends Node
-## headless 单元测试：大牌能力文案（CardAbilityText）+ 聊天气泡（CardTooltip）。
+## headless 单元测试：卡牌信息内容（CardAbilityText.info）+ 信息气泡（CardTooltip）。
 
 var failures := 0
 var checks := 0
@@ -18,36 +18,42 @@ func _check(name: String, ok: bool) -> void:
 		printerr("[FAIL] " + name)
 
 func _run() -> void:
-	_test_ability_text()
+	_test_info()
 	await _test_tooltip()
 
-func _test_ability_text() -> void:
-	_check("7 看自己", CardAbilityText.ability("7", "draw") == "看自己一张牌")
-	_check("8 看自己", CardAbilityText.ability("8", "draw") == "看自己一张牌")
-	_check("9 看别人", CardAbilityText.ability("9", "draw") == "看别人一张牌")
-	_check("10 看别人", CardAbilityText.ability("10", "draw") == "看别人一张牌")
-	_check("J 盲换", "盲换" in CardAbilityText.ability("J", "draw"))
-	_check("Q 看后决定", "决定是否交换" in CardAbilityText.ability("Q", "draw"))
-	_check("A 无解释", CardAbilityText.ability("A", "draw") == "")
-	_check("弃牌堆取到不可用能力", CardAbilityText.ability("9", "discard") == "")
-	_check("气泡前缀点数", CardAbilityText.bubble_text("9", "draw") == "9：看别人一张牌")
-	_check("无解释时气泡为空", CardAbilityText.bubble_text("A", "draw") == "")
+func _test_info() -> void:
+	var k := CardAbilityText.info("K")
+	_check("K 牌名", str(k["rank"]) == "K")
+	_check("K 分数 -1", int(k["value"]) == -1)
+	_check("K 无能力", k["lines"] == ["无能力"])
+	var q := CardAbilityText.info("Q")
+	_check("Q 分数 10", int(q["value"]) == 10)
+	_check("Q 能力首行", str(q["lines"][0]) == "查看两张牌，并选择是否交换")
+	_check("Q 约束行", str(q["lines"][1]) == "不能对两个其他玩家生效")
+	_check("7 看自己", CardAbilityText.info("7")["lines"] == ["看自己一张牌"])
+	_check("8 看自己", CardAbilityText.info("8")["lines"] == ["看自己一张牌"])
+	_check("9 看别人", CardAbilityText.info("9")["lines"] == ["看别人一张牌"])
+	_check("10 看别人", CardAbilityText.info("10")["lines"] == ["看别人一张牌"])
+	_check("J 盲换", "盲换" in str(CardAbilityText.info("J")["lines"][0]))
+	var joker := CardAbilityText.info("JOKER")
+	_check("Joker 显示名", str(joker["rank"]) == "Joker")
+	_check("Joker 分数 0", int(joker["value"]) == 0)
+	_check("弃牌堆取得不可用能力", "只能替换" in str(CardAbilityText.info("9", "discard")["lines"][0]))
 
 func _test_tooltip() -> void:
 	var tip := CardTooltip.new()
 	add_child(tip)
 	await get_tree().process_frame
 	_check("初始隐藏", not tip.is_shown() and not tip.visible)
-	tip.show_text("9：看别人一张牌", Vector2(200, 200))
+	tip.show_card(CardAbilityText.info("Q"), Rect2(100, 100, 60, 80))
 	_check("show 后可见", tip.is_shown() and tip.visible)
-	_check("文本正确", tip.text() == "9：看别人一张牌")
+	_check("第一行左=牌名", tip.rank_text() == "Q")
+	_check("第一行右=分数", tip.score_text() == "10")
+	_check("能力行数 2", tip.line_texts().size() == 2)
 	_check("气泡有宽度", tip.bubble_size().x > 0.0)
-	tip.show_beside("Q：看别人一张牌，再看自己一张，决定是否交换", Rect2(100, 100, 60, 80))
-	_check("show_beside 可见", tip.is_shown() and tip.visible)
-	_check("长文本气泡有宽度", tip.bubble_size().x > 0.0)
+	tip.show_card(CardAbilityText.info("K"), Rect2(100, 100, 60, 80))
+	_check("切换内容 K", tip.rank_text() == "K" and tip.score_text() == "-1")
+	_check("K 显示无能力", tip.line_texts() == ["无能力"])
 	tip.hide_tip()
 	_check("hide 后隐藏", not tip.is_shown() and not tip.visible)
-	# 空文本不显示
-	tip.show_text("", Vector2(10, 10))
-	_check("空文本不弹", not tip.is_shown())
 	tip.queue_free()
