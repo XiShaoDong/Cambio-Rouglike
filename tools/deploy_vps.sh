@@ -106,11 +106,30 @@ RestartSec=3
 WantedBy=multi-user.target
 EOF
 
+# 重启服务并校验"真的换了进程"：某些情况下 restart 可能未生效，则强制 stop/start。
+restart_service() {
+  local svc="$1"
+  local pid_before pid_after
+  pid_before="$(systemctl show -p MainPID --value "$svc" 2>/dev/null || echo 0)"
+  sudo systemctl restart "$svc" || true
+  sleep 2
+  pid_after="$(systemctl show -p MainPID --value "$svc" 2>/dev/null || echo 0)"
+  if [ "$pid_after" = "0" ] || [ "$pid_after" = "$pid_before" ]; then
+    echo "[deploy] $svc 重启未生效（pid $pid_before → $pid_after），强制 stop/start"
+    sudo systemctl reset-failed "$svc" 2>/dev/null || true
+    sudo systemctl stop "$svc" 2>/dev/null || true
+    sleep 1
+    sudo systemctl start "$svc" || true
+    sleep 2
+    pid_after="$(systemctl show -p MainPID --value "$svc" 2>/dev/null || echo 0)"
+  fi
+  echo "[deploy] $svc pid=$pid_after"
+}
+
 sudo systemctl daemon-reload
 sudo systemctl enable kong-directory.service kong-server.service
-sudo systemctl restart kong-directory.service
-sleep 1
-sudo systemctl restart kong-server.service
+restart_service kong-directory.service
+restart_service kong-server.service
 
 log "6/6 防火墙（iptables，兼容 Oracle 自带规则）"
 # Oracle Ubuntu 镜像自带 iptables REJECT 规则，ufw 未必生效；直接插 ACCEPT 并持久化。
