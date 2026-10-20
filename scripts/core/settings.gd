@@ -18,6 +18,9 @@ var _data := {
 		"theme": "dark",
 		"language": "zh",
 	},
+	"gameplay": {
+		"nose_click": false,   # 彩蛋：Robot 鼻子点击（3D 悬停卡牌中键/D 伸鼻）
+	},
 }
 
 func _ready() -> void:

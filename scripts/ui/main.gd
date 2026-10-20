@@ -71,6 +71,104 @@ func _table3d_click() -> void:
 		"hud":
 			_on_action(str(pick.get("action", "")))
 
+## 彩蛋"鼻子点击"是否启用（设置菜单开关，默认关闭）。
+func _nose_enabled() -> bool:
+	return bool(Settings.get_setting("gameplay", "nose_click", false))
+
+## 按住 D：冻结准星落点、释放鼠标、在落点显示四扇区轮盘。
+func _open_mark_wheel() -> void:
+	if _wheel_open or table3d == null or not is_instance_valid(table3d):
+		return
+	if _board_has_panel() or _settings_open():
+		return
+	var cam: Camera3D = table3d.camera.camera_node()
+	if cam == null:
+		return
+	var center: Vector2 = get_viewport().get_visible_rect().size * 0.5
+	var pos: Vector3 = Table3dPicker.ray_plane_y(cam, center, Table3dLayout.TABLE_HEIGHT)
+	if not pos.is_finite() or not Mark3dMathScript.on_table(pos, Table3dLayout.TABLE_RADIUS):
+		return
+	_wheel_pos = pos
+	if _mark_wheel == null or not is_instance_valid(_mark_wheel):
+		_mark_wheel = MarkWheelScript.new()
+		add_child(_mark_wheel)
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+	_mark_wheel.open(center, _discard_number_text())
+	_wheel_open = true
+	_wheel_kind = "mark"
+
+## 松开对应键：按所选放置标记 / 播放表情（中空/未选 → 不做），并恢复捕获。
+func _finish_wheel() -> void:
+	var kind := _wheel_kind
+	_wheel_open = false
+	_wheel_kind = ""
+	if kind == "emote":
+		var idx := -1
+		if _emote_wheel != null and is_instance_valid(_emote_wheel):
+			idx = _emote_wheel.selected()
+			_emote_wheel.close()
+		_sync_table3d_pointer()
+		if idx >= 0:
+			var seat_e := int(latest_state.get("viewer_id", -1))
+			if seat_e >= 0:
+				_send_emote(seat_e, idx)
+		return
+	var sel := ""
+	if _mark_wheel != null and is_instance_valid(_mark_wheel):
+		sel = _mark_wheel.selected()
+		_mark_wheel.close()
+	_sync_table3d_pointer()
+	if sel == "":
+		return
+	var style := "nose" if _nose_enabled() else "ripple"
+	var text := _discard_number_text() if sel == "number" else ""
+	var seat := int(latest_state.get("viewer_id", -1))
+	if seat < 0:
+		return
+	_send_mark(seat, _wheel_pos, style, sel, text)
+
+func _send_mark(seat: int, pos: Vector3, style: String, icon: String, text: String) -> void:
+	if multiplayer.is_server():
+		GameState._apply_mark(seat, pos, style, icon, text)
+	else:
+		GameState.server_mark.rpc_id(1, pos, style, icon, text)
+
+## 数字扇区文案 = 当前弃牌堆顶 rank；空弃牌堆 → "-1"。
+func _discard_number_text() -> String:
+	var discard: Dictionary = latest_state.get("discard", {})
+	var r := str(discard.get("rank", ""))
+	return r if not r.is_empty() else "-1"
+
+## 收到标记（自己/他人）→ 3D 下显示。
+func _on_mark_placed(seat: int, pos: Vector3, style: String, icon: String, text: String) -> void:
+	if _table3d_active and table3d != null and is_instance_valid(table3d):
+		table3d.show_mark(seat, pos, style, icon, text)
+
+## 处理 Y：释放鼠标、屏幕中心显示 6 扇区表情轮盘。
+func _open_emote_wheel() -> void:
+	if _wheel_open or table3d == null or not is_instance_valid(table3d):
+		return
+	if _board_has_panel() or _settings_open():
+		return
+	if _emote_wheel == null or not is_instance_valid(_emote_wheel):
+		_emote_wheel = EmoteWheelScript.new()
+		add_child(_emote_wheel)
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+	_emote_wheel.open(get_viewport().get_visible_rect().size * 0.5)
+	_wheel_open = true
+	_wheel_kind = "emote"
+
+func _send_emote(seat: int, index: int) -> void:
+	if multiplayer.is_server():
+		GameState._apply_emote(seat, index)
+	else:
+		GameState.server_emote.rpc_id(1, index)
+
+## 收到表情（他人）→ 3D 下显示。
+func _on_emote_played(seat: int, index: int) -> void:
+	if _table3d_active and table3d != null and is_instance_valid(table3d):
+		table3d.show_emote(seat, index)
+
 ## 3D 操作面板动作（与 2D 控制按钮行为一致）。
 func _on_action(action: String) -> void:
 	match action:
@@ -91,6 +189,17 @@ func _on_action(action: String) -> void:
 			interaction.jack_cancel()
 		"joker":
 			_open_joker_transform_panel()
+		"restart":
+			_request_restart_confirm()
+		"restart_yes":
+			_restart_confirm = false
+			GameState.request_restart_match(_next_action_id())
+			_refresh_hint_panel()
+			_refresh_hint_2d()
+		"restart_no":
+			_restart_confirm = false
+			_refresh_hint_panel()
+			_refresh_hint_2d()
 
 ## 3D 操作面板按钮：条件动作（Q/Joker）已移到提示板下方，Ready 在提示板、Kongbaya 由铃铛负责，
 ## 故 3D 桌面 HUD 不再承载按钮（保留空面板以兼容既有结构）。
@@ -477,7 +586,8 @@ func _refresh_hint_panel() -> void:
 		for child in acts.get_children():
 			acts.remove_child(child)
 			child.queue_free()
-		for entry in ActionModel.conditional_actions(latest_state, _interaction_ctx()):
+		var actions: Array = _current_hint_actions()
+		for entry in actions:
 			has_actions = true
 			var act_btn := _decision_button(str(entry.get("text", "")))
 			act_btn.disabled = not bool(entry.get("enabled", true))
@@ -523,6 +633,13 @@ func _set_table3d(on: bool) -> void:
 	if on and (latest_state.is_empty() or int(latest_state.get("phase", PHASE_LOBBY)) == PHASE_LOBBY):
 		return
 	_table3d_active = on
+	if _wheel_open:
+		_wheel_open = false
+		_wheel_kind = ""
+		if _mark_wheel != null and is_instance_valid(_mark_wheel):
+			_mark_wheel.close()
+		if _emote_wheel != null and is_instance_valid(_emote_wheel):
+			_emote_wheel.close()
 	if on:
 		if table3d == null or not is_instance_valid(table3d):
 			table3d = load("res://scenes/ui/table3d.tscn").instantiate()
@@ -538,6 +655,7 @@ func _set_table3d(on: bool) -> void:
 		_ensure_board()
 		table3d.set_hud_buttons(_hud_buttons())
 		table3d.render(latest_state, interaction.card_actionable)
+		_maybe_play_deal()
 		_place_boards()
 		_sync_table3d_pointer()
 		_ensure_hint_hud()
@@ -570,6 +688,7 @@ func _set_table3d(on: bool) -> void:
 		_close_manual()
 		if table3d != null and is_instance_valid(table3d):
 			table3d.clear_hover()
+			table3d.clear_local_nose()
 			table3d.set_active(false)
 			table3d.camera.reset_zoom()
 		if _crosshair != null and is_instance_valid(_crosshair):
@@ -605,6 +724,19 @@ func _set_table3d(on: bool) -> void:
 ## 不受任何 Control 的 mouse_filter 影响）。
 func _input(event: InputEvent) -> void:
 	if not _table3d_active:
+		return
+	# 设置菜单打开时：不消费 3D 输入（鼠标已释放给菜单；ESC 交给 _unhandled_input 关闭）。
+	if _settings_open():
+		return
+	if _wheel_open:
+		if event is InputEventKey and not event.echo and not event.pressed:
+			if (_wheel_kind == "mark" and event.keycode == KEY_D) or (_wheel_kind == "emote" and event.keycode == KEY_Y):
+				_finish_wheel()
+				get_viewport().set_input_as_handled()
+		elif event is InputEventMouseMotion:
+			var aw = _emote_wheel if _wheel_kind == "emote" else _mark_wheel
+			if aw != null and is_instance_valid(aw):
+				aw.update_cursor(event.position)
 		return
 	# 按键捕获：正在重绑时拦截键盘/点击，不给游戏与牌桌
 	if manual_panel != null and is_instance_valid(manual_panel) and manual_panel.capturing() != "":
@@ -652,19 +784,26 @@ func _input(event: InputEvent) -> void:
 			_talking_local = not _talking_local
 			get_viewport().set_input_as_handled()
 			return
-		# 手册打开时 Esc 先关手册（优先于退出 3D）
+		# D 按下：出标记轮盘
+		if event.keycode == KEY_D:
+			_open_mark_wheel()
+			get_viewport().set_input_as_handled()
+			return
+		# Y 按下：出表情轮盘
+		if event.keycode == KEY_Y:
+			_open_emote_wheel()
+			get_viewport().set_input_as_handled()
+			return
+		# 手册打开时 Esc 先关手册（沿用本分支；否则 Esc 交给全局设置菜单）。
 		if event.keycode == KEY_ESCAPE and manual_panel != null and is_instance_valid(manual_panel):
 			_close_manual()
 			get_viewport().set_input_as_handled()
 			return
-		# 有模态面板时，Enter/Esc 交给面板；否则 Esc 退出 3D。
-		if board_panel and (event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER or event.keycode == KEY_ESCAPE):
+		# 有看板面板时，Enter 交给面板（Joker/商店）。
+		# ESC 不再由 3D 处理：全局只用于开关设置界面（见 _unhandled_input）。
+		if board_panel and (event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER):
 			if board3d != null and is_instance_valid(board3d):
 				board3d.push_key(event)
-			get_viewport().set_input_as_handled()
-			return
-		if not board_panel and event.keycode == KEY_ESCAPE:
-			_set_table3d(false)
 			get_viewport().set_input_as_handled()
 			return
 	if event is InputEventMouseMotion:
@@ -685,6 +824,11 @@ func _process(delta: float) -> void:
 	# 准星默认隐藏，仅按住放大（Command/Alt）时出现。
 	if _crosshair != null and is_instance_valid(_crosshair):
 		_crosshair.visible = bool(table3d.camera.zoomed)
+	if table3d != null and is_instance_valid(table3d):
+		table3d.set_deal_speed(2.0 if Input.is_key_pressed(KEY_SPACE) else 1.0)
+	if _settings_open():
+		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+		return
 	_place_boards()
 	_auto_aim_board()
 	var cam: Camera3D = table3d.camera.camera_node()
@@ -728,20 +872,23 @@ func _update_look_send(delta: float, cam: Camera3D) -> void:
 	dir = dir.normalized()
 	var zoomed := bool(table3d.camera.zoomed)
 	var talking := _talking_local
+	var nose := Vector3.ZERO
 	var dir_changed := _last_look_dir == Vector3.ZERO or _last_look_dir.dot(dir) <= LOOK_SEND_EPS_DOT
-	if not dir_changed and zoomed == _last_look_zoom and talking == _last_look_talk:
+	var nose_changed := nose.distance_squared_to(_last_look_nose) > 0.000001
+	if not dir_changed and zoomed == _last_look_zoom and talking == _last_look_talk and not nose_changed:
 		return
 	_last_look_dir = dir
 	_last_look_zoom = zoomed
 	_last_look_talk = talking
+	_last_look_nose = nose
 	var seat := int(latest_state.get("viewer_id", -1))
 	if seat < 0:
 		return
 	var target := cam.global_position + dir * LOOK_TARGET_DISTANCE
 	if multiplayer.is_server():
-		GameState._apply_look(seat, target, zoomed, talking)
+		GameState._apply_look(seat, target, zoomed, talking, nose)
 	else:
-		GameState.server_look.rpc_id(1, target, zoomed, talking)
+		GameState.server_look.rpc_id(1, target, zoomed, talking, nose)
 
 func _unhandled_input(event: InputEvent) -> void:
 	# 比拼中按空格 = 停止（与 STOP 按钮等效）
@@ -793,6 +940,9 @@ const SLAP_WRONG_GLOW := Color("ff7b7b")  # 贴错红色炫光（同 UITheme dan
 const SLAP_GLOW_SIZE := 14
 const DuelBarScript := preload("res://scripts/ui/duel_bar.gd")
 const SettingsMenuScript := preload("res://scripts/ui/settings_menu.gd")
+const Mark3dMathScript := preload("res://scripts/ui/mark3d_math.gd")
+const MarkWheelScript := preload("res://scripts/ui/mark_wheel.gd")
+const EmoteWheelScript := preload("res://scripts/ui/emote_wheel.gd")
 const SettlementPageScript := preload("res://scenes/ui/settlement_page.tscn")
 const ShopPanelScript := preload("res://scenes/ui/shop_panel.tscn")
 const JokerTransformPanelScript := preload("res://scenes/ui/joker_transform_panel.tscn")
@@ -801,6 +951,8 @@ const ManualPanelScript := preload("res://scenes/ui/manual_panel.tscn")
 var latest_lobby: Dictionary = {}
 var latest_state: Dictionary = {}
 var last_phase := -1
+var _deal_played_match_id := ""
+var _restart_confirm := false
 
 var status_label: Label
 var lobby_status_label: Label
@@ -839,6 +991,12 @@ var _look_send_timer := 0.0
 var _last_look_dir := Vector3.ZERO
 var _last_look_zoom := false
 var _last_look_talk := false
+var _wheel_open := false
+var _wheel_kind := ""
+var _wheel_pos := Vector3.ZERO
+var _mark_wheel = null
+var _emote_wheel = null
+var _last_look_nose := Vector3.ZERO      # 上次上报的鼻子目标（变化即发）
 var _talking_local := false
 var _crosshair: Control = null
 var _card_tooltip: CardTooltip = null
@@ -981,6 +1139,8 @@ func _ready() -> void:
 	GameState.registered_token_received.connect(_on_registered_token)
 	GameState.resume_hand_received.connect(_on_resume_hand)
 	GameState.sfx_played.connect(_on_sfx)
+	GameState.mark_placed.connect(_on_mark_placed)
+	GameState.emote_played.connect(_on_emote_played)
 	Network.connection_status_changed.connect(_set_status)
 	Network.connection_failed.connect(_show_toast)
 	Network.joined_server.connect(_on_joined_server_for_reconnect)
@@ -1246,6 +1406,8 @@ func _on_state_updated(state: Dictionary) -> void:
 		_on_joker_cancel()
 	_show_shop_result_toast(state)
 	_sync_table3d_pointer()
+	# 发牌动画：每局新 match_id 播一次（3D 下）；同 match_id（重连）不重播。
+	_maybe_play_deal()
 
 ## 清空上一局可能残留的动画/挂起状态（对局结束时在途的看牌/贴牌揭示）。
 func _clear_settlement_anim_state() -> void:
@@ -1487,6 +1649,16 @@ func _toggle_settings() -> void:
 		settings_menu = SettingsMenuScript.new()
 		add_child(settings_menu)
 	settings_menu.visible = not settings_menu.visible
+	# 3D 下打开设置需释放鼠标以点击菜单；关闭后恢复准星环视。
+	if _table3d_active:
+		if settings_menu.visible:
+			Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+		else:
+			_sync_table3d_pointer()
+
+## 设置菜单是否可见（3D 下用它暂停环视/点击，让 ESC 全局只开关设置）。
+func _settings_open() -> bool:
+	return settings_menu != null and is_instance_valid(settings_menu) and settings_menu.visible
 
 ## 设置菜单切换主题后调用：重刷背景与对局渲染（与 T 键切换同保真度）。
 func apply_theme() -> void:
@@ -1540,7 +1712,44 @@ func _begin_ability() -> void:
 func _on_card_pressed(player_id: int, slot: int) -> void:
 	interaction.on_card_pressed(player_id, slot)
 
+## 房主请求重开本局（弹出确认板）。
+func _request_restart_confirm() -> void:
+	if not Network.is_host:
+		return
+	_restart_confirm = true
+	_refresh_hint_panel()
+	_refresh_hint_2d()
+
+## 重开确认变化后刷新 2D 提示动作（3D 由 _refresh_hint_panel 更新提示板）。
+func _refresh_hint_2d() -> void:
+	if not _table3d_active and not latest_state.is_empty():
+		_render_game_if_active()
+
+## 每局新 match_id 播一次发牌动画（仅 3D；重连同 match_id 不重播；2D 期间不标记以便切到 3D 补播）。
+func _maybe_play_deal() -> void:
+	var mid := str(latest_state.get("match_id", ""))
+	if mid == "" or int(latest_state.get("phase", 0)) == PHASE_LOBBY:
+		return
+	if mid == _deal_played_match_id:
+		return
+	if not _table3d_active or table3d == null or not is_instance_valid(table3d):
+		return
+	table3d.play_deal(latest_state)
+	_deal_played_match_id = mid
+
+func _restart_confirm_actions() -> Array:
+	return [
+		{"text": "确认重开", "action": "restart_yes", "enabled": true},
+		{"text": "取消", "action": "restart_no", "enabled": true},
+	]
+
+## 当前提示板动作（重开确认优先，否则条件动作）。2D HintActions 与 3D 提示板共用。
+func _current_hint_actions() -> Array:
+	return _restart_confirm_actions() if _restart_confirm else ActionModel.conditional_actions(latest_state, _interaction_ctx())
+
 func _hint_for(phase: int, is_current: bool) -> String:
+	if _restart_confirm:
+		return "是否重开本局？"
 	return HintText.hint(latest_state, phase, is_current, interaction.action_mode)
 
 func _mode_instruction(fallback: String) -> String:

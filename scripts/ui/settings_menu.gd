@@ -10,6 +10,7 @@ var _panel: PanelContainer
 var _volume_slider: HSlider
 var _volume_label: Label
 var _mute_check: CheckButton
+var _nose_check: CheckButton
 var _theme_option: OptionButton
 var _lang_option: OptionButton
 
@@ -75,6 +76,13 @@ func _build_ui() -> void:
 	_mute_check.toggled.connect(_on_mute_toggled)
 	vbox.add_child(_mute_check)
 
+	# 鼻子点击（彩蛋，默认关闭）
+	_nose_check = CheckButton.new()
+	_nose_check.set_meta("text_key", "nose_click")
+	_nose_check.button_pressed = bool(Settings.get_setting("gameplay", "nose_click", false))
+	_nose_check.toggled.connect(_on_nose_toggled)
+	vbox.add_child(_nose_check)
+
 	# 主题
 	vbox.add_child(_row_label("theme"))
 	_theme_option = OptionButton.new()
@@ -139,6 +147,9 @@ func _update_volume_label() -> void:
 
 func _on_mute_toggled(on: bool) -> void:
 	Settings.set_setting("audio", "muted", on)
+
+func _on_nose_toggled(on: bool) -> void:
+	Settings.set_setting("gameplay", "nose_click", on)
 
 func _on_theme_selected(index: int) -> void:
 	var theme_name := "dark" if index == 0 else "light"
