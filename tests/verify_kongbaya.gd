@@ -100,6 +100,8 @@ func _test_first_turn_flag() -> void:
 	GameState._server_initial_ready(2)
 	GameState._server_take(0, "draw", "kb-f2")
 	GameState._server_discard_draw(0, "kb-f3")  # 轮到 seat1，seat0 has_acted=true
+	_check("换回合后 turn_index 递增", GameState.turn_index >= 2)
+	_check("换回合后 turn_effect 合法", GameState.TURN_EFFECT_IDS.has(GameState.turn_effect_id))
 	GameState.current_player_id = 0
 	GameState.phase = GameState.Phase.TURN_DRAW
 	GameState._server_kongbaya(0, "kb-f4")

@@ -1145,7 +1145,15 @@ func _advance_turn(final_mode := false) -> void:
 ## 换回合时抽取本回合随机增强（仅展示；写入快照保证全员一致）。
 func _roll_turn_effect() -> void:
 	turn_index += 1
-	turn_effect_id = TURN_EFFECT_IDS[randi() % TURN_EFFECT_IDS.size()]
+	# 避免与上一回合相同（否则玩家会觉得"一直是同一个"）。
+	var prev := turn_effect_id
+	var pool: Array = []
+	for id in TURN_EFFECT_IDS:
+		if str(id) != prev:
+			pool.append(id)
+	if pool.is_empty():
+		pool = TURN_EFFECT_IDS.duplicate()
+	turn_effect_id = str(pool[randi() % pool.size()])
 
 ## 进入结算贴牌窗口：不立即结算，保持 slap_open 与 TURN_DRAW，开一个 SLAP_SETTLE_SECONDS 的
 ## deadline；期间仅可贴牌（_server_take 守卫），到时执行 finish_callable 结算。

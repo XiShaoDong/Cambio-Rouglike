@@ -188,13 +188,15 @@ func _ensure_turn_effect_panel() -> void:
 ## 服务器换回合时（turn_index 变化）用快照里的 turn_effect 播「中央→右上」动画。
 ## 效果由服务器抽取并写入快照 → 所有玩家一致。
 func _maybe_new_turn_effect() -> bool:
-	var ti := int(latest_state.get("turn_index", 0))
-	if ti <= 0 or ti == _effect_last_turn:
-		return false
-	_effect_last_turn = ti
 	var id := str(latest_state.get("turn_effect", ""))
 	if id.is_empty():
 		return false
+	var ti := int(latest_state.get("turn_index", 0))
+	# turn_index 或效果 id 任一变化都更新（避免卡在旧效果）。
+	if ti <= 0 or (ti == _effect_last_turn and id == _effect_last_id):
+		return false
+	_effect_last_turn = ti
+	_effect_last_id = id
 	_current_effect = TurnEffect.by_id(id)
 	if _current_effect.is_empty():
 		return false
@@ -554,6 +556,7 @@ func _set_table3d(on: bool) -> void:
 			if not eid.is_empty():
 				_current_effect = TurnEffect.by_id(eid)
 		_effect_last_turn = int(latest_state.get("turn_index", 0))
+		_effect_last_id = str(latest_state.get("turn_effect", ""))
 		if not _current_effect.is_empty():
 			var em := _corner_margin()
 			_turn_effect_panel.set_effect(_current_effect)
@@ -840,6 +843,7 @@ var _card_order_panel: CardOrderPanel = null
 var _turn_effect_panel: TurnEffectPanel = null
 var _current_effect: Dictionary = {}
 var _effect_last_turn := -1
+var _effect_last_id := ""
 var _self_panel: PlayerStatPanel = null
 var is_dev_join := false
 var start_button: Button = null

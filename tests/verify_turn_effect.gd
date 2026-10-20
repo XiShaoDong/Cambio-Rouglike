@@ -20,6 +20,7 @@ func _check(name: String, ok: bool) -> void:
 func _run() -> void:
 	_test_data()
 	await _test_panel()
+	await _test_main_updates_by_turn_index()
 
 func _test_data() -> void:
 	_check("5 种效果", TurnEffect.all().size() == 5)
@@ -37,6 +38,15 @@ func _test_data() -> void:
 	GameState._roll_turn_effect()
 	_check("服务器抽取 turn_index 递增", GameState.turn_index == 1)
 	_check("服务器抽取 id 合法", GameState.TURN_EFFECT_IDS.has(GameState.turn_effect_id))
+	# 连续抽取不会与上一回合相同（避免一直显示同一效果）
+	var prev := GameState.turn_effect_id
+	var all_differ := true
+	for i in 8:
+		GameState._roll_turn_effect()
+		if GameState.turn_effect_id == prev:
+			all_differ = false
+		prev = GameState.turn_effect_id
+	_check("连续换回合效果不与上次相同", all_differ)
 
 func _test_panel() -> void:
 	var p := TurnEffectPanel.new()
@@ -57,3 +67,37 @@ func _test_panel() -> void:
 	p.hide_panel()
 	_check("hide 后不可见", not p.visible)
 	p.queue_free()
+
+func _state() -> Dictionary:
+	return {
+		"phase": 2, "phase_name": "p", "viewer_id": 0, "current_player": 0, "current_name": "A",
+		"players": [
+			{"id": 0, "name": "A", "slots": [{}, {}, {}, {}], "health": 2, "currency": 100, "count": 4, "eliminated": false},
+			{"id": 1, "name": "B", "slots": [{}, {}, {}, {}], "health": 2, "currency": 100, "count": 4, "eliminated": false},
+		],
+		"draw_count": 40, "discard": {}, "pending": {}, "event_log": [], "match_number": 1,
+		"slap_rank": "", "slap_open": false, "slap_exchange_actor": 0, "kong_caller": -1,
+		"ready_count": 0, "result": {}, "run": {"match_limit": 5}, "q_decision": {},
+		"turn_index": 1, "turn_effect": "joker_red",
+	}
+
+func _test_main_updates_by_turn_index() -> void:
+	var main_node: Node = preload("res://scenes/main.tscn").instantiate()
+	add_child(main_node)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	main_node.latest_state = _state()
+	main_node._set_table3d(true)
+	await get_tree().process_frame
+	main_node._refresh_table3d()
+	await get_tree().process_frame
+	_check("客户端首回合效果=joker_red", main_node._turn_effect_panel.effect_id() == "joker_red")
+	var st2: Dictionary = _state()
+	st2["turn_index"] = 2
+	st2["turn_effect"] = "bomb"
+	main_node.latest_state = st2
+	main_node._refresh_table3d()
+	await get_tree().process_frame
+	_check("turn_index 变化后效果更新=bomb", main_node._turn_effect_panel.effect_id() == "bomb")
+	main_node._set_table3d(false)
+	main_node.queue_free()
