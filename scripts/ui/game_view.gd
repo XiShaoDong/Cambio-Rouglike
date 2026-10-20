@@ -507,6 +507,9 @@ func _render_card_slot(container: Control, player: Dictionary, slot_index: int, 
 	if int(main.latest_state.phase) == PHASE_GAME_OVER:
 		card_data = {}  # 结算阶段初始背面，由结算页算分动画逐张联动翻面
 	var card_button: Button = main._make_card_button(card_data, card_size)
+	# 炸弹标记：牌面数据自带 bomb（正面牌/弃牌顶），或槽位公开 bomb（自己的背面手牌）。
+	if card_button is CardView and (bool(slot.get("bomb", false)) or bool(card_data.get("bomb", false))):
+		(card_button as CardView).set_bomb(true)
 	card_button.tooltip_text = "记忆牌面后，点击以执行当前操作"
 	card_button.pressed.connect(main._on_card_pressed.bind(pid, slot_index))
 	main._highlight(card_button, main._card_actionable(pid, slot_index))

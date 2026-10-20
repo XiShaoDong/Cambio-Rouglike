@@ -17,17 +17,10 @@ const EFFECTS := [
 		"bomb": false,
 	},
 	{
-		"id": "joker_red",
-		"name": "红 Joker",
-		"desc": "顺时针交换一张卡牌（从发起者开始）",
-		"card": "res://assets/SmallCards/Joker1.png",
-		"bomb": false,
-	},
-	{
-		"id": "joker_black",
-		"name": "黑 Joker",
-		"desc": "逆时针交换一张卡牌（从发起者开始）",
-		"card": "res://assets/SmallCards/Joker2.png",
+		"id": "six_swap",
+		"name": "6",
+		"desc": "打出任意花色的 6 时，顺时针传递一张牌（从打出者开始）；抽到红 Joker 可选择使用能力触发",
+		"card": "res://assets/SmallCards/spades_06.png",
 		"bomb": false,
 	},
 	{

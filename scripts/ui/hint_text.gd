@@ -30,6 +30,19 @@ static func hint(state: Dictionary, phase: int, is_current: bool, action_mode: S
 			return "Waiting for %s to give a card" % name
 		GameState.Phase.SLAP_DUEL:
 			return "Duel: stop closest to the red mark to win the slap"
+		GameState.Phase.EFFECT_REVEAL:
+			return "查看本局特效"
+		GameState.Phase.EFFECT_PASS:
+			var ep: Dictionary = state.get("effect_pass", {})
+			var await_seat := int(ep.get("await_seat", -1))
+			var await_name := name
+			for p in state.get("players", []):
+				if int((p as Dictionary).get("id", -1)) == await_seat:
+					await_name = str((p as Dictionary).get("name", name))
+					break
+			if int(state.get("viewer_id", -1)) == await_seat:
+				return "6: choose a card to pass clockwise to the next player"
+			return "Waiting for %s to pass a card (6 effect)" % await_name
 		GameState.Phase.GAME_OVER:
 			return "Ranked by total score, then card count, then highest single card"
 	return "Waiting for %s to act" % name
@@ -48,6 +61,8 @@ static func decision(state: Dictionary, is_current: bool, name: String, action_m
 		return "%s drew a card from the Deck" % name
 	if source == "discard":
 		return "Replace one of your cards with the drawn card"
+	if str(state.get("turn_effect", "")) == "six_swap" and rank == "JOKER" and str(pending.get("suit", "")) == "red":
+		return "6 effect: use the Red Joker's power to pass a card clockwise, or discard/replace it"
 	match action_mode:
 		"replace":
 			return "Replace one of your cards, or discard the drawn card"

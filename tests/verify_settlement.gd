@@ -6,6 +6,7 @@ var checks := 0
 var _rejections := 0
 
 func _ready() -> void:
+	GameState.turn_effect_rules_enabled = false  # 规则测试由 verify_turn_effect_rules 单独开启
 	await _test_model_even()
 	await _test_model_uneven()
 	await _test_model_final_matches_score_system()

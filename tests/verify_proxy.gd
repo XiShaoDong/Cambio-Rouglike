@@ -56,6 +56,7 @@ var _retrying := false
 var _retry_count := 0
 
 func _ready() -> void:
+	GameState.turn_effect_rules_enabled = false  # 规则测试由 verify_turn_effect_rules 单独开启
 	var args := OS.get_cmdline_user_args()
 	var overrides := {}
 	for i in range(args.size()):

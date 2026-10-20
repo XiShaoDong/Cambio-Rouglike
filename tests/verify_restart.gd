@@ -2,6 +2,7 @@ extends Node
 var failures := 0
 var checks := 0
 func _ready() -> void:
+	GameState.turn_effect_rules_enabled = false  # 规则测试由 verify_turn_effect_rules 单独开启
 	await get_tree().process_frame
 	await _test()
 	print("=== RESTART RESULT: %d/%d passed%s ===" % [checks - failures, checks, " (FAILURES!)" if failures else ""])

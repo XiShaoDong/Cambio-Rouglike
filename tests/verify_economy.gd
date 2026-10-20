@@ -5,6 +5,7 @@ var failures := 0
 var checks := 0
 
 func _ready() -> void:
+	GameState.turn_effect_rules_enabled = false  # 规则测试由 verify_turn_effect_rules 单独开启
 	await _test_defaults()
 	await _test_direct_turn_after_ready()
 	await _test_rank_rewards()

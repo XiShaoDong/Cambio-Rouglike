@@ -8,6 +8,7 @@ var checks := 0
 var _rejections := 0
 
 func _ready() -> void:
+	GameState.turn_effect_rules_enabled = false  # 规则测试由 verify_turn_effect_rules 单独开启
 	GameState.command_rejected.connect(_count_reject)
 	await _test_guard_apply()
 	await _test_guard_slap()

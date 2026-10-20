@@ -21,8 +21,8 @@ const COLOR_NORMAL := Color(0.95, 0.97, 1.0)
 const COLOR_WARN := Color(1.0, 0.78, 0.30)
 const COLOR_OVER := Color(1.0, 0.36, 0.34)
 ## 胶囊显示 / 计时的阶段（GameState.Phase 数值）：TURN_DRAW / TURN_DECISION / Q_DECISION / SLAP_EXCHANGE / SLAP_DUEL。
-## 不含 INITIAL_PEEK：进入房间直到全员 ready 后才开始计时。
-const ACTIVE_PHASES := [2, 3, 4, 6, 8]
+## 不含 INITIAL_PEEK：进入房间直到全员 ready 后才开始计时；含 12（本局效果展示）。
+const ACTIVE_PHASES := [2, 3, 4, 6, 8, 12]
 
 ## SLAP 状态行 + 装饰条（纯展示，固定时长不对应真实窗口）。
 const SLAP_HIDDEN := 0
