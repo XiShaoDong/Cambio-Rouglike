@@ -46,6 +46,8 @@ static func snapshot_for(state: Node, viewer_id: int) -> Dictionary:
 		"offline_players": _offline_players(state),
 		"kong_caller": state.kong_caller,
 		"match_number": state.match_number,
+		"turn_index": int(state.turn_index),
+		"turn_effect": str(state.turn_effect_id),
 		"ready_count": state.initial_confirmed.size() if phase == GameState.Phase.INITIAL_PEEK else 0,
 		"event_log": state.event_log.duplicate(),
 		"result": state.last_result.duplicate(),

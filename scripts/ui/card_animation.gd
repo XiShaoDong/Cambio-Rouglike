@@ -16,6 +16,8 @@ var press_p := 0.0
 var flip_p := 0.0
 var land_p := 0.0
 var flip_turns := 0
+## 点击空中翻完回落后锁定贴桌：准星仍在其上也不自动再抬，待 exit_hover 解除。
+var docked := false
 
 var visual: Node3D
 var body: CardBlock
@@ -112,6 +114,8 @@ func _tween_prop(prop: String, to: float, dur: float, trans: int, ease: int) -> 
 
 func enter_hover() -> void:
 	hovering = true
+	if docked:
+		return
 	if state == CardAnimationMath.PRESS or state == CardAnimationMath.FLIP or state == CardAnimationMath.LAND:
 		return
 	state = CardAnimationMath.HOVER
@@ -119,6 +123,7 @@ func enter_hover() -> void:
 
 func exit_hover() -> void:
 	hovering = false
+	docked = false
 	if state == CardAnimationMath.PRESS or state == CardAnimationMath.FLIP or state == CardAnimationMath.LAND:
 		return
 	state = CardAnimationMath.IDLE
@@ -141,19 +146,17 @@ func _on_flip_done() -> void:
 	flip_turns += 1
 	flip_p = 0.0
 	state = CardAnimationMath.LAND
+	# 空中翻完后下沉回落：hover_p 1→0（平稳），同时 land_p 缩放落定
+	_tween_prop("hover_p", 0.0, config.land_dur, Tween.TRANS_CUBIC, Tween.EASE_OUT)
 	var tw := _tween_prop("land_p", 1.0, config.land_dur, Tween.TRANS_BACK, Tween.EASE_OUT)
 	tw.finished.connect(_on_land_done)
 
 func _on_land_done() -> void:
 	land_p = 0.0
-	# 翻牌途中可能已离开/进入：按当前 hovering 决定并回正 hover_p（防卡在抬起态）
-	if hovering:
-		state = CardAnimationMath.HOVER
-		if hover_p < 1.0:
-			_tween_prop("hover_p", 1.0, config.hover_in_dur, Tween.TRANS_BACK, Tween.EASE_OUT)
-	else:
-		state = CardAnimationMath.IDLE
-		_tween_prop("hover_p", 0.0, config.hover_out_dur, Tween.TRANS_CUBIC, Tween.EASE_OUT)
+	hover_p = 0.0
+	state = CardAnimationMath.IDLE
+	# 落回后保持不动：准星仍在其上则锁定(docked)，待 exit_hover 解除
+	docked = hovering
 
 func reset() -> void:
 	for k in _tweens:
@@ -167,6 +170,7 @@ func reset() -> void:
 	flip_p = 0.0
 	land_p = 0.0
 	flip_turns = 0
+	docked = false
 	showing_back = false
 	_idle_time = 0.0
 	if body != null:

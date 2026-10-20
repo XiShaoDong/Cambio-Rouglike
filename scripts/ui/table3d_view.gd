@@ -17,7 +17,19 @@ const SEAT_COUNT := 4
 const HUD_OFFSET := 0.55
 const HUD_HEIGHT := 0.5
 const AVATAR_DIM_COLOR := Color(0.0, 0.0, 0.0, 0.55)     # 出局/离线变暗
-const HOVER_COLOR := Color(0.7, 0.95, 1.0, 0.35)         # 准星悬停目标高亮
+const HOVER_COLOR := Color(0.7, 0.95, 1.0, 0.35)         # 非卡牌目标（HUD 等）的叠加薄色
+## hover 虚线边框颜色：无选择上下文=白；有上下文且目标可操作=绿；否则=红。
+const BORDER_WHITE := Color(1.0, 1.0, 1.0, 0.9)
+const BORDER_GREEN := Color(0.53, 0.85, 0.63)
+const BORDER_RED := Color(1.0, 0.48, 0.48)
+## 弃牌堆"用能力"（弃掉抽到的牌发动 7/8/9/10/J/Q）的提示色：橙色（区别于取弃牌顶的金色）。
+const USE_POWER_COLOR := Color(1.0, 0.55, 0.15)
+## 中央牌堆顶牌相对桌面的极小抬升：贴桌（y=0）时炫光平面（本地 y=-0.002）会被桌面遮住。
+const STACK_BASE_LIFT := 0.004
+## 手牌槽距放大倍数（列距/行距 = (卡尺寸+间隙) × 该值）；默认 +1/10。
+const HAND_SPACING_SCALE := 1.1
+## 铃铛拾取盒随模型一起缩小（避免误触）。
+const BELL_PICK_SCALE := 2.0 / 3.0
 const STAT_VIEWPORT_SIZE := Vector2i(320, 120)
 const STAT_PANEL_OFFSET := Vector3(0.0, 0.75, 0.0)
 const STAT_PANEL_PIXEL_SIZE := 0.005
@@ -48,6 +60,7 @@ var _hud = null  # Table3dHud（场景 Hud）
 var _restart_button: Node3D = null  # 房主重开按钮（牌桌右后角，准星可点）
 var _card_blocks := {}  # {seat: {slot: CardBlock}}
 var _viewer := 0
+var _sel_active := false           # 当前是否有"选择"上下文（决定 hover 边框红/绿/白）
 var _hover_slot := {}
 var _hover_ray_local := Vector2.ZERO
 var _avatar_dim_mat: StandardMaterial3D = null
@@ -151,6 +164,10 @@ func _bind() -> void:
 			bell_pick.collision_layer = Table3dLayout.PICK_MASK
 			bell_pick.collision_mask = 0
 			bell_pick.set_meta("pick", {"kind": "hud", "action": "kongbaya"})
+			# 拾取盒随铃铛一起缩小 1/3（降低误触）。
+			var pick_shape := bell_pick.get_node_or_null("PickShape") as CollisionShape3D
+			if pick_shape != null:
+				pick_shape.scale = Vector3.ONE * BELL_PICK_SCALE
 	if camera == null or _deck_label == null or _discard_block == null \
 			or _pending_block == null or _hud == null:
 		push_error("[Table3dView] 场景缺少必需节点：CameraRig/Center/DeckCount/DiscardTop/Pending/Hud")
@@ -319,7 +336,10 @@ func render(state: Dictionary, actionable := Callable()) -> void:
 	if _deck_pile != null and is_instance_valid(_deck_pile):
 		_deck_pile.set_count(maxi(draw_n - 1, 0))
 	if _deck_node != null and is_instance_valid(_deck_node):
-		_deck_node.position.y = draw_n * DeckPile.CARD_THICKNESS
+		_deck_node.position.y = draw_n * DeckPile.CARD_THICKNESS + STACK_BASE_LIFT
+		# 抽牌堆：hover 虚线圈压到牌堆底部（贴桌面），而不是浮在顶牌上
+		if _deck_node.has_method("set_border_offset"):
+			_deck_node.set_border_offset(-_deck_node.position.y)
 	# 抽牌堆：轮到自己抽牌（TURN_DRAW）时金色光晕
 	if _deck_block != null and is_instance_valid(_deck_block):
 		_deck_block.set_actionable(ActionModel.draw_available(state))
@@ -329,9 +349,11 @@ func render(state: Dictionary, actionable := Callable()) -> void:
 	if _discard_pile != null and is_instance_valid(_discard_pile):
 		_discard_pile.set_count(maxi(discard_count - 1, 0))
 	if _discard_node != null and is_instance_valid(_discard_node):
-		_discard_node.position.y = discard_count * DeckPile.CARD_THICKNESS
-	# 弃牌堆可点：取弃牌顶（TURN_DRAW）或 弃掉大牌/用能力（TURN_DECISION）；可点时金色光晕
+		# + 极小抬升：空弃牌堆贴桌时炫光会被桌面遮住（橙光/金光都看不到）。
+		_discard_node.position.y = discard_count * DeckPile.CARD_THICKNESS + STACK_BASE_LIFT
+	# 弃牌堆可点：取弃牌顶（金）/ 弃掉抽到的牌·用能力（橙）；可点时对应光晕
 	var discard_actionable := ActionModel.discard_pile_actionable(state)
+	var use_power := ActionModel.pending_discard_available(state)
 	if _discard_hold:
 		# 顶牌变换动画期间：保留显示"上一张"，避免下方为空（无上一张则隐藏）
 		var held: Dictionary = _discard_shown if not _discard_shown.is_empty() else discard
@@ -345,6 +367,7 @@ func render(state: Dictionary, actionable := Callable()) -> void:
 		_discard_block.setup({"card": discard} if not discard.is_empty() else {})
 		_discard_block.set_pick({"kind": "discard"})
 		_discard_block.set_pick_enabled(discard_actionable)
+		_discard_block.set_actionable_color(USE_POWER_COLOR if use_power else Table3dLayout.ACTIONABLE_COLOR)
 		_discard_block.set_actionable(discard_actionable)
 	var pending: Dictionary = state.get("pending", {})
 	_detect_draw(pending, discard)
@@ -353,8 +376,8 @@ func render(state: Dictionary, actionable := Callable()) -> void:
 	_pending_seen = true
 	_pending_block.visible = not pending.is_empty() and not _pending_hold
 	_pending_block.set_pick({"kind": "pending"})
-	# 大牌不再直接可点（弃牌/用能力改由弃牌堆触发）；禁用拾取避免准星误标为可点
-	_pending_block.set_pick_enabled(false)
+	# 大牌不可点（弃牌/用能力由弃牌堆触发），但保留拾取用于 hover 解释气泡
+	_pending_block.set_pick_enabled(not pending.is_empty())
 	if not pending.is_empty():
 		_pending_block.setup({"card": pending} if pending.has("rank") else {})
 	# HUD 放在 viewer 座位内侧、朝向 viewer
@@ -816,8 +839,10 @@ func _find_block(seat_id: int, slot: int):
 	var block = _card_blocks[seat_id][slot]
 	return block if is_instance_valid(block) else null
 
-## 每帧准星悬停：命中可点对象时高亮它，返回是否命中。命中目标未变则不重复操作。
-func update_hover() -> bool:
+## 每帧准星悬停：命中可点对象时显示边框，返回是否命中。命中目标未变则不重复操作。
+## selection_active：当前是否处于"需要选择"的上下文（interaction.action_mode != ""）。
+func update_hover(selection_active := false) -> bool:
+	_sel_active = selection_active
 	if camera == null:
 		return false
 	var center := get_viewport().get_visible_rect().size * 0.5
@@ -872,6 +897,55 @@ func clear_hover() -> void:
 	_hover_card = null
 	_leave_hover_slot()
 
+## 当前悬停对象的 pick 元数据（{} = 无）。
+func hovered_pick() -> Dictionary:
+	if _hover_collider == null or not is_instance_valid(_hover_collider):
+		return {}
+	return _hover_collider.get_meta("pick", {}) if _hover_collider.has_meta("pick") else {}
+
+## 中央大牌的世界坐标（用于把解释气泡投影到屏幕上）。
+func pending_global_position() -> Vector3:
+	if _pending_block == null or not is_instance_valid(_pending_block):
+		return Vector3.ZERO
+	return _pending_block.global_position
+
+## 当前悬停卡牌的已知牌面（未知/非卡牌返回 {}）。
+func hovered_card() -> Dictionary:
+	if _hover_collider == null or not is_instance_valid(_hover_collider):
+		return {}
+	var parent = _hover_collider.get_parent()
+	if parent != null and parent.has_method("known_card"):
+		return parent.known_card()
+	return {}
+
+## 当前悬停卡牌的屏幕外接矩形（视口像素）。
+func hovered_screen_rect(cam: Camera3D) -> Rect2:
+	if _hover_collider == null or not is_instance_valid(_hover_collider):
+		return Rect2()
+	var parent = _hover_collider.get_parent()
+	if parent is Node3D:
+		return _node_screen_rect(parent, cam)
+	return Rect2()
+
+## 中央大牌投影到屏幕的外接矩形（视口像素坐标）。
+func pending_screen_rect(cam: Camera3D) -> Rect2:
+	return _node_screen_rect(_pending_block, cam)
+
+func _node_screen_rect(node: Node3D, cam: Camera3D) -> Rect2:
+	if node == null or not is_instance_valid(node) or cam == null:
+		return Rect2()
+	var xf: Transform3D = node.global_transform
+	var hx := Table3dLayout.BLOCK_SIZE.x * 0.5
+	var hz := Table3dLayout.BLOCK_SIZE.z * 0.5
+	var mn := Vector2(INF, INF)
+	var mx := Vector2(-INF, -INF)
+	for p in [Vector3(-hx, 0.0, -hz), Vector3(hx, 0.0, -hz), Vector3(hx, 0.0, hz), Vector3(-hx, 0.0, hz)]:
+		var sp := cam.unproject_position(xf * p)
+		mn = Vector2(minf(mn.x, sp.x), minf(mn.y, sp.y))
+		mx = Vector2(maxf(mx.x, sp.x), maxf(mx.y, sp.y))
+	return Rect2(mn, mx - mn)
+
+## 高亮/取消：卡牌类（CardBlock）显示外延虚线边框（白/绿/红）；其余用叠加薄色。
 ## ===== 桌面标记（波纹 ping）=====
 ## 在 pos 生成标记；style=ripple 出波纹+箭头，style=nose 驱动该席鼻子并只显示图标。
 ## icon: eye/question/number/exclaim；text 仅 number 用。同席替换。
@@ -1065,17 +1139,29 @@ func update_noses(remote_nose: Dictionary, local_target: Vector3 = Vector3.ZERO)
 func _apply_hover(collider, on: bool) -> void:
 	if collider == null or not is_instance_valid(collider):
 		return
+	# 大牌（pending）只用于 hover 解释气泡，不显示虚线边框。
+	if collider.has_meta("pick") and str((collider.get_meta("pick") as Dictionary).get("kind", "")) == "pending":
+		return
 	var parent = (collider as Node).get_parent()
 	if parent == null or not is_instance_valid(parent):
 		return
-	# 卡牌类（CardBlock）走边缘发光，与状态高亮同一套；其余（HUD 按钮等）用叠加薄色。
 	if parent.has_method("set_hover"):
-		parent.call("set_hover", on, HOVER_COLOR)
+		var col := Color(0, 0, 0, 0)
+		if on:
+			col = _hover_border_color(parent)
+		parent.call("set_hover", on, col)
 		return
 	var meshes: Array = []
 	_collect_meshes(parent, meshes)
 	for m in meshes:
 		m.material_overlay = _hover_material() if on else null
+
+## hover 边框颜色：无选择上下文=白；有上下文且目标可操作=绿；否则=红。
+func _hover_border_color(block) -> Color:
+	if not _sel_active:
+		return BORDER_WHITE
+	var actionable: bool = block.has_method("is_actionable") and bool(block.call("is_actionable"))
+	return BORDER_GREEN if actionable else BORDER_RED
 
 func _collect_meshes(node: Node, out: Array) -> void:
 	if node is MeshInstance3D:
@@ -1138,10 +1224,13 @@ func slot_xform(seat_id: int, slot: int) -> Transform3D:
 ## 主牌 2 列（grid.x 0/1）以列中点对齐座位 x 中轴（x=0），故两列落在 ±半个列距。
 func _slot_local(slot: int) -> Transform3D:
 	var grid := Table3dLayout.slot_grid_pos(slot)
+	var pitch := Vector2(
+		Table3dLayout.BLOCK_SIZE.x + Table3dLayout.BLOCK_GAP.x,
+		Table3dLayout.BLOCK_SIZE.z + Table3dLayout.BLOCK_GAP.z) * HAND_SPACING_SCALE
 	return Transform3D(Basis.IDENTITY, Vector3(
-		(0.5 - grid.x) * (Table3dLayout.BLOCK_SIZE.x + Table3dLayout.BLOCK_GAP.x),
+		(0.5 - grid.x) * pitch.x,
 		0.0,
-		(1.0 - grid.y) * (Table3dLayout.BLOCK_SIZE.z + Table3dLayout.BLOCK_GAP.z)))
+		(1.0 - grid.y) * pitch.y))
 
 ## 中央节点世界变换（"deck" | "discard" | "pending"）。
 func center_xform(kind: String) -> Transform3D:

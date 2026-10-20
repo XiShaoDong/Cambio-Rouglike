@@ -22,8 +22,23 @@ func _run() -> void:
 	_test_hint_text()
 	await _test_hint_hud()
 	await _test_hint_hud_fixes()
+	await _test_turn_wait()
 	await _test_slap_row()
 	await _test_main_integration()
+
+## 新回合前 6s 等待：等待期内倒计时不启动，之后才计时。
+func _test_turn_wait() -> void:
+	var hud := HintHud.new()
+	add_child(hud)
+	await get_tree().process_frame
+	hud.show_hud(true)
+	hud.reset_turn(5.0, "x", 6.0)
+	hud._process(3.0)
+	_check("等待期内倒计时不启动", hud.timer().seconds_left() == 5)
+	hud._process(4.0)   # 累计越过 6s（本帧仅消耗等待）
+	hud._process(0.6)
+	_check("等待结束后开始倒计时", hud.timer().seconds_left() <= 4)
+	hud.queue_free()
 
 func _test_turn_timer() -> void:
 	var t := TurnTimer.new()

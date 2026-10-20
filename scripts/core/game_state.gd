@@ -23,6 +23,10 @@ enum Phase { LOBBY, INITIAL_PEEK, TURN_DRAW, TURN_DECISION, Q_DECISION, SLAP_WIN
 
 const PROTOCOL_VERSION := 1 
 const MAX_ACTION_HISTORY := 64
+## 结算胜利曲目数量（与 AudioManager.winner_sfx 槽位一致）；服务器随机选一个并下发索引 → 全员一致。
+const WINNER_SFX_COUNT := 4
+## 每回合随机增强（仅展示；id 与 TurnEffect 一致）。服务器抽取并写入快照 → 全员一致。
+const TURN_EFFECT_IDS := ["none", "joker_red", "joker_black", "plus_one", "bomb"]
 
 enum RejectCode {
 	PROTOCOL_VERSION_MISMATCH,
@@ -78,6 +82,8 @@ var last_result: Dictionary = {}
 var event_log: Array[String] = []
 var run_state: Dictionary = KongRules.new_default_run()
 var match_number := 1
+var turn_index := 0              # 本局第几个回合（每次换回合 +1；供客户端只播一次增强动画）
+var turn_effect_id := ""         # 本回合随机增强 id（展示用；服务器抽取，快照全员一致）
 var shop: Dictionary = {}        # {offers:[{index,relic_id,name,price}], sold:{offer:seat}, done:{seat:true}}（固定价购买）
 var shop_result: Dictionary = {} # 最近一次商店裁决 {offer_index:{relic_id,name,winner,amount}}；公开
 var match_id := ""
@@ -488,6 +494,8 @@ func _deal_new_match() -> void:
 	# 否则快照引用的旧卡牌 id 在新 cards 字典中不存在 → public_card 报错。
 	discard_pile.clear()
 	discard_history.clear()
+	turn_index = 0
+	turn_effect_id = ""
 	pending_draw.clear()
 	q_context.clear()
 	final_queue.clear()
@@ -632,6 +640,7 @@ func _server_initial_ready(sender: int) -> void:
 	# 记忆确认后直接开始正式回合（押注阶段已取消，R-12）
 	current_player_id = _alive_order()[0]
 	phase = Phase.TURN_DRAW
+	_roll_turn_effect()
 	_add_log("轮到 %s 行动。" % players[current_player_id].name)
 	_broadcast_state()
 
@@ -1151,14 +1160,35 @@ func _advance_turn(final_mode := false) -> void:
 			current_player_id = decision.next_player
 			final_queue.pop_front()
 			phase = Phase.TURN_DRAW
+			# 最终轮不重新抽取随机增强（避免点铃铛/最终行动时立刻弹出新效果）。
 			_add_log("%s 的最终行动。" % players[current_player_id].name)
 			_broadcast_state()
 			return
 		TurnSystem.Decision.NEXT:
 			current_player_id = decision.next_player
 			phase = Phase.TURN_DRAW
+			_roll_turn_effect()
 			_add_log("轮到 %s 行动。" % players[current_player_id].name)
 			_broadcast_state()
+
+## 换回合时抽取本回合随机增强（当前仅展示；写入快照保证全员一致）。
+##
+## [随机增强接入点 · 后续对接] 真实玩法在此处（或紧随其后）按 `turn_effect_id` 应用：
+##   - "joker_red"/"joker_black"：顺时针/逆时针交换一张牌（从发起者开始）
+##   - "plus_one"：左下角卡牌每回合 +1（A→Q 循环）
+##   - "bomb"：随机 4 张牌加炸弹标记（保留 3 回合后消失；开局不发到手中/发牌后进抽牌堆）
+## 新增效果需同步 `TURN_EFFECT_IDS` 与客户端 `TurnEffect` 展示数据。
+func _roll_turn_effect() -> void:
+	turn_index += 1
+	# 避免与上一回合相同（否则玩家会觉得"一直是同一个"）。
+	var prev := turn_effect_id
+	var pool: Array = []
+	for id in TURN_EFFECT_IDS:
+		if str(id) != prev:
+			pool.append(id)
+	if pool.is_empty():
+		pool = TURN_EFFECT_IDS.duplicate()
+	turn_effect_id = str(pool[randi() % pool.size()])
 
 ## 进入结算贴牌窗口：不立即结算，保持 slap_open 与 TURN_DRAW，开一个 SLAP_SETTLE_SECONDS 的
 ## deadline；期间仅可贴牌（_server_take 守卫），到时执行 finish_callable 结算。
@@ -1318,7 +1348,7 @@ func _finish_game(reason := "") -> void:
 		players[entry].wins = int(players[entry].get("wins", 0)) + 1
 	if _series_finished():
 		last_result["series"] = {"finished": true, "ranking": SeriesRanking.final_ranking(players, turn_order)}
-	_broadcast_sfx("winner")
+	_broadcast_sfx("winner:%d" % (randi() % WINNER_SFX_COUNT))
 	_broadcast_state()
 	if not last_result.get("ranking", []).is_empty() and not _series_finished():
 		_start_series_timer()
@@ -1509,7 +1539,7 @@ func _finish_game_over_hand(failed_seat: int) -> void:
 		players[entry].wins = int(players[entry].get("wins", 0)) + 1
 	if _series_finished():
 		last_result["series"] = {"finished": true, "ranking": SeriesRanking.final_ranking(players, turn_order)}
-	_broadcast_sfx("winner")
+	_broadcast_sfx("winner:%d" % (randi() % WINNER_SFX_COUNT))
 	_broadcast_state()
 	# R-07 超限结束同样要启动"结算→商店"自动推进，否则会卡在结算进不了商店。
 	if not last_result.get("ranking", []).is_empty() and not _series_finished():

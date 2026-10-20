@@ -288,7 +288,7 @@ func _test_held_reveal() -> void:
 	_check("翻回结束后揭示登记清空", view._reveals.is_empty())
 	view.queue_free()
 
-## 揭示炫光（贴对绿 / 贴错红 / 查看蓝）优先于一切非 flash；hover 又高于 actionable（悬停可确认选中）。
+## 揭示炫光（贴对绿 / 贴错红 / 查看蓝）优先于一切非 flash；hover 已改为虚线边框，不再影响炫光。
 func _test_reveal_glow_priority() -> void:
 	var b := CardBlock.new()
 	add_child(b)
@@ -296,16 +296,17 @@ func _test_reveal_glow_priority() -> void:
 	b.set_actionable(true)
 	_check("actionable 显示金色", b.has_glow() and b.glow_color() == Table3dLayout.ACTIONABLE_COLOR)
 	b.set_hover(true)
-	_check("hover 覆盖 actionable 显示浅蓝", b.glow_color() == Color(0.7, 0.95, 1.0))
+	_check("hover 不改炫光（仍金色）", b.glow_color() == Table3dLayout.ACTIONABLE_COLOR)
+	_check("hover 显示虚线边框", b.has_border())
 	b.reveal({"rank": "Q", "suit": "♦"}, Color(0.9, 0.3, 0.3))
-	_check("揭示炫光覆盖 hover 浅蓝", b.glow_color() == Color(0.9, 0.3, 0.3))
+	_check("揭示炫光覆盖 actionable", b.glow_color() == Color(0.9, 0.3, 0.3))
 	b.set_hover(true)
 	_check("hover 重绘不覆盖揭示炫光", b.glow_color() == Color(0.9, 0.3, 0.3))
 	b.set_actionable(true)
 	_check("actionable 重绘不覆盖揭示炫光", b.glow_color() == Color(0.9, 0.3, 0.3))
 	b.set_actionable(false)
 	b.restore()
-	_check("恢复后揭示炫光清除、回到 hover 浅蓝", b.glow_color() == Color(0.7, 0.95, 1.0))
+	_check("恢复后揭示炫光清除（无 actionable 则关闭）", not b.has_glow())
 	b.queue_free()
 
 ## peek_highlight 蓝光跨 render 保持（等价 2D _peek_glow_slots），过期后清除。
@@ -403,8 +404,9 @@ func _test_discard_pile_actionable() -> void:
 	view.render(s2)
 	await get_tree().process_frame
 	_check("TURN_DECISION 弃牌堆可点（弃大牌）", disc.is_pick_enabled())
-	_check("TURN_DECISION 弃牌堆金色光晕", disc.has_glow() and disc.glow_color() == Table3dLayout.ACTIONABLE_COLOR)
-	_check("大牌本身不再可点", not view._pending_block.is_pick_enabled())
+	_check("TURN_DECISION 弃牌堆橙色光晕（用能力）", disc.has_glow() and disc.glow_color() == Table3dView.USE_POWER_COLOR)
+	_check("空弃牌堆略高于桌面（橙光不被桌面遮住）", (view.get_node("Center/DiscardTop") as Node3D).position.y >= Table3dView.STACK_BASE_LIFT - 0.0001)
+	_check("大牌保留 hover 拾取（用于解释气泡）", view._pending_block.is_pick_enabled())
 	# 非当前玩家 → 弃牌堆不可点/不光晕
 	var s3 := _base_state()
 	s3["phase"] = 3

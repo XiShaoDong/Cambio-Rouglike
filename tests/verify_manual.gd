@@ -71,11 +71,19 @@ func _run() -> void:
 	main_node.latest_state = _state()
 	main_node._set_table3d(true)
 	await get_tree().process_frame
+	# 准星默认隐藏，仅按住放大时显示
+	_check("3D 准星默认隐藏", main_node._crosshair != null and not main_node._crosshair.visible)
+	main_node.table3d.camera.set_zoom(true)
+	await get_tree().process_frame
+	_check("放大时准星显示", main_node._crosshair.visible)
+	main_node.table3d.camera.set_zoom(false)
+	await get_tree().process_frame
+	_check("松开后准星隐藏", not main_node._crosshair.visible)
 	_check("3D 左下角按键提示存在", main_node._key_hints != null and is_instance_valid(main_node._key_hints))
 	_check("3D 按键提示可见", main_node._key_hints.visible)
 	_check("3D 按键提示 2 行", main_node._key_hints.row_count() == 2)
-	# 右上角回合徽标（同款 chip 样式，字号 = Command ×2，实时）
-	_check("3D 右上角回合徽标存在", main_node._round_badge != null and is_instance_valid(main_node._round_badge))
+	# 左上角回合徽标（原右上角移来）（同款 chip 样式，字号 = Command ×2，实时）
+	_check("3D 左上角回合徽标存在", main_node._round_badge != null and is_instance_valid(main_node._round_badge))
 	_check("回合徽标可见", main_node._round_badge.visible)
 	var rl: Label = main_node._round_badge.get_node_or_null("Key")
 	_check("回合徽标文本 回合 2/5", rl != null and rl.text == "回合 2/5")
@@ -83,8 +91,8 @@ func _run() -> void:
 	_check("回合徽标左右内边距更宽", (main_node._round_badge.get_theme_stylebox("panel") as StyleBoxFlat).content_margin_left >= 12.0)
 	# 四个角 UI 统一边距（目标屏幕像素 75 → 补偿拉伸后的设计坐标）
 	var m: float = float(int(round(main_node._corner_margin())))
-	_check("左下角边距=75px 换算值", is_equal_approx(main_node._key_hints.offset_left, m) and is_equal_approx(main_node._key_hints.offset_bottom, -m))
-	_check("右上角边距=75px 换算值", is_equal_approx(main_node._round_badge.offset_right, -m) and is_equal_approx(main_node._round_badge.offset_top, m))
+	_check("左下角边距=75px 换算值（按键提示上移让出牌序面板）", is_equal_approx(main_node._key_hints.offset_left, m) and is_equal_approx(main_node._key_hints.offset_bottom, -(m + main_node.CARD_ORDER_LIFT)))
+	_check("左上角边距=75px 换算值", is_equal_approx(main_node._round_badge.offset_left, m) and is_equal_approx(main_node._round_badge.offset_top, m))
 	_check("右下角边距=75px 换算值", is_equal_approx(main_node._self_panel.offset_right, -m) and is_equal_approx(main_node._self_panel.offset_bottom, -m))
 	# 背景纯白（保留透明度）+ 字体纯白
 	var chip_bg := KeyHintPanel.chip_style_box().bg_color
@@ -114,6 +122,42 @@ func _run() -> void:
 	main_node._toggle_manual(ManualPanel.TAB_STATS)
 	await get_tree().process_frame
 	_check("再按 S 关闭 Stats", main_node.manual_panel == null)
+	# K：打开按键映射页（第三页签）
+	main_node._toggle_manual(ManualPanel.TAB_KEYS)
+	await get_tree().process_frame
+	_check("K 打开按键页", main_node.manual_panel != null and main_node.manual_panel.current_tab() == ManualPanel.TAB_KEYS)
+	var km = main_node.manual_panel.keymap_board()
+	_check("按键板存在且可见", km != null and km.visible)
+	_check("按键页行数=动作数", km != null and km.row_count() == KeybindModel.action_ids().size())
+	_check("按键页时手册网格隐藏", not (main_node.manual_panel.get_node("Center/Panel/VBox/Grid") as Control).visible)
+	var tab_manual: Button = main_node.manual_panel.get_node("Center/Panel/VBox/Tabs").get_child(0)
+	_check("页签带 board_interactive", tab_manual.has_meta("board_interactive") and bool(tab_manual.get_meta("board_interactive")))
+	# 保存确认浮层
+	_check("初始无确认浮层", not main_node.manual_panel.confirm_visible())
+	main_node.manual_panel.open_confirm()
+	_check("打开确认浮层", main_node.manual_panel.confirm_visible())
+	main_node.manual_panel.on_confirm_cancel()
+	_check("取消关闭浮层", not main_node.manual_panel.confirm_visible())
+	main_node._toggle_manual(ManualPanel.TAB_KEYS)
+	await get_tree().process_frame
+	_check("再按 K 关闭按键页", main_node.manual_panel == null)
+	# main 集成：keybinds 存在；K 经 keybinds 打开按键页；保存落盘
+	_check("main 持有 keybinds", main_node.keybinds != null)
+	main_node.keybinds.reset_to_defaults()   # 防开发者本机 keybinds.cfg 干扰断言
+	main_node._toggle_manual(ManualPanel.TAB_KEYS)
+	await get_tree().process_frame
+	_check("K 键动作解析为 kb_keymap", main_node.keybinds.action_for(KEY_K) == "kb_keymap")
+	var km2 = main_node.manual_panel.keymap_board()
+	km2.begin_capture("kb_stats")
+	km2.capture_key(KEY_T)
+	main_node.manual_panel.open_confirm()
+	main_node.manual_panel.on_confirm_save()
+	await get_tree().process_frame
+	_check("确认保存后 kb_stats=T 已生效", int(main_node.keybinds.key_of("kb_stats")) == KEY_T)
+	# 还原默认，避免污染后续
+	main_node.keybinds.reset_to_defaults()
+	main_node._toggle_manual(ManualPanel.TAB_KEYS)
+	await get_tree().process_frame
 	# StatsBoard：分组 + 去重
 	var sb := StatsBoard.new()
 	add_child(sb)
