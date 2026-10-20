@@ -187,20 +187,21 @@ func _ensure_turn_effect_panel() -> void:
 
 ## 服务器换回合时（turn_index 变化）用快照里的 turn_effect 播「中央→右上」动画。
 ## 效果由服务器抽取并写入快照 → 所有玩家一致。
-func _maybe_new_turn_effect() -> void:
+func _maybe_new_turn_effect() -> bool:
 	var ti := int(latest_state.get("turn_index", 0))
 	if ti <= 0 or ti == _effect_last_turn:
-		return
+		return false
 	_effect_last_turn = ti
 	var id := str(latest_state.get("turn_effect", ""))
 	if id.is_empty():
-		return
+		return false
 	_current_effect = TurnEffect.by_id(id)
 	if _current_effect.is_empty():
-		return
+		return false
 	_ensure_turn_effect_panel()
 	var m := _corner_margin()
 	_turn_effect_panel.reveal(_current_effect, size * 0.5, Vector2(size.x - m, m))
+	return true
 
 ## 悬停在"牌面已知"的牌上（自己手牌/大牌/弃牌顶/已揭示）→ 在牌旁弹信息气泡。
 func _update_card_tooltip() -> void:
@@ -242,13 +243,14 @@ func _update_hint_hud(phase: int, viewer: int, current: int) -> void:
 	elif bool(latest_state.get("slap_open", false)):
 		slap_state = HintHud.SLAP_OPEN
 	_hint_hud.set_slap_state(slap_state)
+	# 随机效果展示（新回合）→ 倒计时延后 6s 再开始。
+	var revealed := _maybe_new_turn_effect()
 	var key := "%d:%d" % [int(latest_state.get("match_number", 1)), current]
 	if phase in _HUD_ACTIVE_PHASES and key != _hud_turn_key:
 		_hud_turn_key = key
-		_hint_hud.reset_turn(HintHud.PHASE_TURN_SECONDS, text)
+		_hint_hud.reset_turn(HintHud.PHASE_TURN_SECONDS, text, EFFECT_TURN_WAIT if revealed else 0.0)
 	else:
 		_hint_hud.set_hint(text)
-	_maybe_new_turn_effect()
 
 ## 3D 左下角按键提示（放大 Command / 手册 Tab）：说明纯白 + 圆角白底按键。
 func _ensure_key_hints() -> void:
@@ -767,6 +769,7 @@ const _HUD_ACTIVE_PHASES := [PHASE_TURN_DRAW, PHASE_TURN_DECISION, PHASE_Q_DECIS
 
 const CORNER_MARGIN := 75.0     # 3D 四个角 HUD 到屏幕边缘的统一边距（目标=屏幕像素）
 const CARD_ORDER_LIFT := 100.0  # 左下角「牌序」面板占用的高度（按键提示上移量）
+const EFFECT_TURN_WAIT := 6.0   # 新回合随机效果展示期的等待（之后才开始回合倒计时）
 const BOARD_DIST := 3.0        # 回退用：看板沿"相机→桌心"连线距相机的距离（无座位锚点时）
 ## 模态看板锚点（贴玩家、不靠后）：本机座位→桌心的 0..1 深度（用户 0-10 标度的 2/10）。
 const BOARD_DEPTH := 0.2

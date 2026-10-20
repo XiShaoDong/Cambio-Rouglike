@@ -1131,7 +1131,7 @@ func _advance_turn(final_mode := false) -> void:
 			current_player_id = decision.next_player
 			final_queue.pop_front()
 			phase = Phase.TURN_DRAW
-			_roll_turn_effect()
+			# 最终轮不重新抽取随机增强（避免点铃铛/最终行动时立刻弹出新效果）。
 			_add_log("%s 的最终行动。" % players[current_player_id].name)
 			_broadcast_state()
 			return
