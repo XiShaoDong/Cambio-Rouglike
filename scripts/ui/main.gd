@@ -187,6 +187,9 @@ func _ensure_turn_effect_panel() -> void:
 
 ## 服务器换回合时（turn_index 变化）用快照里的 turn_effect 播「中央→右上」动画。
 ## 效果由服务器抽取并写入快照 → 所有玩家一致。
+##
+## [随机增强接入点 · 后续对接] 客户端在这里**只做展示**（把 id 映射为 TurnEffect 展示数据）。
+## 真实效果不在此应用；请在服务器 `game_state.gd._roll_turn_effect()` 附近按 id 实现规则。
 func _maybe_new_turn_effect() -> bool:
 	var id := str(latest_state.get("turn_effect", ""))
 	if id.is_empty():

@@ -1142,7 +1142,13 @@ func _advance_turn(final_mode := false) -> void:
 			_add_log("轮到 %s 行动。" % players[current_player_id].name)
 			_broadcast_state()
 
-## 换回合时抽取本回合随机增强（仅展示；写入快照保证全员一致）。
+## 换回合时抽取本回合随机增强（当前仅展示；写入快照保证全员一致）。
+##
+## [随机增强接入点 · 后续对接] 真实玩法在此处（或紧随其后）按 `turn_effect_id` 应用：
+##   - "joker_red"/"joker_black"：顺时针/逆时针交换一张牌（从发起者开始）
+##   - "plus_one"：左下角卡牌每回合 +1（A→Q 循环）
+##   - "bomb"：随机 4 张牌加炸弹标记（保留 3 回合后消失；开局不发到手中/发牌后进抽牌堆）
+## 新增效果需同步 `TURN_EFFECT_IDS` 与客户端 `TurnEffect` 展示数据。
 func _roll_turn_effect() -> void:
 	turn_index += 1
 	# 避免与上一回合相同（否则玩家会觉得"一直是同一个"）。

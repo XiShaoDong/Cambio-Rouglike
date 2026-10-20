@@ -470,3 +470,18 @@ T01–T20 的前置条件、执行步骤、记录格式、责任人和发布判�
 - 原右上角「回合 N/M」徽标移到**左上角**。
 - 右上角新 section：上「本局效果」，下「小牌（左）+ 效果说明（右）」。
 - 每回合开始：效果面板先在**屏幕中央放大**显示，停顿 **5s**，再**缩小移动**到右上角并停留。
+
+### 代码接入点（后续实现真实效果时）
+
+> 当前**只有展示**：服务器抽取 `turn_effect_id` → 快照 `turn_index`/`turn_effect` → 客户端 `TurnEffectPanel` 播放动画并停靠右上角。真实玩法在服务器按 id 应用。
+
+| 文件 | 职责 / 接入方式 |
+| --- | --- |
+| `scripts/core/game_state.gd` | `TURN_EFFECT_IDS`（id 列表）+ `turn_index`/`turn_effect_id` + `_roll_turn_effect()`（换回合抽取，已在注释标出 **[随机增强接入点]**）。实现真实效果时在抽取处/其后按 id 改写对局状态，并广播。 |
+| `scripts/core/hidden_info.gd` | 快照公开 `turn_index`/`turn_effect`（全员一致；仅展示）。 |
+| `scripts/ui/turn_effect.gd` | **纯展示数据**（id → name/desc/card/bomb）。新增效果在此补展示数据。 |
+| `scripts/ui/turn_effect_panel.gd` | 展示面板 + 中央放大→5s→右上角动画；**不应用效果**。 |
+| `scripts/ui/bomb_icon.gd` | 程序化炸弹图标；后续给卡牌右上角加炸弹角标时复用（3D 可用 `Sprite3D` 贴程序化纹理）。 |
+| `scripts/ui/main.gd` | `_maybe_new_turn_effect()`（依 `turn_index` 播放一次）+ 回合倒计时延迟 `EFFECT_TURN_WAIT=6s`。 |
+
+**新增一个效果的最小步骤**：① `game_state.TURN_EFFECT_IDS` 加 id；② 在 `_roll_turn_effect` 附近实现规则；③ `turn_effect.gd` 补 name/desc/card；④ 需要卡牌角标时用 `bomb_icon.gd` 的风格。
