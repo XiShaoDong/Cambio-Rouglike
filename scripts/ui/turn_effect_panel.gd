@@ -32,13 +32,8 @@ func _ready() -> void:
 func _build() -> void:
 	if _title != null:
 		return
-	var style := StyleBoxFlat.new()
-	style.bg_color = BG
-	style.set_corner_radius_all(14)
-	style.set_content_margin_all(12)
-	# 无边框
-	style.set_border_width_all(0)
-	add_theme_stylebox_override("panel", style)
+	# 彻底无背景 / 无边框
+	add_theme_stylebox_override("panel", StyleBoxEmpty.new())
 	var vb := VBoxContainer.new()
 	vb.name = "VBox"
 	vb.add_theme_constant_override("separation", 8)
@@ -46,8 +41,9 @@ func _build() -> void:
 	_title = Label.new()
 	_title.name = "Title"
 	_title.text = "本局效果"
-	_title.add_theme_font_size_override("font_size", 16)
+	_title.add_theme_font_size_override("font_size", 22)
 	_title.add_theme_color_override("font_color", Color(1, 1, 1))
+	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vb.add_child(_title)
 	var row := HBoxContainer.new()
 	row.name = "Row"

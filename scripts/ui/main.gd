@@ -185,16 +185,20 @@ func _ensure_turn_effect_panel() -> void:
 	_turn_effect_panel.z_index = 90
 	add_child(_turn_effect_panel)
 
-## 新回合（进入 TURN_DRAW 且当前玩家变化）→ 抽一个随机效果并播「中央→右上」动画。
-func _maybe_new_turn_effect(phase: int, current: int) -> void:
-	if phase != PHASE_TURN_DRAW:
+## 服务器换回合时（turn_index 变化）用快照里的 turn_effect 播「中央→右上」动画。
+## 效果由服务器抽取并写入快照 → 所有玩家一致。
+func _maybe_new_turn_effect() -> void:
+	var ti := int(latest_state.get("turn_index", 0))
+	if ti <= 0 or ti == _effect_last_turn:
 		return
-	if phase == _effect_last_phase and current == _effect_last_current:
+	_effect_last_turn = ti
+	var id := str(latest_state.get("turn_effect", ""))
+	if id.is_empty():
 		return
-	_effect_last_phase = phase
-	_effect_last_current = current
+	_current_effect = TurnEffect.by_id(id)
+	if _current_effect.is_empty():
+		return
 	_ensure_turn_effect_panel()
-	_current_effect = TurnEffect.random()
 	var m := _corner_margin()
 	_turn_effect_panel.reveal(_current_effect, size * 0.5, Vector2(size.x - m, m))
 
@@ -244,7 +248,7 @@ func _update_hint_hud(phase: int, viewer: int, current: int) -> void:
 		_hint_hud.reset_turn(HintHud.PHASE_TURN_SECONDS, text)
 	else:
 		_hint_hud.set_hint(text)
-	_maybe_new_turn_effect(phase, current)
+	_maybe_new_turn_effect()
 
 ## 3D 左下角按键提示（放大 Command / 手册 Tab）：说明纯白 + 圆角白底按键。
 func _ensure_key_hints() -> void:
@@ -543,6 +547,11 @@ func _set_table3d(on: bool) -> void:
 		_ensure_card_order_panel()
 		_card_order_panel.visible = true
 		_ensure_turn_effect_panel()
+		if _current_effect.is_empty():
+			var eid := str(latest_state.get("turn_effect", ""))
+			if not eid.is_empty():
+				_current_effect = TurnEffect.by_id(eid)
+		_effect_last_turn = int(latest_state.get("turn_index", 0))
 		if not _current_effect.is_empty():
 			var em := _corner_margin()
 			_turn_effect_panel.set_effect(_current_effect)
@@ -827,8 +836,7 @@ var _card_tooltip: CardTooltip = null
 var _card_order_panel: CardOrderPanel = null
 var _turn_effect_panel: TurnEffectPanel = null
 var _current_effect: Dictionary = {}
-var _effect_last_phase := -1
-var _effect_last_current := -1
+var _effect_last_turn := -1
 var _self_panel: PlayerStatPanel = null
 var is_dev_join := false
 var start_button: Button = null

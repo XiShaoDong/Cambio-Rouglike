@@ -31,6 +31,12 @@ func _test_data() -> void:
 	for e in TurnEffect.all():
 		ids[str(e["id"])] = true
 	_check("随机结果合法", ids.has(str(TurnEffect.random()["id"])))
+	# 服务器权威抽取：turn_index 递增、id 合法
+	GameState.turn_index = 0
+	GameState.turn_effect_id = ""
+	GameState._roll_turn_effect()
+	_check("服务器抽取 turn_index 递增", GameState.turn_index == 1)
+	_check("服务器抽取 id 合法", GameState.TURN_EFFECT_IDS.has(GameState.turn_effect_id))
 
 func _test_panel() -> void:
 	var p := TurnEffectPanel.new()

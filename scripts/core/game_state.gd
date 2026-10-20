@@ -23,6 +23,8 @@ const PROTOCOL_VERSION := 1
 const MAX_ACTION_HISTORY := 64
 ## 结算胜利曲目数量（与 AudioManager.winner_sfx 槽位一致）；服务器随机选一个并下发索引 → 全员一致。
 const WINNER_SFX_COUNT := 4
+## 每回合随机增强（仅展示；id 与 TurnEffect 一致）。服务器抽取并写入快照 → 全员一致。
+const TURN_EFFECT_IDS := ["none", "joker_red", "joker_black", "plus_one", "bomb"]
 
 enum RejectCode {
 	PROTOCOL_VERSION_MISMATCH,
@@ -78,6 +80,8 @@ var last_result: Dictionary = {}
 var event_log: Array[String] = []
 var run_state: Dictionary = KongRules.new_default_run()
 var match_number := 1
+var turn_index := 0              # 本局第几个回合（每次换回合 +1；供客户端只播一次增强动画）
+var turn_effect_id := ""         # 本回合随机增强 id（展示用；服务器抽取，快照全员一致）
 var shop: Dictionary = {}        # {offers:[{index,relic_id,name,price}], sold:{offer:seat}, done:{seat:true}}（固定价购买）
 var shop_result: Dictionary = {} # 最近一次商店裁决 {offer_index:{relic_id,name,winner,amount}}；公开
 var match_id := ""
@@ -485,6 +489,8 @@ func _deal_new_match() -> void:
 	# 否则快照引用的旧卡牌 id 在新 cards 字典中不存在 → public_card 报错。
 	discard_pile.clear()
 	discard_history.clear()
+	turn_index = 0
+	turn_effect_id = ""
 	pending_draw.clear()
 	q_context.clear()
 	final_queue.clear()
@@ -605,6 +611,7 @@ func _server_initial_ready(sender: int) -> void:
 	# 记忆确认后直接开始正式回合（押注阶段已取消，R-12）
 	current_player_id = _alive_order()[0]
 	phase = Phase.TURN_DRAW
+	_roll_turn_effect()
 	_add_log("轮到 %s 行动。" % players[current_player_id].name)
 	_broadcast_state()
 
@@ -1124,14 +1131,21 @@ func _advance_turn(final_mode := false) -> void:
 			current_player_id = decision.next_player
 			final_queue.pop_front()
 			phase = Phase.TURN_DRAW
+			_roll_turn_effect()
 			_add_log("%s 的最终行动。" % players[current_player_id].name)
 			_broadcast_state()
 			return
 		TurnSystem.Decision.NEXT:
 			current_player_id = decision.next_player
 			phase = Phase.TURN_DRAW
+			_roll_turn_effect()
 			_add_log("轮到 %s 行动。" % players[current_player_id].name)
 			_broadcast_state()
+
+## 换回合时抽取本回合随机增强（仅展示；写入快照保证全员一致）。
+func _roll_turn_effect() -> void:
+	turn_index += 1
+	turn_effect_id = TURN_EFFECT_IDS[randi() % TURN_EFFECT_IDS.size()]
 
 ## 进入结算贴牌窗口：不立即结算，保持 slap_open 与 TURN_DRAW，开一个 SLAP_SETTLE_SECONDS 的
 ## deadline；期间仅可贴牌（_server_take 守卫），到时执行 finish_callable 结算。
