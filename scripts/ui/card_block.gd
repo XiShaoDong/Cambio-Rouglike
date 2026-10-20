@@ -49,6 +49,8 @@ var _back_material: StandardMaterial3D
 var _mesh: MeshInstance3D
 var _label: Label3D
 var _label_shadow: Label3D
+var _bomb_badge: Sprite3D
+var _bomb_on := false
 var _material: StandardMaterial3D
 var _area: Area3D
 var _pick_shape: CollisionShape3D
@@ -176,6 +178,17 @@ func _build() -> void:
 	_label.font_size = 96
 	_label.position = Vector3(0.0, Table3dLayout.BLOCK_SIZE.y * 0.5 + LABEL_LIFT, 0.0)
 	_flip.add_child(_label)
+	# 炸弹角标（随机增强）：卡牌右上角，billboard 始终朝向相机。
+	_bomb_badge = Sprite3D.new()
+	_bomb_badge.name = "BombBadge"
+	_bomb_badge.texture = BombIcon.texture(64)
+	_bomb_badge.pixel_size = 0.0028
+	_bomb_badge.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_bomb_badge.no_depth_test = true
+	_bomb_badge.position = Vector3(-Table3dLayout.BLOCK_SIZE.x * 0.5 + 0.13, 0.06,
+		Table3dLayout.BLOCK_SIZE.z * 0.5 - 0.13)
+	_bomb_badge.visible = false
+	_visual.add_child(_bomb_badge)
 	# 拾取标记：独立物理层，仅用于射线拾取
 	_area = Area3D.new()
 	_area.name = "PickArea"
@@ -209,12 +222,22 @@ func setup(slot: Dictionary) -> void:
 	scale = Vector3.ONE
 	_apply_slot(slot)
 
+## 显示/隐藏右上角炸弹角标（公开炸弹标记，不涉及牌面）。
+func set_bomb(on: bool) -> void:
+	_bomb_on = on
+	if _bomb_badge != null and is_instance_valid(_bomb_badge):
+		_bomb_badge.visible = on
+
+func has_bomb() -> bool:
+	return _bomb_on
+
 ## 应用槽位内容（不动画/不打断 tween，供翻牌中点回调复用）。
 func _apply_slot(slot: Dictionary) -> void:
 	_last_slot = slot
 	_flash_color = Color(0, 0, 0, 0)
 	var card: Dictionary = slot.get("card", {})
 	_set_label_text("" if card.is_empty() else card_text(card))
+	set_bomb(bool(slot.get("bomb", false)) or bool(card.get("bomb", false)))
 	_apply_color()
 
 ## 设置拾取元数据（{"kind":"slot","seat":..,"slot":..} 或 hud/deck/...）。
@@ -284,6 +307,7 @@ func reveal(card: Dictionary, color := Color(0, 0, 0, 0), from_p := 0.0) -> void
 	_back_material.albedo_color = Color.WHITE
 	_back_is_back = card.is_empty()
 	_set_label_text(card_text(card))
+	set_bomb(bool(card.get("bomb", false)) or bool(_last_slot.get("bomb", false)))
 	_reveal_known = card.duplicate() if not card.is_empty() else {}
 	_reveal_color = color
 	_paint_glow()

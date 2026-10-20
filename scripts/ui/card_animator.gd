@@ -115,6 +115,8 @@ func handle_exchange(data: Dictionary) -> void:
 			_animate_slap_resolved(int(data.get("target", 0)), int(data.get("target_slot", -1)), data.get("card", {}))
 		"slap_gift":
 			_animate_slap_gift(int(data.get("actor", 0)), int(data.get("own_slot", -1)), int(data.get("target", 0)), int(data.get("target_slot", -1)))
+		"bomb_explode":
+			_animate_bomb_explode(int(data.get("seat", -1)), data.get("slots", []))
 
 ## 弃牌动画：pending 大牌从大牌位置移动到弃牌堆（隐藏源反馈，缩放与弃牌堆一致，落位后显示）。
 func _animate_discard_pending(big_data: Dictionary, actor: int) -> void:
@@ -170,6 +172,24 @@ func _animate_slap_resolved(target_id: int, slot: int, card: Dictionary) -> void
 		main._render_game_if_active())
 
 ## 贴中他人后的交换动画：行动者选的牌 fly 到对方槽位（行动者视角显正面，他人看背面）。
+## 炸弹爆炸：2D 隐藏源卡并让槽位占位，0.7s 后恢复渲染（爆炸贴图由 main 播）。
+func _animate_bomb_explode(seat: int, slots: Array) -> void:
+	if seat < 0 or slots.is_empty():
+		return
+	for s in slots:
+		var slot := int(s)
+		main.mark_anim_slot(seat, slot)
+		if main._card_slots.has(seat) and main._card_slots[seat].has(slot):
+			var card: Control = main._card_slots[seat][slot]
+			if card != null and is_instance_valid(card):
+				card.visible = false
+	main.get_tree().create_timer(0.7).timeout.connect(func():
+		if not is_instance_valid(main):
+			return
+		for s in slots:
+			main.unmark_anim_slot(seat, int(s))
+		main._render_game_if_active())
+
 func _animate_slap_gift(actor: int, own_slot: int, target: int, target_slot: int) -> void:
 	if not main._card_slots.has(actor) or not main._card_slots[actor].has(own_slot):
 		return

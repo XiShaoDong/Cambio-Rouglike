@@ -39,6 +39,8 @@ static func snapshot_for(state: Node, viewer_id: int) -> Dictionary:
 		"slap_open": bool(state.slap_open),
 		# 最终轮结算贴牌窗口 deadline（服务器时钟 ms；0=不在窗口）。期间仅可贴牌，到时结算。
 		"settle_deadline_server_ms": int(state.final_settle_deadline_ms) if state.final_settle_pending else 0,
+		# 本局效果展示阶段 deadline（服务器时钟 ms；0=不在展示）。
+		"effect_reveal_deadline_server_ms": int(state.effect_reveal_deadline_ms) if phase == GameState.Phase.EFFECT_REVEAL else 0,
 		"slap_duel": _slap_duel_snapshot(state) if phase == GameState.Phase.SLAP_DUEL else {},
 		"slap_exchange_actor": int(state.slap_exchange.get("actor", 0)),
 		"q_decision": _q_decision_snapshot(state) if phase == GameState.Phase.Q_DECISION else {},
@@ -48,6 +50,8 @@ static func snapshot_for(state: Node, viewer_id: int) -> Dictionary:
 		"match_number": state.match_number,
 		"turn_index": int(state.turn_index),
 		"turn_effect": str(state.turn_effect_id),
+		# Joker 增强选牌阶段（仅公开轮到谁，不公开选择的牌面）。
+		"effect_pass": _effect_pass_snapshot(state) if phase == GameState.Phase.EFFECT_PASS else {},
 		"ready_count": state.initial_confirmed.size() if phase == GameState.Phase.INITIAL_PEEK else 0,
 		"event_log": state.event_log.duplicate(),
 		"result": state.last_result.duplicate(),
@@ -93,6 +97,19 @@ static func _slap_duel_snapshot(state: Node) -> Dictionary:
 		"target": float(duel.get("target", 0.5)),
 	}
 
+## Joker 增强选牌快照：只公开队列进度与等待者，不公开已选牌面。
+static func _effect_pass_snapshot(state: Node) -> Dictionary:
+	var pass_data: Dictionary = state.effect_pass
+	var queue: Array = pass_data.get("queue", [])
+	var index := int(pass_data.get("index", 0))
+	return {
+		"queue": queue.duplicate(),
+		"index": index,
+		"await_seat": int(queue[index]) if index < queue.size() else -1,
+		"initiator": int(pass_data.get("initiator", -1)),
+		"clockwise": bool(pass_data.get("clockwise", true)),
+	}
+
 ## 单玩家投影：玩家自己的牌按 peek_slots 揭示；他人牌只给令牌。
 ## seat: 被投影玩家的 seat_id；viewer_id: 接收者 seat_id。槽位固定为 HAND_SIZE（初始布局），缺失槽位为空；超出部分横向追加。
 static func _player_snapshot(state: Node, seat: int, reveal_all: bool, viewer_id: int, peek_slots: Array[int]) -> Dictionary:
@@ -109,8 +126,15 @@ static func _player_snapshot(state: Node, seat: int, reveal_all: bool, viewer_id
 					slot["card"] = public_card(state, card_id)
 					slot["card"]["value"] = state._relic_card_value(seat, card_id)
 		slot["protected"] = int(player.get("protected_slot", -1)) == index
+		# 炸弹标记公开（不泄露牌面）：2D/3D 在卡背/牌面右上角显示炸弹图标。
+		slot["bomb"] = not str(slot.get("card_id", "")).is_empty() and state.cards.has(str(slot["card_id"])) \
+			and bool(state.cards[str(slot["card_id"])].get("bomb", false))
 		slots.append(slot)
-	return {"id": seat, "name": player.name, "count": player.cards.size(), "health": player.health,
+	var non_empty := 0
+	for cid in player.cards:
+		if not str(cid).is_empty():
+			non_empty += 1
+	return {"id": seat, "name": player.name, "count": non_empty, "health": player.health,
 		"color": str(player.get("color", "")),
 		# 淘汰延后一局生效：出局当局仍视为正常参与者（本局正常结算），下一局起才标观战
 		"eliminated": int(player.get("health", 0)) <= 0 and int(state.match_number) > int(player.get("eliminated_match", -1)),
@@ -120,7 +144,8 @@ static func _player_snapshot(state: Node, seat: int, reveal_all: bool, viewer_id
 ## 卡牌公共表示（不含身份敏感信息之外的内容，仅用于展示/能力提示）。
 static func public_card(state: Node, card_id: String) -> Dictionary:
 	var card: Dictionary = state.cards[card_id]
-	return {"id": card.id, "rank": card.rank, "suit": card.suit, "value": card.value, "label": KongRules.display_name(card)}
+	return {"id": card.id, "rank": card.rank, "suit": card.suit, "value": card.value, "label": KongRules.display_name(card),
+		"bomb": bool(card.get("bomb", false))}
 
 ## 弃牌历史投影：每张曾进入弃牌堆的牌的公开发布（按时间顺序）。
 static func _discard_history_snapshot(state: Node) -> Array:
@@ -163,4 +188,6 @@ static func _phase_name(phase: int) -> String:
 		GameState.Phase.GAME_OVER: return "结算"
 		GameState.Phase.BET: return "押注"
 		GameState.Phase.SHOP: return "商店"
+		GameState.Phase.EFFECT_PASS: return "随机增强：传递卡牌"
+		GameState.Phase.EFFECT_REVEAL: return "查看本局特效"
 	return ""

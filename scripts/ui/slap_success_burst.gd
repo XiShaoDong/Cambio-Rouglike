@@ -1,7 +1,7 @@
 class_name SlapSuccessBurst
 extends Control
-## 贴牌成功爆炸弹层（仅 3D 的屏幕空间 overlay）：
-## 红色齿状爆炸背景（黑色描边）+ 卡牌正面 + 第一行「贴牌成功」大字 + 第二行玩家名。
+## 成功弹层（屏幕空间 overlay；贴牌成功 / 炸弹爆炸 / 6 效果触发共用）：
+## 红色齿状爆炸背景（黑色描边）+ 卡牌正面 + 第一行可配置标题 + 第二行玩家名。
 ## 屏幕右侧、垂直居中；弹出放大 → 停留 → 淡出后自动释放。纯展示层。
 
 const BURST_PATH := "res://assets/ui/slap_burst.svg"
@@ -17,8 +17,9 @@ const FADE_DUR := 0.35
 
 var _cards := CardFactory.new()
 
-## 构建并播放。card 为成功贴到的那张牌（含 rank/suit/label），player_name 为贴中者名字。
-func setup(card: Dictionary, player_name: String) -> void:
+## 构建并播放。card 为展示的牌（含 rank/suit/label），player_name 为玩家名。
+## title_text 可复用为「贴牌成功」/「炸弹爆炸」/「6 效果触发」。
+func setup(card: Dictionary, player_name: String, title_text := TITLE_TEXT) -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	# 横向：屏幕四等份，容器中线落在 3/4；纵向：垂直居中
 	anchor_left = CENTER_X_RATIO
@@ -50,7 +51,7 @@ func setup(card: Dictionary, player_name: String) -> void:
 
 	var title := Label.new()
 	title.name = "Title"
-	title.text = TITLE_TEXT
+	title.text = title_text
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", TITLE_FONT)
 	title.add_theme_color_override("font_color", Color(1, 1, 1))

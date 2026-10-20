@@ -189,6 +189,8 @@ func _on_action(action: String) -> void:
 			interaction.jack_cancel()
 		"joker":
 			_open_joker_transform_panel()
+		"six_swap_power":
+			GameState.request_effect_power(_next_action_id())
 		"restart":
 			_request_restart_confirm()
 		"restart_yes":
@@ -294,20 +296,19 @@ func _ensure_turn_effect_panel() -> void:
 	_turn_effect_panel.z_index = 90
 	add_child(_turn_effect_panel)
 
-## 服务器换回合时（turn_index 变化）用快照里的 turn_effect 播「中央→右上」动画。
-## 效果由服务器抽取并写入快照 → 所有玩家一致。
-##
-## [随机增强接入点 · 后续对接] 客户端在这里**只做展示**（把 id 映射为 TurnEffect 展示数据）。
-## 真实效果不在此应用；请在服务器 `game_state.gd._roll_turn_effect()` 附近按 id 实现规则。
+## 每局开始时（match_id 变化）用快照里的 turn_effect 播「中央→右上」动画。
+## 只在全员 Ready、进入第一回合后触发展示；开局记忆阶段不显示。
+## 效果由服务器在开局抽取并保持整局不变；turn_index 每回合变化，不能作为触发依据。
 func _maybe_new_turn_effect() -> bool:
 	var id := str(latest_state.get("turn_effect", ""))
-	if id.is_empty():
+	var mid := str(latest_state.get("match_id", ""))
+	if id.is_empty() or mid.is_empty():
 		return false
-	var ti := int(latest_state.get("turn_index", 0))
-	# turn_index 或效果 id 任一变化都更新（避免卡在旧效果）。
-	if ti <= 0 or (ti == _effect_last_turn and id == _effect_last_id):
+	if int(latest_state.get("phase", 0)) != PHASE_EFFECT_REVEAL:
 		return false
-	_effect_last_turn = ti
+	if mid == _effect_last_match and id == _effect_last_id:
+		return false
+	_effect_last_match = mid
 	_effect_last_id = id
 	_current_effect = TurnEffect.by_id(id)
 	if _current_effect.is_empty():
@@ -357,14 +358,140 @@ func _update_hint_hud(phase: int, viewer: int, current: int) -> void:
 	elif bool(latest_state.get("slap_open", false)):
 		slap_state = HintHud.SLAP_OPEN
 	_hint_hud.set_slap_state(slap_state)
-	# 随机效果展示（新回合）→ 倒计时延后 6s 再开始。
-	var revealed := _maybe_new_turn_effect()
+	# 游戏开始的第一环节：全员 Ready 后展示本局特效（服务器 EFFECT_REVEAL 阶段 5s）。
+	if phase == PHASE_EFFECT_REVEAL:
+		_maybe_new_turn_effect()
+		var reveal_key := "reveal:%d" % int(latest_state.get("match_number", 1))
+		if reveal_key != _hud_turn_key:
+			_hud_turn_key = reveal_key
+			_hint_hud.reset_turn(EFFECT_REVEAL_SECS, EFFECT_REVEAL_TEXT, 0.0)
+		else:
+			_hint_hud.set_hint(EFFECT_REVEAL_TEXT)
+		return
 	var key := "%d:%d" % [int(latest_state.get("match_number", 1)), current]
 	if phase in _HUD_ACTIVE_PHASES and key != _hud_turn_key:
 		_hud_turn_key = key
-		_hint_hud.reset_turn(HintHud.PHASE_TURN_SECONDS, text, EFFECT_TURN_WAIT if revealed else 0.0)
+		_hint_hud.reset_turn(HintHud.PHASE_TURN_SECONDS, text, 0.0)
 	else:
 		_hint_hud.set_hint(text)
+
+## 在指定槽位上方生成 +1 浮字：1s 上升、随后 1s 淡出，总 2s。
+func _show_plus_one(seat: int, slot: int) -> void:
+	var base := _slot_screen_center(seat, slot)
+	if base.x < -9000.0:
+		return
+	var label := Label.new()
+	label.name = "PlusOneFloat"
+	label.text = "+1"
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	label.z_index = 120
+	label.add_theme_font_size_override("font_size", 30)
+	label.add_theme_color_override("font_color", Color(1.0, 0.86, 0.35))
+	label.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.85))
+	label.add_theme_constant_override("outline_size", 6)
+	var start := base + Vector2(-10.0, -30.0)
+	label.position = start
+	label.modulate = Color(1, 1, 1, 1)
+	add_child(label)
+	var tw := create_tween().set_parallel(true)
+	tw.tween_property(label, "position:y", start.y - 36.0, 1.0).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tw.tween_property(label, "modulate:a", 0.0, 1.0).set_delay(1.0)
+	tw.chain().tween_callback(func():
+		if is_instance_valid(label):
+			label.queue_free())
+
+## 槽位在 main（设计坐标）中的屏幕中心；3D 投影 / 2D 卡牌矩形。
+func _slot_screen_center(seat: int, slot: int) -> Vector2:
+	if _table3d_active and table3d != null and is_instance_valid(table3d):
+		var cam: Camera3D = table3d.camera.camera_node()
+		if cam != null:
+			var world: Vector3 = table3d.slot_xform(seat, slot).origin
+			var vp := get_viewport().get_visible_rect().size
+			if vp.x > 0.0 and vp.y > 0.0 and not cam.is_position_behind(world):
+				var sp := cam.unproject_position(world)
+				return Vector2(sp.x * size.x / vp.x, sp.y * size.y / vp.y)
+	# 2D：用棋盘卡牌节点的全局矩形。
+	if _card_slots.has(seat) and _card_slots[seat].has(slot):
+		var card: Control = _card_slots[seat][slot]
+		if card != null and is_instance_valid(card):
+			var r := card.get_global_rect()
+			return r.position + Vector2(r.size.x * 0.5, r.size.y * 0.5)
+	return Vector2(-10000, -10000)
+
+## 炸弹爆炸：先让当前视图标记/隐藏槽位，再在各槽位中心播漫画爆炸贴图。
+func _handle_bomb_explode(data: Dictionary) -> void:
+	var seat := int(data.get("seat", -1))
+	var slots: Array = data.get("slots", [])
+	if seat < 0 or slots.is_empty():
+		return
+	# 右侧成功 UI：展示爆炸的那张牌（服务器已在爆炸事件中公开）。
+	var cards: Array = data.get("cards", [])
+	if not cards.is_empty() and not (cards[0] as Dictionary).is_empty():
+		_show_card_burst(cards[0], seat, "炸弹爆炸")
+	for slot in slots:
+		_show_bomb_burst(seat, int(slot))
+	if _table3d_active:
+		if table3d != null and is_instance_valid(table3d):
+			table3d.animate_exchange(data)
+	else:
+		animator.handle_exchange(data)
+
+## 槽位中心播放一次性爆炸贴图（0.6s 放大 + 淡出）；2D/3D 共用屏幕空间 overlay。
+## 6 效果成功触发：右侧 UI 展示打出的 6 / 红 Joker。
+func _show_effect_trigger(data: Dictionary) -> void:
+	var actor := int(data.get("actor", -1))
+	var card: Dictionary = data.get("card", {})
+	if card.is_empty():
+		return
+	_show_card_burst(card, actor, "6 效果触发")
+
+## 右侧成功弹层（复用贴牌成功 UI）：可配置标题，card 为要展示的牌。
+func _show_card_burst(card: Dictionary, actor: int, title: String) -> void:
+	if card.is_empty():
+		return
+	if _slap_burst != null and is_instance_valid(_slap_burst):
+		_slap_burst.queue_free()
+		_slap_burst = null
+	var player_name := ""
+	for p in latest_state.get("players", []):
+		if int(p.id) == actor:
+			player_name = str(p.get("name", ""))
+			break
+	var burst := SlapSuccessBurst.new()
+	burst.name = "SlapSuccessBurst"
+	burst.z_index = 90
+	add_child(burst)
+	_slap_burst = burst
+	burst.setup(card, player_name, title)
+
+func _show_bomb_burst(seat: int, slot: int) -> void:
+	var base := _slot_screen_center(seat, slot)
+	if base.x < -9000.0:
+		return
+	var tex: Texture2D = load("res://assets/ui/slap_burst.svg")
+	if tex == null:
+		return
+	var burst := TextureRect.new()
+	burst.name = "BombBurst"
+	burst.texture = tex
+	burst.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	burst.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	burst.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	burst.z_index = 130
+	var sz := 110.0
+	burst.size = Vector2(sz, sz)
+	burst.pivot_offset = burst.size * 0.5
+	burst.position = base - burst.size * 0.5
+	burst.scale = Vector2(0.45, 0.45)
+	burst.rotation = randf_range(-0.22, 0.22)
+	burst.modulate = Color(1, 1, 1, 1)
+	add_child(burst)
+	var tw := create_tween().set_parallel(true)
+	tw.tween_property(burst, "scale", Vector2(1.25, 1.25), 0.6).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tw.tween_property(burst, "modulate:a", 0.0, 0.6)
+	tw.chain().tween_callback(func():
+		if is_instance_valid(burst):
+			burst.queue_free())
 
 ## 3D 左下角按键提示（放大 Command / 手册 Tab）：说明纯白 + 圆角白底按键。
 func _ensure_key_hints() -> void:
@@ -672,16 +799,19 @@ func _set_table3d(on: bool) -> void:
 		_ensure_card_order_panel()
 		_card_order_panel.visible = true
 		_ensure_turn_effect_panel()
-		if _current_effect.is_empty():
-			var eid := str(latest_state.get("turn_effect", ""))
-			if not eid.is_empty():
-				_current_effect = TurnEffect.by_id(eid)
-		_effect_last_turn = int(latest_state.get("turn_index", 0))
-		_effect_last_id = str(latest_state.get("turn_effect", ""))
-		if not _current_effect.is_empty():
-			var em := _corner_margin()
-			_turn_effect_panel.set_effect(_current_effect)
-			_turn_effect_panel.dock_at(Vector2(size.x - em, em))
+		var eff_phase := int(latest_state.get("phase", PHASE_LOBBY))
+		var eff_visible := eff_phase == PHASE_EFFECT_REVEAL \
+			or (eff_phase >= PHASE_TURN_DRAW and eff_phase != PHASE_GAME_OVER and eff_phase != PHASE_SHOP)
+		# 只在效果已经播放过（或已在 3D 中停靠）时直接停靠；首次进入 TURN_DRAW 要保留中央 5s 展示。
+		if eff_visible and str(_effect_last_match) == str(latest_state.get("match_id", "")):
+			if _current_effect.is_empty():
+				var eid := str(latest_state.get("turn_effect", ""))
+				if not eid.is_empty():
+					_current_effect = TurnEffect.by_id(eid)
+			if not _current_effect.is_empty() and not _turn_effect_panel.is_revealing():
+				var em := _corner_margin()
+				_turn_effect_panel.set_effect(_current_effect)
+				_turn_effect_panel.dock_at(Vector2(size.x - em, em))
 		background.visible = false
 		game_panel.visible = false
 	else:
@@ -915,14 +1045,17 @@ const PHASE_SLAP_EXCHANGE := 6
 const PHASE_GAME_OVER := 7
 const PHASE_SLAP_DUEL := 8
 const PHASE_SHOP := 10
+const PHASE_EFFECT_PASS := 11
+const PHASE_EFFECT_REVEAL := 12
 
 ## HintHud 胶囊显示 + 倒计时重置的阶段（与 HintHud.ACTIVE_PHASES 一致）。
 ## 不含 INITIAL_PEEK：进入房间直到全员 ready 后才开始计时。
-const _HUD_ACTIVE_PHASES := [PHASE_TURN_DRAW, PHASE_TURN_DECISION, PHASE_Q_DECISION, PHASE_SLAP_EXCHANGE, PHASE_SLAP_DUEL]
+const _HUD_ACTIVE_PHASES := [PHASE_TURN_DRAW, PHASE_TURN_DECISION, PHASE_Q_DECISION, PHASE_SLAP_EXCHANGE, PHASE_SLAP_DUEL, PHASE_EFFECT_REVEAL]
 
 const CORNER_MARGIN := 75.0     # 3D 四个角 HUD 到屏幕边缘的统一边距（目标=屏幕像素）
 const CARD_ORDER_LIFT := 82.0  # 左下角「牌序」面板占用的高度（按键提示上移量）
-const EFFECT_TURN_WAIT := 6.0   # 新回合随机效果展示期的等待（之后才开始回合倒计时）
+const EFFECT_REVEAL_SECS := 5.0  # 本局效果展示时长（中央 5s 后开始第一个玩家倒计时）
+const EFFECT_REVEAL_TEXT := "查看本局特效"
 const BOARD_DIST := 3.0        # 回退用：看板沿"相机→桌心"连线距相机的距离（无座位锚点时）
 ## 模态看板锚点（贴玩家、不靠后）：本机座位→桌心的 0..1 深度（用户 0-10 标度的 2/10）。
 const BOARD_DEPTH := 0.2
@@ -1003,7 +1136,7 @@ var _card_tooltip: CardTooltip = null
 var _card_order_panel: CardOrderPanel = null
 var _turn_effect_panel: TurnEffectPanel = null
 var _current_effect: Dictionary = {}
-var _effect_last_turn := -1
+var _effect_last_match := ""
 var _effect_last_id := ""
 var _self_panel: PlayerStatPanel = null
 var is_dev_join := false
@@ -1125,6 +1258,15 @@ func _ready() -> void:
 	GameState.private_reveal_received.connect(_show_private_reveal)
 	# 2D 走 CardAnimator（原逻辑逐字不动）；3D 走 table3d 的飞牌编排。
 	GameState.card_exchange_animated.connect(func(data: Dictionary):
+		if str(data.get("kind", "")) == "bomb_explode":
+			_handle_bomb_explode(data)
+			return
+		if str(data.get("kind", "")) == "effect_trigger":
+			_show_effect_trigger(data)
+			return
+		if str(data.get("kind", "")) == "plus_one":
+			_show_plus_one(int(data.get("seat", -1)), int(data.get("slot", 2)))
+			return
 		if _table3d_active:
 			if str(data.get("kind", "")) == "slap_resolved":
 				_show_slap_success(data)
@@ -1430,6 +1572,14 @@ func _render_game() -> void:
 	#（如超出手牌数的罚牌槽位）指向已释放节点，致后续动画报 freed instance。
 	_card_slots.clear()
 	game_view.render(latest_state)
+	# 新局开局记忆阶段：隐藏上一局的效果面板，等全员 Ready 后重新展示本局效果。
+	var phase := int(latest_state.get("phase", PHASE_LOBBY))
+	if phase == PHASE_LOBBY or phase == PHASE_INITIAL_PEEK:
+		if _turn_effect_panel != null and is_instance_valid(_turn_effect_panel):
+			_turn_effect_panel.hide_panel()
+		_current_effect = {}
+	else:
+		_maybe_new_turn_effect()
 	_render_duel(latest_state)
 	# ExtraLayer 附加卡已同步定位，罚牌 fly 可直接取到正确锚点
 	_flush_slap_penalties()
@@ -1781,21 +1931,7 @@ func _show_private_reveal(title: String, revealed_cards: Array, target: Dictiona
 ## 记录槽位到 _peek_glow_slots，render 重建卡牌后仍可恢复光晕。
 ## 贴牌成功爆炸弹层（仅 3D）：屏幕空间齿状爆炸 + 卡面 + 「贴牌成功」 + 贴中者名字。
 func _show_slap_success(data: Dictionary) -> void:
-	if _slap_burst != null and is_instance_valid(_slap_burst):
-		_slap_burst.queue_free()
-		_slap_burst = null
-	var actor := int(data.get("actor", -1))
-	var player_name := ""
-	for p in latest_state.get("players", []):
-		if int(p.id) == actor:
-			player_name = str(p.get("name", ""))
-			break
-	var burst := SlapSuccessBurst.new()
-	burst.name = "SlapSuccessBurst"
-	burst.z_index = 90
-	add_child(burst)
-	_slap_burst = burst
-	burst.setup(data.get("card", {}), player_name)
+	_show_card_burst(data.get("card", {}), int(data.get("actor", -1)), SlapSuccessBurst.TITLE_TEXT)
 
 func _on_peek_highlight(data: Dictionary) -> void:
 	if _table3d_active and table3d != null and is_instance_valid(table3d):

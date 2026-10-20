@@ -10,6 +10,7 @@ var failures := 0
 var checks := 0
 
 func _ready() -> void:
+	GameState.turn_effect_rules_enabled = false  # 规则测试由 verify_turn_effect_rules 单独开启
 	await _test_normal_flow()
 	await _test_repeat_rejected()
 	await _test_first_turn_flag()

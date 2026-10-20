@@ -1199,6 +1199,10 @@ func animate_exchange(data: Dictionary) -> void:
 			_anim_slap_resolved(data)
 		"slap_gift":
 			_anim_slap_gift(data)
+		"effect_pass":
+			_anim_effect_pass(data)
+		"bomb_explode":
+			_anim_bomb_explode(data)
 
 ## 座位世界坐标（render 登记；未渲染返回 ZERO）。用于把浮空面板锚到本机座位。
 func seat_world(seat_id: int) -> Vector3:
@@ -1476,6 +1480,62 @@ func _anim_slap_resolved(data: Dictionary) -> void:
 	_spawn_fly(from_x, center_xform("discard"), data.get("card", {}), true, true, func():
 		_unmark_anim_slot(target, slot)
 		_end_discard_hold())
+
+## 炸弹爆炸：隐藏爆炸槽位，0.7s 后恢复渲染（爆炸贴图由 main 播）。
+func _anim_bomb_explode(data: Dictionary) -> void:
+	var seat := int(data.get("seat", -1))
+	var slots: Array = data.get("slots", [])
+	if seat < 0 or slots.is_empty():
+		return
+	for s in slots:
+		var slot := int(s)
+		_mark_anim_slot(seat, slot)
+		var b = _find_block(seat, slot)
+		if b != null and is_instance_valid(b):
+			(b as Node3D).visible = false
+	get_tree().create_timer(0.7).timeout.connect(func():
+		if not is_instance_valid(self) or not is_inside_tree():
+			return
+		for s in slots:
+			_unmark_anim_slot(seat, int(s))
+		_refresh())
+
+## 6 效果：每名玩家选中的牌同时顺时针飞到下家槽位（隐私：非本人始终背面）。
+func _anim_effect_pass(data: Dictionary) -> void:
+	var moves: Array = data.get("moves", [])
+	if moves.is_empty():
+		return
+	var slots := {}
+	for m in moves:
+		var fs := int(m.get("from_seat", -1))
+		var fslot := int(m.get("from_slot", -1))
+		var ts := int(m.get("to_seat", -1))
+		var tslot := int(m.get("to_slot", -1))
+		if fs < 0 or fslot < 0 or ts < 0 or tslot < 0:
+			continue
+		_mark_anim_slot(fs, fslot)
+		_mark_anim_slot(ts, tslot)
+		slots["%d_%d" % [fs, fslot]] = [fs, fslot]
+		slots["%d_%d" % [ts, tslot]] = [ts, tslot]
+	if slots.is_empty():
+		return
+	var remaining := {"n": 0}
+	for m in moves:
+		var fs := int(m.get("from_seat", -1))
+		var fslot := int(m.get("from_slot", -1))
+		var ts := int(m.get("to_seat", -1))
+		var tslot := int(m.get("to_slot", -1))
+		if fs < 0 or fslot < 0 or ts < 0 or tslot < 0:
+			continue
+		var face_up := _viewer == fs and slot_face_up(fs, fslot)
+		var card: Dictionary = slot_card(fs, fslot) if face_up else {}
+		remaining["n"] = int(remaining["n"]) + 1
+		_spawn_fly(slot_xform(fs, fslot), slot_xform(ts, tslot), card, face_up, false, func():
+			remaining["n"] = int(remaining["n"]) - 1
+			if int(remaining["n"]) <= 0:
+				for key in slots:
+					var pair: Array = slots[key]
+					_unmark_anim_slot(int(pair[0]), int(pair[1])))
 
 func _anim_slap_gift(data: Dictionary) -> void:
 	var actor := int(data.get("actor", 0))

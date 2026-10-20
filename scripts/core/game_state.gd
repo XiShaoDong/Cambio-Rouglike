@@ -19,14 +19,14 @@ signal registered_token_received(token: String)
 signal resume_hand_received(hand: Array, pending: Dictionary)
 signal sfx_played(kind: String)
 
-enum Phase { LOBBY, INITIAL_PEEK, TURN_DRAW, TURN_DECISION, Q_DECISION, SLAP_WINDOW, SLAP_EXCHANGE, GAME_OVER, SLAP_DUEL, BET, SHOP }
+enum Phase { LOBBY, INITIAL_PEEK, TURN_DRAW, TURN_DECISION, Q_DECISION, SLAP_WINDOW, SLAP_EXCHANGE, GAME_OVER, SLAP_DUEL, BET, SHOP, EFFECT_PASS, EFFECT_REVEAL }
 
 const PROTOCOL_VERSION := 1 
 const MAX_ACTION_HISTORY := 64
 ## 结算胜利曲目数量（与 AudioManager.winner_sfx 槽位一致）；服务器随机选一个并下发索引 → 全员一致。
 const WINNER_SFX_COUNT := 4
 ## 每回合随机增强（仅展示；id 与 TurnEffect 一致）。服务器抽取并写入快照 → 全员一致。
-const TURN_EFFECT_IDS := ["none", "joker_red", "joker_black", "plus_one", "bomb"]
+const TURN_EFFECT_IDS := ["none", "six_swap", "plus_one", "bomb"]
 
 enum RejectCode {
 	PROTOCOL_VERSION_MISMATCH,
@@ -78,12 +78,21 @@ var slap_exchange: Dictionary = {}
 var slap_collect: Dictionary = {}
 var slap_duel: Dictionary = {}
 var debug_duel := false
+## 开发测试模式（仅房主 T 面板）：强制本局效果 / 给对应效果准备固定牌堆。
+var dev_test_mode := false
+var dev_test_effect := ""
 var last_result: Dictionary = {}
 var event_log: Array[String] = []
 var run_state: Dictionary = KongRules.new_default_run()
 var match_number := 1
-var turn_index := 0              # 本局第几个回合（每次换回合 +1；供客户端只播一次增强动画）
-var turn_effect_id := ""         # 本回合随机增强 id（展示用；服务器抽取，快照全员一致）
+var turn_index := 0              # 本局第几个回合（每次换回合 +1）
+var turn_effect_id := ""         # 本局随机增强 id（开局抽取并保持整局；快照全员一致）
+## 随机增强玩法开关（旧测试置 false 保持确定性；真实对局默认开启）。
+var turn_effect_rules_enabled := true
+## Joker 增强选牌阶段：{queue:[seat], picks:{seat:slot}, index:int, clockwise:bool, initiator:int}
+var effect_pass: Dictionary = {}
+## 本局效果展示阶段 deadline（服务器时钟 ms；0=不在展示）。
+var effect_reveal_deadline_ms := 0
 var shop: Dictionary = {}        # {offers:[{index,relic_id,name,price}], sold:{offer:seat}, done:{seat:true}}（固定价购买）
 var shop_result: Dictionary = {} # 最近一次商店裁决 {offer_index:{relic_id,name,winner,amount}}；公开
 var match_id := ""
@@ -104,6 +113,7 @@ var kongbaya: KongbayaSystem
 var slap_collect_timer := Timer.new()
 var slap_duel_timer := Timer.new()
 var series_timer := Timer.new()
+var effect_reveal_timer := Timer.new()  # 全员 Ready 后：展示本局效果 5s
 var settle_timer := Timer.new()  # 最终轮结算贴牌窗口 / 结算前收尾宽限
 var final_settle_pending := false  # 处于最终轮结算窗口（仅可贴牌）
 var final_settle_deadline_ms := 0  # 窗口 deadline（服务器时钟 ms；0=无）
@@ -124,6 +134,9 @@ func _ready() -> void:
 	series_timer.one_shot = true
 	add_child(series_timer)
 	series_timer.timeout.connect(_on_series_auto_advance)
+	effect_reveal_timer.one_shot = true
+	add_child(effect_reveal_timer)
+	effect_reveal_timer.timeout.connect(_on_effect_reveal_timeout)
 	settle_timer.one_shot = true
 	add_child(settle_timer)
 	settle_timer.timeout.connect(_on_settle_timeout)
@@ -164,6 +177,9 @@ func _on_peer_left(peer_id: int) -> void:
 	remote_zoom.erase(seat)
 	remote_talk.erase(seat)
 	remote_nose.erase(seat)
+	if phase == Phase.EFFECT_PASS:
+		# Joker 选牌阶段：离线玩家自动随机选，避免整个对局卡住。
+		_effect_pass_advance()
 	_add_log("%s 断线，对局暂停等待重连（轮到其回合时冻结）。" % left_name)
 	_broadcast_state()
 
@@ -194,10 +210,14 @@ func _reset_match() -> void:
 	final_settle_pending = false
 	final_settle_deadline_ms = 0
 	_deferred_settle = Callable()
+	effect_reveal_timer.stop()
+	effect_reveal_deadline_ms = 0
 	last_result.clear()
 	event_log.clear()
 	shop = {}
 	shop_result = {}
+	effect_pass.clear()
+	turn_effect_id = ""
 	run_state = KongRules.new_default_run()
 	match_number = 1
 	match_id = ""
@@ -495,7 +515,7 @@ func _deal_new_match() -> void:
 	discard_pile.clear()
 	discard_history.clear()
 	turn_index = 0
-	turn_effect_id = ""
+	effect_pass.clear()
 	pending_draw.clear()
 	q_context.clear()
 	final_queue.clear()
@@ -509,6 +529,8 @@ func _deal_new_match() -> void:
 	slap_collect_timer.stop()
 	slap_duel_timer.stop()
 	series_timer.stop()
+	effect_reveal_timer.stop()
+	effect_reveal_deadline_ms = 0
 	event_log.clear()
 	for seat in turn_order:
 		players[seat].cards.clear()
@@ -517,6 +539,10 @@ func _deal_new_match() -> void:
 		for _slot in KongRules.HAND_SIZE:
 			players[seat].cards.append(_draw_from_deck())
 	_apply_match_start_relics()
+	# 每局抽一次随机增强并保持到本局结束（下一局在结算/商店后重新抽取）。
+	_roll_turn_effect()
+	_apply_test_mode_setup()
+	_apply_match_start_effect()
 	phase = Phase.INITIAL_PEEK
 	initial_confirmed.clear()
 	last_result.clear()
@@ -637,11 +663,13 @@ func _server_initial_ready(sender: int) -> void:
 	if initial_confirmed.size() < _alive_count():
 		_broadcast_state()
 		return
-	# 记忆确认后直接开始正式回合（押注阶段已取消，R-12）
+	# 记忆确认后：先进入「本局效果展示」阶段（5s），再开始第一个玩家的回合。
 	current_player_id = _alive_order()[0]
-	phase = Phase.TURN_DRAW
-	_roll_turn_effect()
-	_add_log("轮到 %s 行动。" % players[current_player_id].name)
+	if turn_effect_rules_enabled:
+		_begin_effect_reveal_phase()
+	else:
+		_start_turn(current_player_id)
+		_add_log("轮到 %s 行动。" % players[current_player_id].name)
 	_broadcast_state()
 
 func request_take(source: String, action_id := "") -> void:
@@ -735,6 +763,88 @@ func _server_joker_transform(sender: int, rank: String, suit: String, action_id 
 	_add_log("%s 把 Joker 变换为 %s%s。" % [players[sender].name, rank, suit])
 	_broadcast_state()
 
+## 6 增强：抽到红 Joker 时选择「使用能力」触发顺时针传递（红 Joker 被弃置）。
+func request_effect_power(action_id := "") -> void:
+	if multiplayer.is_server():
+		_server_effect_power(_peer_to_seat(1), action_id)
+	else:
+		server_effect_power.rpc_id(1, action_id)
+
+@rpc("any_peer", "reliable")
+func server_effect_power(action_id: String) -> void:
+	if multiplayer.is_server():
+		_server_effect_power(_peer_to_seat(multiplayer.get_remote_sender_id()), action_id)
+
+func _server_effect_power(sender: int, action_id := "") -> void:
+	if phase != Phase.TURN_DECISION:
+		_reject(sender, RejectCode.INVALID_PHASE, action_id)
+		return
+	if _guard_suspended(sender, action_id):
+		return
+	if _guard_spectator(sender, action_id):
+		return
+	if sender != current_player_id:
+		_reject(sender, RejectCode.NOT_CURRENT_PLAYER, action_id)
+		return
+	if not turn_effect_rules_enabled or turn_effect_id != "six_swap" or pending_draw.get("source") != "draw" or pending_draw.is_empty():
+		_reject(sender, RejectCode.ABILITY_FORBIDDEN, action_id)
+		return
+	var cid: String = str(pending_draw.card_id)
+	if not cards.has(cid) or str(cards[cid].rank) != "JOKER" or str(cards[cid].suit) != "red":
+		_reject(sender, RejectCode.ABILITY_FORBIDDEN, action_id)
+		return
+	if not _check_action_id(sender, action_id):
+		_reject(sender, RejectCode.DUPLICATE_OR_EXPIRED_ACTION, action_id)
+		return
+	pending_draw.clear()
+	_discard(cid)
+	_broadcast_exchange({"kind": "discard", "actor": sender, "big_data": _card_public(cid)})
+	_add_log("%s 使用红 Joker 的能力触发了 6 效果。" % players[sender].name)
+	_broadcast_effect_trigger(sender, cid)
+	if _begin_effect_pass(sender, true, Callable(self, "_resume_after_effect_play")):
+		_broadcast_state()
+	else:
+		_open_slap("")
+		_advance_turn()
+
+## 6 增强：等待选牌的玩家选择一张自己的牌传给下家。
+func request_effect_pass(slot: int, action_id := "") -> void:
+	if multiplayer.is_server():
+		_server_effect_pass(_peer_to_seat(1), slot, action_id)
+	else:
+		server_effect_pass.rpc_id(1, slot, action_id)
+
+@rpc("any_peer", "reliable")
+func server_effect_pass(slot: int, action_id: String) -> void:
+	if multiplayer.is_server():
+		_server_effect_pass(_peer_to_seat(multiplayer.get_remote_sender_id()), slot, action_id)
+
+func _server_effect_pass(sender: int, slot: int, action_id := "") -> void:
+	if phase != Phase.EFFECT_PASS:
+		_reject(sender, RejectCode.INVALID_PHASE, action_id)
+		return
+	if _guard_suspended(sender, action_id):
+		return
+	if _guard_spectator(sender, action_id):
+		return
+	var queue: Array = effect_pass.get("queue", [])
+	var index := int(effect_pass.get("index", 0))
+	var await_seat := int(queue[index]) if index < queue.size() else -1
+	if sender != await_seat:
+		_reject(sender, RejectCode.NOT_CURRENT_PLAYER, action_id)
+		return
+	if not _valid_slot(sender, slot) or str(players[sender].cards[slot]).is_empty():
+		_reject(sender, RejectCode.INVALID_SLOT, action_id)
+		return
+	if not _check_action_id(sender, action_id):
+		_reject(sender, RejectCode.DUPLICATE_OR_EXPIRED_ACTION, action_id)
+		return
+	effect_pass["picks"][sender] = slot
+	effect_pass["index"] = index + 1
+	_add_log("%s 选择了一张牌传递给下家。" % players[sender].name)
+	_effect_pass_advance()
+	_broadcast_state()
+
 func request_replace(slot: int, action_id := "") -> void:
 	if multiplayer.is_server():
 		_server_replace(_peer_to_seat(1), slot, action_id)
@@ -771,6 +881,11 @@ func _server_replace(sender: int, slot: int, action_id := "") -> void:
 	_add_log("%s 替换了一张手牌。" % players[sender].name)
 	_broadcast_exchange({"kind": "replace", "actor": sender, "slot": slot,
 		"old_data": _card_public(outgoing), "big_data": _card_public(incoming)})
+	if _should_trigger_six_swap(outgoing):
+		_broadcast_effect_trigger(sender, outgoing)
+		if _begin_effect_pass(sender, true, Callable(self, "_resume_after_effect_play")):
+			_broadcast_state()
+			return
 	_open_slap("")
 	_advance_turn()
 
@@ -1020,6 +1135,8 @@ func _kick_offline_seat(target_seat: int) -> void:
 	turn_order.erase(target_seat)
 	initial_confirmed.erase(target_seat)
 	final_queue.erase(target_seat)
+	if phase == Phase.EFFECT_PASS:
+		_effect_pass_remove_seat(target_seat)
 	if kong_caller == target_seat:
 		kong_caller = -1
 	_add_log("%s 已被房主移出对局。" % name)
@@ -1117,6 +1234,11 @@ func _discard_pending_and_open_slap(_resume: String) -> void:
 	var card_id: String = pending_draw.card_id
 	pending_draw.clear()
 	_discard(card_id)
+	if _should_trigger_six_swap(card_id):
+		_broadcast_effect_trigger(current_player_id, card_id)
+		if _begin_effect_pass(current_player_id, true, Callable(self, "_resume_after_effect_play")):
+			_broadcast_state()
+			return
 	_open_slap("")
 	_advance_turn()
 
@@ -1166,21 +1288,43 @@ func _advance_turn(final_mode := false) -> void:
 			return
 		TurnSystem.Decision.NEXT:
 			current_player_id = decision.next_player
-			phase = Phase.TURN_DRAW
-			_roll_turn_effect()
+			_start_turn(current_player_id)
 			_add_log("轮到 %s 行动。" % players[current_player_id].name)
 			_broadcast_state()
 
 ## 换回合时抽取本回合随机增强（当前仅展示；写入快照保证全员一致）。
 ##
-## [随机增强接入点 · 后续对接] 真实玩法在此处（或紧随其后）按 `turn_effect_id` 应用：
-##   - "joker_red"/"joker_black"：顺时针/逆时针交换一张牌（从发起者开始）
-##   - "plus_one"：左下角卡牌每回合 +1（A→Q 循环）
-##   - "bomb"：随机 4 张牌加炸弹标记（保留 3 回合后消失；开局不发到手中/发牌后进抽牌堆）
+## 每局开局抽取一次（在 `_deal_new_match` 中调用），整局保持；每回合由
+## `_start_turn` / `_apply_turn_effect` / `_apply_match_start_effect` 触发生效。
 ## 新增效果需同步 `TURN_EFFECT_IDS` 与客户端 `TurnEffect` 展示数据。
+## 全员 Ready 后：进入本局效果展示阶段（服务器权威 5s），期间不可操作。
+func _begin_effect_reveal_phase() -> void:
+	phase = Phase.EFFECT_REVEAL
+	effect_reveal_deadline_ms = Time.get_ticks_msec() + int(KongRules.EFFECT_REVEAL_SECONDS * 1000.0)
+	effect_reveal_timer.start(KongRules.EFFECT_REVEAL_SECONDS)
+	_add_log("本局效果展示：%d 秒后开始。" % int(KongRules.EFFECT_REVEAL_SECONDS))
+
+## 效果展示结束：开始第一个玩家的回合（先推进 turn_index / 触发 plus_one 等）。
+func _on_effect_reveal_timeout() -> void:
+	if phase != Phase.EFFECT_REVEAL:
+		return
+	effect_reveal_deadline_ms = 0
+	var order := _alive_order()
+	if order.is_empty():
+		_finish_game("所有玩家已离开对局。")
+		return
+	if not players.has(current_player_id):
+		current_player_id = order[0]
+	_start_turn(current_player_id)
+	_add_log("轮到 %s 行动。" % players[current_player_id].name)
+	_broadcast_state()
+
 func _roll_turn_effect() -> void:
-	turn_index += 1
-	# 避免与上一回合相同（否则玩家会觉得"一直是同一个"）。
+	# 测试模式：可强制本局效果（不传/空 = 正常随机）。
+	if dev_test_mode and TURN_EFFECT_IDS.has(dev_test_effect):
+		turn_effect_id = dev_test_effect
+		return
+	# 每局只抽一次，保持到本局结束；避免与上一局相同。
 	var prev := turn_effect_id
 	var pool: Array = []
 	for id in TURN_EFFECT_IDS:
@@ -1189,6 +1333,260 @@ func _roll_turn_effect() -> void:
 	if pool.is_empty():
 		pool = TURN_EFFECT_IDS.duplicate()
 	turn_effect_id = str(pool[randi() % pool.size()])
+
+## 新回合开始：推进回合计数、结算该玩家的炸弹倒计时，并触发本局效果（效果本身不重抽）。
+func _start_turn(seat: int) -> void:
+	turn_index += 1
+	_tick_bomb_cards(seat)
+	phase = Phase.TURN_DRAW
+	if turn_effect_rules_enabled:
+		_apply_turn_effect(seat)
+
+## 测试模式：按本局效果准备固定牌堆/手牌（仅房主 T 面板开启时生效）。
+func _apply_test_mode_setup() -> void:
+	if not dev_test_mode:
+		return
+	match turn_effect_id:
+		"plus_one":
+			_test_hands_all_aces()
+		"six_swap":
+			_test_deck_all_sixes()
+		"bomb":
+			_test_deck_all_bombs()
+
+## 测试 +1：所有存活玩家手牌全部变成 A（含原本的 Joker；花色统一为 ♠）。
+func _test_hands_all_aces() -> void:
+	for seat in _alive_order():
+		for cid in players[seat].cards:
+			var key := str(cid)
+			if key.is_empty() or not cards.has(key):
+				continue
+			cards[key].rank = "A"
+			cards[key].suit = "♠"
+			cards[key].value = KongRules.card_value("A")
+	_add_log("测试模式：所有玩家手牌已设为 A。")
+
+## 测试 6：抽牌堆全部变成 6（保留 2 张 Joker 供红 Joker 能力测试）。
+func _test_deck_all_sixes() -> void:
+	for cid in deck:
+		var key := str(cid)
+		if not cards.has(key) or str(cards[key].rank) == "JOKER":
+			continue
+		cards[key].rank = "6"
+		cards[key].value = KongRules.card_value("6")
+	_add_log("测试模式：抽牌堆已设为 6（保留 Joker）。")
+
+## 测试炸弹：抽牌堆全部带炸弹标记（3 回合倒计时）。
+func _test_deck_all_bombs() -> void:
+	for cid in deck:
+		var key := str(cid)
+		if not cards.has(key):
+			continue
+		cards[key].bomb = true
+		cards[key].bomb_turns = 3
+	_add_log("测试模式：抽牌堆全部带炸弹标记。")
+
+## 局开始时的一次性效果（炸弹在发牌后标记；plus_one 在每回合开始触发）。
+func _apply_match_start_effect() -> void:
+	if not turn_effect_rules_enabled:
+		return
+	if turn_effect_id == "bomb":
+		_mark_bomb_cards()
+
+## 每回合开始触发本局效果（six_swap 由打出 6 / 红 Joker 能力触发，不在此处）。
+func _apply_turn_effect(initiator: int) -> void:
+	if turn_effect_id == "plus_one":
+		_apply_plus_one(initiator)
+
+## 左下角 +1：只加**当前回合玩家**的 slot 2（2×2 左下角），
+## 即每转一圈回到该玩家时 +1 一次；按槽位生效，不绑定具体牌（换牌后加新牌）。
+func _apply_plus_one(seat: int) -> void:
+	if not players.has(seat) or not _is_alive(seat):
+		return
+	var hand: Array = players[seat].cards
+	if hand.size() <= 2:
+		return
+	var cid := str(hand[2])
+	if cid.is_empty() or not cards.has(cid):
+		return
+	var next_rank := KongRules.next_rank_in_cycle(str(cards[cid].rank))
+	if next_rank.is_empty():
+		return
+	cards[cid].rank = next_rank
+	cards[cid].value = KongRules.card_value(next_rank)
+	_add_log("随机增强：%s 的左下角牌点数 +1。" % players[seat].name)
+	# 服务器确认真正 +1 后才广播飘字事件（K/Joker/空槽不加，也不飘）。
+	_broadcast_exchange({"kind": "plus_one", "seat": seat, "slot": 2})
+
+## 6 效果传递：从发起者开始按方向依次让每名有手牌的存活玩家选一张牌，
+## 全部选完后同时交换（每人收到上家的牌，放入自己刚才交出的槽位）。
+## after：交换完成后继续原回合流程（开贴牌窗口 + 推进回合）。起步失败返回 false。
+func _begin_effect_pass(initiator: int, clockwise: bool, after := Callable()) -> bool:
+	var order: Array[int] = []
+	for seat in _alive_order():
+		if _hand_count(int(seat)) > 0:
+			order.append(int(seat))
+	if order.size() < 2:
+		_add_log("随机增强：可传递手牌的玩家不足，6 效果跳过。")
+		return false
+	var start := order.find(initiator)
+	if start < 0:
+		start = 0
+	var n := order.size()
+	var queue: Array[int] = []
+	for i in n:
+		var idx: int = (start + i) % n if clockwise else (((start - i) % n) + n) % n
+		queue.append(order[idx])
+	effect_pass = {
+		"queue": queue,
+		"picks": {},
+		"index": 0,
+		"clockwise": clockwise,
+		"initiator": initiator,
+		"after": after,
+	}
+	phase = Phase.EFFECT_PASS
+	_effect_pass_advance()
+	return true
+
+## 推进 Joker 选牌队列：离线玩家自动随机选，真人则等待其点击。
+func _effect_pass_advance() -> void:
+	while true:
+		var queue: Array = effect_pass.get("queue", [])
+		var index := int(effect_pass.get("index", 0))
+		if index >= queue.size():
+			_apply_effect_pass()
+			return
+		var seat := int(queue[index])
+		if not players.has(seat) or _hand_count(seat) <= 0:
+			effect_pass["index"] = index + 1
+			continue
+		if bool(players[seat].get("offline", false)):
+			var auto_slot := _random_hand_slot(seat)
+			if auto_slot >= 0:
+				effect_pass["picks"][seat] = auto_slot
+			effect_pass["index"] = index + 1
+			continue
+		return
+
+## 选牌完成：一次性交换，保持每人的手牌槽位数不变。
+func _apply_effect_pass() -> void:
+	var queue: Array = effect_pass.get("queue", [])
+	var after: Callable = effect_pass.get("after", Callable())
+	if queue.size() < 2:
+		effect_pass.clear()
+		phase = Phase.TURN_DRAW
+		if after.is_valid():
+			after.call()
+		return
+	var picks: Dictionary = effect_pass.get("picks", {})
+	var n := queue.size()
+	var incoming: Dictionary = {}
+	var moves: Array = []
+	for i in n:
+		var giver := int(queue[i])
+		var receiver := int(queue[(i + 1) % n])
+		var giver_slot := int(picks.get(giver, -1))
+		var receiver_slot := int(picks.get(receiver, -1))
+		if giver_slot < 0 or receiver_slot < 0:
+			continue
+		if not players.has(giver) or giver_slot >= players[giver].cards.size():
+			continue
+		var cid := str(players[giver].cards[giver_slot])
+		if cid.is_empty():
+			continue
+		incoming[receiver] = {"card": cid, "slot": receiver_slot}
+		moves.append({"from_seat": giver, "from_slot": giver_slot,
+			"to_seat": receiver, "to_slot": receiver_slot})
+	# 飞牌事件先于状态广播（客户端用旧布局定位）；只含位置，不含牌面。
+	if not moves.is_empty():
+		_broadcast_exchange({"kind": "effect_pass", "moves": moves})
+	for receiver in incoming:
+		var item: Dictionary = incoming[receiver]
+		players[int(receiver)].cards[int(item.slot)] = str(item.card)
+	effect_pass.clear()
+	phase = Phase.TURN_DRAW
+	_add_log("随机增强：每名玩家把一张牌顺时针传给了下家。")
+	if after.is_valid():
+		after.call()
+
+## 移除 Joker 选牌队列中的座位（踢出离线者时调用），必要时推进。
+func _effect_pass_remove_seat(seat: int) -> void:
+	if effect_pass.is_empty():
+		return
+	var queue: Array = effect_pass.get("queue", [])
+	var index := int(effect_pass.get("index", 0))
+	var pos := queue.find(seat)
+	if pos >= 0:
+		queue.remove_at(pos)
+		if pos < index:
+			index -= 1
+		effect_pass["queue"] = queue
+		effect_pass["index"] = index
+	(effect_pass.get("picks", {}) as Dictionary).erase(seat)
+	_effect_pass_advance()
+
+## 本局效果为 6 且纸牌点数为 6 时，打出/弃置该牌会触发顺时针传递。
+func _should_trigger_six_swap(card_id: String) -> bool:
+	return turn_effect_rules_enabled and turn_effect_id == "six_swap" and cards.has(card_id) \
+		and str(cards[card_id].rank) == "6"
+
+## 6 效果传递结束后的原回合收尾（开贴牌窗口并推进）。
+func _resume_after_effect_play() -> void:
+	_open_slap("")
+	_advance_turn()
+
+func _random_hand_slot(seat: int) -> int:
+	var valid: Array[int] = []
+	for i in players[seat].cards.size():
+		if not str(players[seat].cards[i]).is_empty():
+			valid.append(i)
+	if valid.is_empty():
+		return -1
+	return valid[randi() % valid.size()]
+
+## 炸弹：从抽牌堆随机选最多 4 张（不碰手牌）并标记倒计时。
+func _mark_bomb_cards() -> void:
+	var candidates: Array[String] = []
+	for cid in deck:
+		var key := str(cid)
+		if not cards.has(key):
+			continue
+		if bool(cards[key].get("bomb", false)):
+			continue
+		candidates.append(key)
+	candidates.shuffle()
+	var count := mini(4, candidates.size())
+	for i in count:
+		cards[candidates[i]]["bomb"] = true
+		cards[candidates[i]]["bomb_turns"] = 3
+	if count > 0:
+		_add_log("随机增强：%d 张牌被装上了炸弹（在手牌保留 3 回合）。" % count)
+
+## 持有者回合开始：其手牌中的炸弹倒计时 -1；到 0 时移出对局（不进弃牌堆）。
+func _tick_bomb_cards(seat: int) -> void:
+	if not players.has(seat):
+		return
+	var exploded_slots: Array[int] = []
+	var exploded_cards: Array = []
+	for i in players[seat].cards.size():
+		var cid := str(players[seat].cards[i])
+		if cid.is_empty() or not cards.has(cid):
+			continue
+		if not bool(cards[cid].get("bomb", false)):
+			continue
+		cards[cid]["bomb_turns"] = int(cards[cid].get("bomb_turns", 3)) - 1
+		if int(cards[cid]["bomb_turns"]) <= 0:
+			exploded_cards.append(_card_public(cid))
+			players[seat].cards[i] = ""
+			cards[cid]["bomb"] = false
+			exploded_slots.append(i)
+	if exploded_slots.is_empty():
+		return
+	_add_log("随机增强：%s 的 %d 张炸弹牌爆炸消失。" % [players[seat].name, exploded_slots.size()])
+	# 先于状态广播发送爆炸动画（客户端仍能拿到旧槽位布局）。
+	# 爆炸后牌已移出对局，这里公开牌面用于右侧爆炸 UI。
+	_broadcast_exchange({"kind": "bomb_explode", "seat": seat, "slots": exploded_slots, "cards": exploded_cards})
 
 ## 进入结算贴牌窗口：不立即结算，保持 slap_open 与 TURN_DRAW，开一个 SLAP_SETTLE_SECONDS 的
 ## deadline；期间仅可贴牌（_server_take 守卫），到时执行 finish_callable 结算。
@@ -1318,6 +1716,8 @@ func _finish_game(reason := "") -> void:
 	slap_collect_timer.stop()
 	slap_duel_timer.stop()
 	settle_timer.stop()
+	effect_reveal_timer.stop()
+	effect_reveal_deadline_ms = 0
 	final_settle_pending = false
 	final_settle_deadline_ms = 0
 	_deferred_settle = Callable()
@@ -1505,6 +1905,8 @@ func _finish_game_over_hand(failed_seat: int) -> void:
 	slap_collect_timer.stop()
 	slap_duel_timer.stop()
 	settle_timer.stop()
+	effect_reveal_timer.stop()
+	effect_reveal_deadline_ms = 0
 	final_settle_pending = false
 	final_settle_deadline_ms = 0
 	_deferred_settle = Callable()
@@ -1607,6 +2009,13 @@ func _broadcast_exchange(data: Dictionary) -> void:
 			_receive_exchange_animated(data)
 		else:
 			receive_exchange_animated.rpc_id(peer, data)
+
+## 6 效果触发：广播触发的牌（6 / 红 Joker）+ 触发者，供右侧成功 UI 展示。
+func _broadcast_effect_trigger(actor: int, card_id: String) -> void:
+	if not cards.has(card_id):
+		return
+	_broadcast_exchange({"kind": "effect_trigger", "actor": actor,
+		"card": _card_public(card_id), "effect": turn_effect_id})
 
 ## 广播音效事件到所有玩家（服务器权威发出，客户端各自在本地播放对应音效）。
 ## kind 约定：`bell`（Kongbaya 铃铛）/ `winner`（结算胜利声）。不携带具体音频资源，客户端自行映射。

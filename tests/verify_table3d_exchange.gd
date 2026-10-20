@@ -29,6 +29,8 @@ func _run() -> void:
 	await _test_flash_persist()
 	await _test_draw_fly()
 	await _test_discard_pile_actionable()
+	await _test_effect_pass_anim()
+	await _test_bomb_explode_anim()
 
 func _base_state() -> Dictionary:
 	return {
@@ -380,6 +382,36 @@ func _test_draw_fly() -> void:
 	view.queue_free()
 
 ## 弃牌堆按上下文可点 + 金色光晕；大牌不再直接可点。
+func _test_bomb_explode_anim() -> void:
+	var view = load("res://scenes/ui/table3d.tscn").instantiate()
+	add_child(view)
+	await get_tree().process_frame
+	view.render(_base_state())
+	await get_tree().process_frame
+	view.animate_exchange({"kind": "bomb_explode", "seat": 0, "slots": [0]})
+	_check("bomb 爆炸标记槽位", view._has_anim_slot(0, 0))
+	var block = view._find_block(0, 0)
+	_check("bomb 爆炸隐藏源卡", block != null and not (block as Node3D).visible)
+	await get_tree().create_timer(0.9).timeout
+	_check("bomb 爆炸 0.7s 后清标记", not view._has_anim_slot(0, 0))
+	view.queue_free()
+
+func _test_effect_pass_anim() -> void:
+	var view = load("res://scenes/ui/table3d.tscn").instantiate()
+	add_child(view)
+	await get_tree().process_frame
+	view.render(_base_state())
+	await get_tree().process_frame
+	view.animate_exchange({"kind": "effect_pass", "moves": [
+		{"from_seat": 0, "from_slot": 0, "to_seat": 1, "to_slot": 0},
+		{"from_seat": 1, "from_slot": 0, "to_seat": 0, "to_slot": 0},
+	]})
+	_check("effect_pass 生成每段飞牌", view._flyers.size() == 2)
+	_check("effect_pass 标记双槽", view._has_anim_slot(0, 0) and view._has_anim_slot(1, 0))
+	await _wait_flyers(view)
+	_check("effect_pass 落地清标记", not view._has_anim_slot(0, 0) and not view._has_anim_slot(1, 0))
+	view.queue_free()
+
 func _test_discard_pile_actionable() -> void:
 	var view = load("res://scenes/ui/table3d.tscn").instantiate()
 	add_child(view)

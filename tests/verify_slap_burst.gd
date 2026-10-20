@@ -34,6 +34,12 @@ func _run() -> void:
 	_check("卡面=红桃J", card != null and card.is_face_up and str(card.card_data.get("rank")) == "J" and str(card.card_data.get("suit")) == "♥")
 	_check("中线在屏幕 3/4、垂直居中", is_equal_approx(burst.anchor_left, 0.75) and is_equal_approx(burst.anchor_top, 0.5))
 	_check("非交互（IGNORE）", burst.mouse_filter == Control.MOUSE_FILTER_IGNORE)
+	var bomb_burst := SlapSuccessBurst.new()
+	add_child(bomb_burst)
+	bomb_burst.setup({"rank": "6", "suit": "♠", "label": "6♠"}, "玩家B", "炸弹爆炸")
+	await get_tree().process_frame
+	_check("自定义标题=炸弹爆炸", bomb_burst.title_text() == "炸弹爆炸")
+	bomb_burst.queue_free()
 	burst.queue_free()
 
 	# 集成：3D 下收到 slap_resolved 弹层；切回 2D 移除
@@ -58,6 +64,17 @@ func _run() -> void:
 	_check("3D 下 slap_resolved 弹出爆炸层", main_node._slap_burst != null and is_instance_valid(main_node._slap_burst))
 	_check("爆炸层标题正确", main_node._slap_burst != null and main_node._slap_burst.title_text() == "贴牌成功")
 	_check("爆炸层显示贴中者名字", main_node._slap_burst != null and (main_node._slap_burst.get_node_or_null("VBox/Name") as Label).text == "玩家A")
+	GameState.card_exchange_animated.emit({"kind": "effect_trigger", "actor": 1,
+		"card": {"rank": "6", "suit": "♠", "label": "6♠"}})
+	await get_tree().process_frame
+	_check("6 触发右侧 UI", main_node._slap_burst != null and main_node._slap_burst.title_text() == "6 效果触发")
+	_check("6 触发显示玩家名", main_node._slap_burst != null and (main_node._slap_burst.get_node_or_null("VBox/Name") as Label).text == "B")
+	GameState.card_exchange_animated.emit({"kind": "bomb_explode", "seat": 0, "slots": [0],
+		"cards": [{"rank": "K", "suit": "♦", "label": "K♦"}]})
+	await get_tree().process_frame
+	_check("炸弹爆炸右侧 UI", main_node._slap_burst != null and main_node._slap_burst.title_text() == "炸弹爆炸")
+	_check("炸弹爆炸展示牌面", main_node._slap_burst != null \
+		and (main_node._slap_burst.get_node_or_null("VBox/CardCenter/Card") as CardView).card_data.get("rank") == "K")
 	main_node._set_table3d(false)
 	await get_tree().process_frame
 	_check("切回 2D 后爆炸层已移除", main_node._slap_burst == null)

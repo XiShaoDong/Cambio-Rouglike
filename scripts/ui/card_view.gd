@@ -24,11 +24,14 @@ var _pending_setup := false
 var _pending_highlight := false
 var _is_highlighted := false
 var _pending_flash: Array = []
+var _bomb_icon: BombIcon
+var _force_bomb := false
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	pressed.connect(func(): card_clicked.emit(self))
 	_build_glow()
+	_build_bomb()
 	_refresh()
 	if _pending_setup:
 		_pending_setup = false
@@ -51,6 +54,36 @@ func _build_glow() -> void:
 	glow.add_theme_stylebox_override("panel", style)
 	glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
+## 构建右上角炸弹角标（随机增强；不依赖牌面是否朝上，卡背也可显示）。
+func _build_bomb() -> void:
+	if _bomb_icon != null:
+		return
+	_bomb_icon = BombIcon.new()
+	_bomb_icon.name = "BombBadge"
+	_bomb_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_bomb_icon.custom_minimum_size = Vector2(22, 22)
+	_bomb_icon.size = Vector2(22, 22)
+	_bomb_icon.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	_bomb_icon.offset_left = -26
+	_bomb_icon.offset_top = 4
+	_bomb_icon.offset_right = -4
+	_bomb_icon.offset_bottom = 26
+	_bomb_icon.visible = false
+	add_child(_bomb_icon)
+
+## 强制显示/隐藏炸弹角标（手牌背面也能显示；正面牌面数据里的 bomb 会自动显示）。
+func set_bomb(on: bool) -> void:
+	_force_bomb = on
+	_refresh_bomb()
+
+func has_bomb() -> bool:
+	return _force_bomb or bool(card_data.get("bomb", false))
+
+func _refresh_bomb() -> void:
+	if _bomb_icon == null or not is_instance_valid(_bomb_icon):
+		return
+	_bomb_icon.visible = has_bomb()
+
 ## 设置卡牌数据；card 为空则显示背面。
 func setup(data: Dictionary) -> void:
 	card_data = data
@@ -68,6 +101,7 @@ func _refresh() -> void:
 	back_texture.texture = _back_texture()
 	if front.visible:
 		front_texture.texture = _front_texture()
+	_refresh_bomb()
 
 ## 当前皮肤：优先取 card_data.type（未来服务器赋值），否则用全局预览皮肤（默认 original）。
 func _current_type() -> String:

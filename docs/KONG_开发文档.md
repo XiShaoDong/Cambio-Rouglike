@@ -452,24 +452,35 @@ T01–T20 的前置条件、执行步骤、记录格式、责任人和发布判�
 
 ---
 
-## 随机增强（Random Enhancements）· 2026-10-16 追加
+## 随机增强（Random Enhancements）· 2026-10-16 追加（2026-10-20 玩法实现）
 
-> **实现状态**：**仅 UI 已实现**（每回合随机抽一个效果并在右上角展示；**不生效**）。下列玩法逻辑为设计约定，待后续实现。**效果抽取已服务器权威**：服务器在每次换回合时递增 `turn_index` 并随机写入 `turn_effect_id`，快照公开 `turn_index`/`turn_effect` → 全员一致（仅展示，不生效）。
+> **实现状态**：**UI + 玩法均已实现**。服务器在**每局开局发牌后**抽取一次 `turn_effect_id` 并**保持整局不变**；本局结束、结算页结束后（含商店流程）开下一局时重新抽取。快照公开 `turn_index`/`turn_effect` → 全员一致。旧测试可通过 `GameState.turn_effect_rules_enabled = false` 关闭玩法应用，仅保留抽取/展示。
 
-每局游戏的**每一回合开始**随机抽取一个效果：
+每局开局随机抽取一个效果（不与上一局重复），**整局保持同一个效果**；各效果按自己的触发条件生效：
 
 | 效果 | 说明 |
 | --- | --- |
-| 无效果 | 本回合没有特殊效果。 |
-| 红 Joker | 顺时针交换一张卡牌（从发起者开始）。 |
-| 黑 Joker | 逆时针交换一张卡牌（从发起者开始）。 |
-| 左下角 +1 | 左下角的卡牌每回合点数 +1（A→Q 循环，Q 之后回到 A 继续）。 |
-| 炸弹 | 随机为 4 张牌添加炸弹符号；带炸弹符号的卡牌在手牌保留 **3 回合**后消失。开局不能被发到手中、发牌后加入抽牌堆。卡牌右上角显示炸弹 UI；屏幕右上角小牌展示时用一张黑色牌 + 炸弹 UI 即可。 |
+| 无效果 | 本局没有特殊效果。 |
+| 6 | **打出任意花色的 6 时**（弃置自己手牌中的 6 / 弃掉抽到的 6）触发；**抽到红 Joker 并选择「使用能力」**也触发。从打出者开始按**顺时针**依次让每名有手牌的存活玩家选一张自己的牌；全部选完后一次性传给下家。**只触发这一次**，不是每回合自动触发。 |
+| 左下角 +1 | **每名玩家自己的回合开始**，该玩家的左下角槽位（`slot 2`）点数 +1；`A→2→…→Q→A` 循环，`K`/`JOKER` 不变。按槽位生效、不绑定具体牌：换牌后新牌在下个自己的回合继续 +1（每转一圈一次）。触发时由服务器广播 `plus_one` 事件，客户端在该玩家左下角卡牌上方飘出 +1（1s 上升、随后 1s 淡出，总 2s）；K/Joker/空槽不广播。 |
+| 炸弹 | **开局发牌后**从抽牌堆随机为最多 4 张牌添加炸弹标记（不会进入开局手牌）；炸弹牌在**持有者自己的每个回合开始**倒计时，在手牌保留 3 回合后**移出对局并消失**（不进弃牌堆）。卡牌右上角显示炸弹 UI；效果面板小牌用黑色牌 + 炸弹 UI。爆炸消失时播放槽位爆炸贴图（0.6s 放大淡出），并在屏幕右侧复用成功 UI 展示爆炸牌；6 触发时同样展示打出的 6 / 红 Joker。 |
+
+**6 效果实现细节**：
+- 触发点：`_server_replace` 的弃置牌为 6、`_discard_pending_and_open_slap` 弃掉的抽牌为 6、`_server_effect_power`（红 Joker 使用能力，红 Joker 被弃置）。
+- 新增服务器阶段 `Phase.EFFECT_PASS`（值 11）；从打出者开始按顺时针顺序推进，快照 `effect_pass.await_seat` 指当前等待者。等待者只能选择自己的一张非空手牌（`request_effect_pass`）。
+- 服务端只记录槽位、不记录/广播牌面；全部选完后同时交换，手牌槽位数不变；完成后继续原回合流程（开贴牌窗口 + 推进回合）。
+- 离线玩家由服务器自动随机选择（避免断线卡死）；存活但无手牌者跳过。
+
+**炸弹实现细节**：
+- 只在**开局**标记一次；`cards[cid].bomb = true`、`bomb_turns = 3`；槽位/牌面公开 `bomb` 标记（不泄露牌面）。
+- 到期时把该槽位置空（`cards[i] = ""`），不写弃牌堆/`discard_history`；`_hand_count` 与快照 `count` 均按非空牌计数。
+- 2D `CardView` 与 3D `CardBlock` 均显示右上角炸弹角标（3D 使用 `BombIcon.texture()` 程序化纹理）。
 
 **UI 约定（已实现）**：
 - 原右上角「回合 N/M」徽标移到**左上角**。
 - 右上角新 section：上「本局效果」，下「小牌（左）+ 效果说明（右）」。
-- 每回合开始：效果面板先在**屏幕中央放大**显示，停顿 **5s**，再**缩小移动**到右上角并停留。
+- **全员 Ready 后服务器先进入 `EFFECT_REVEAL`（5s，禁止操作）**：效果面板在**屏幕中央放大**显示；hint 文本显示「查看本局特效」并跑 **5s 倒计时**；5s 后缩小移动到右上角停靠，同时开始第一个玩家的 **30s 回合倒计时**。
+- **测试模式（T 开发者面板，仅房主）**：可强制本局效果并准备对应牌局（`plus_one` 全员手牌 A；`six_swap` 抽牌堆全 6、保留 Joker；`bomb` 抽牌堆全部带炸弹）；下一局/重开后生效。
 
 ### 代码接入点（后续实现真实效果时）
 
@@ -477,11 +488,15 @@ T01–T20 的前置条件、执行步骤、记录格式、责任人和发布判�
 
 | 文件 | 职责 / 接入方式 |
 | --- | --- |
-| `scripts/core/game_state.gd` | `TURN_EFFECT_IDS`（id 列表）+ `turn_index`/`turn_effect_id` + `_roll_turn_effect()`（换回合抽取，已在注释标出 **[随机增强接入点]**）。实现真实效果时在抽取处/其后按 id 改写对局状态，并广播。 |
-| `scripts/core/hidden_info.gd` | 快照公开 `turn_index`/`turn_effect`（全员一致；仅展示）。 |
+| `scripts/core/game_state.gd` | `TURN_EFFECT_IDS` + `turn_index`/`turn_effect_id` + `_deal_new_match()` 内 `_roll_turn_effect()`/`_apply_match_start_effect()`（每局一次）+ `_start_turn()`/`_apply_turn_effect()`（plus_one 每回合）；实现 6 触发（`_should_trigger_six_swap` + `request_effect_power`）、选牌队列（`effect_pass` + `request_effect_pass`）、炸弹标记/倒计时；`turn_effect_rules_enabled` 为测试关闭开关。 |
+| `scripts/core/game_rules.gd` | `RANK_CYCLE` + `next_rank_in_cycle()`（左下角 +1 的 A→Q 循环）。 |
+| `scripts/core/hidden_info.gd` | 快照公开 `turn_index`/`turn_effect`/`effect_pass` 与 `slots[].bomb`；不公开已选牌面。 |
 | `scripts/ui/turn_effect.gd` | **纯展示数据**（id → name/desc/card/bomb）。新增效果在此补展示数据。 |
-| `scripts/ui/turn_effect_panel.gd` | 展示面板 + 中央放大→5s→右上角动画；**不应用效果**。 |
-| `scripts/ui/bomb_icon.gd` | 程序化炸弹图标；后续给卡牌右上角加炸弹角标时复用（3D 可用 `Sprite3D` 贴程序化纹理）。 |
-| `scripts/ui/main.gd` | `_maybe_new_turn_effect()`（依 `turn_index` 播放一次）+ 回合倒计时延迟 `EFFECT_TURN_WAIT=6s`。 |
+| `scripts/ui/turn_effect_panel.gd` | 展示面板 + 中央放大→5s→右上角动画；不应用效果。 |
+| `scripts/ui/bomb_icon.gd` | 程序化炸弹图标 + `texture()`（3D 角标纹理）；2D 右上角角标复用。 |
+| `scripts/ui/card_view.gd` / `card_block.gd` | 2D/3D 卡牌右上角炸弹角标（`set_bomb`/`has_bomb`）。 |
+| `scripts/ui/action_model.gd` / `main.gd` | 抽到红 Joker 且本局效果为 6 时的「使用能力：顺时针传递」按钮（`six_swap_power`）。 |
+| `scripts/ui/game_interaction.gd` / `hint_text.gd` | `EFFECT_PASS` 选牌点击路由与等待提示。 |
+| `scripts/ui/main.gd` | `_maybe_new_turn_effect()`（依 `match_id` 每局播放一次，turn_index 变化不重播；**INITIAL_PEEK 不展示**）+ `_begin_effect_reveal()`（5s「查看本局特效」→ 第一个玩家 30s 倒计时）。 |
 
-**新增一个效果的最小步骤**：① `game_state.TURN_EFFECT_IDS` 加 id；② 在 `_roll_turn_effect` 附近实现规则；③ `turn_effect.gd` 补 name/desc/card；④ 需要卡牌角标时用 `bomb_icon.gd` 的风格。
+**新增一个效果的最小步骤**：① `game_state.TURN_EFFECT_IDS` 加 id；② 在 `_apply_turn_effect()` 加分支并实现服务器规则；③ `turn_effect.gd` 补 name/desc/card；④ 需要卡牌角标时用 `bomb_icon.gd` 的风格。
