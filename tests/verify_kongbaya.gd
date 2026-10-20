@@ -10,6 +10,7 @@ var failures := 0
 var checks := 0
 
 func _ready() -> void:
+	GameState.turn_effect_rules_enabled = false  # 规则测试由 verify_turn_effect_rules 单独开启
 	await _test_normal_flow()
 	await _test_repeat_rejected()
 	await _test_first_turn_flag()
@@ -100,6 +101,8 @@ func _test_first_turn_flag() -> void:
 	GameState._server_initial_ready(2)
 	GameState._server_take(0, "draw", "kb-f2")
 	GameState._server_discard_draw(0, "kb-f3")  # 轮到 seat1，seat0 has_acted=true
+	_check("换回合后 turn_index 递增", GameState.turn_index >= 2)
+	_check("换回合后 turn_effect 合法", GameState.TURN_EFFECT_IDS.has(GameState.turn_effect_id))
 	GameState.current_player_id = 0
 	GameState.phase = GameState.Phase.TURN_DRAW
 	GameState._server_kongbaya(0, "kb-f4")
@@ -121,14 +124,14 @@ func _test_settle_window_slap() -> void:
 	GameState._on_settle_timeout()
 	_check("宽限到期后结算 GAME_OVER", GameState.phase == GameState.Phase.GAME_OVER)
 
-## 手牌超限（R-07）：罚牌先落地（pending、slap_open=false、deadline=0）→ 再开 10s 贴牌窗口 → 结算。
+## 手牌超限（R-07）：罚牌先落地（pending、slap_open=false、deadline=0）→ 再开 5s 贴牌窗口 → 结算。
 func _test_overflow_settle() -> void:
 	_open()
 	GameState._begin_overflow_settle(1)
 	_check("超限：先进入罚牌落地阶段（pending 且不接受贴牌）", GameState.final_settle_pending and not GameState.slap_open)
 	_check("超限：罚牌阶段 deadline=0", int(HiddenInfo.snapshot_for(GameState, 0).get("settle_deadline_server_ms", 0)) == 0)
 	GameState._on_settle_timeout()  # 罚牌落地 → 开贴牌窗口
-	_check("超限：罚牌落地后开 10s 贴牌窗口", GameState.slap_open and GameState.final_settle_pending)
+	_check("超限：罚牌落地后开 5s 贴牌窗口", GameState.slap_open and GameState.final_settle_pending)
 	_check("超限：窗口 deadline>0", int(HiddenInfo.snapshot_for(GameState, 0).get("settle_deadline_server_ms", 0)) > 0)
 	GameState._on_settle_timeout()  # 窗口到期 → 超限结算
 	_check("超限：窗口到期后按超限结算 GAME_OVER", GameState.phase == GameState.Phase.GAME_OVER and GameState.last_result.has("failed_hand"))
@@ -137,7 +140,7 @@ func _test_overflow_settle() -> void:
 func _test_overflow_no_reset() -> void:
 	_open()
 	GameState._begin_overflow_settle(1)
-	GameState._on_settle_timeout()  # 罚牌落地 → 10s 贴牌窗口
+	GameState._on_settle_timeout()  # 罚牌落地 → 5s 贴牌窗口
 	var dl: int = GameState.final_settle_deadline_ms
 	_check("结束倒计时已开始（deadline>0 且开贴牌）", dl > 0 and GameState.slap_open)
 	GameState._begin_overflow_settle(2)  # 倒计时中再次超限

@@ -13,6 +13,7 @@ var aborted := false
 var last_reveal: Dictionary = {}
 
 func _ready() -> void:
+	GameState.turn_effect_rules_enabled = false  # 规则测试由 verify_turn_effect_rules 单独开启
 	GameState.command_rejected.connect(_on_rejected)
 	GameState.match_aborted.connect(_on_aborted)
 	GameState.private_reveal_received.connect(_on_reveal)

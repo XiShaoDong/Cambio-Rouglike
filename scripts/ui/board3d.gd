@@ -292,3 +292,23 @@ func push_key(event: InputEventKey) -> void:
 	if event == null:
 		return
 	_viewport.push_input(event.duplicate(), true)
+
+## 该视口像素坐标是否位于某个带 meta("board_interactive") 的可见控件矩形内。
+## 用于手册/Stats/按键页的"部分穿透"：命中可交互控件才接管点击，其余穿透到牌桌。
+func interactive_at(coord: Vector2i) -> bool:
+	_prune_panels()
+	var p := Vector2(coord)
+	for panel in _panels:
+		if _interactive_hit(panel, p):
+			return true
+	return false
+
+func _interactive_hit(node: Node, p: Vector2) -> bool:
+	if node is Control:
+		var c := node as Control
+		if c.visible and bool(c.get_meta("board_interactive", false)) and c.get_global_rect().has_point(p):
+			return true
+	for child in node.get_children():
+		if _interactive_hit(child, p):
+			return true
+	return false

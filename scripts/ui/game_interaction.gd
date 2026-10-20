@@ -9,6 +9,7 @@ const PHASE_TURN_DRAW := 2
 const PHASE_SLAP_WINDOW := 5
 const PHASE_SLAP_EXCHANGE := 6
 const PHASE_SLAP_DUEL := 8
+const PHASE_EFFECT_PASS := 11
 
 var main: Node
 var action_mode := ""
@@ -37,6 +38,12 @@ func on_card_pressed(player_id: int, slot: int) -> void:
 	if phase == PHASE_SLAP_EXCHANGE and player_id == viewer and int(state.slap_exchange_actor) == viewer:
 		_play_select()
 		GameState.request_slap_exchange(slot, main._next_action_id())
+		return
+	if phase == PHASE_EFFECT_PASS:
+		var ep: Dictionary = state.get("effect_pass", {})
+		if int(ep.get("await_seat", -1)) == viewer and player_id == viewer:
+			_play_select()
+			GameState.request_effect_pass(slot, main._next_action_id())
 		return
 	if int(state.current_player) != viewer:
 		return
@@ -108,6 +115,9 @@ func card_actionable(player_id: int, _slot: int) -> bool:
 		return false
 	if phase == PHASE_SLAP_EXCHANGE:
 		return player_id == viewer and int(state.slap_exchange_actor) == viewer
+	if phase == PHASE_EFFECT_PASS:
+		var ep: Dictionary = state.get("effect_pass", {})
+		return player_id == viewer and int(ep.get("await_seat", -1)) == viewer
 	if not is_current:
 		return false
 	match action_mode:

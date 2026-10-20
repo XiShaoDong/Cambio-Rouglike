@@ -4,6 +4,15 @@ extends RefCounted
 ## 职责：T 开发者模式（房主面板：直接判玩家出局 / 抢牌调试）、F12 布局调试。
 ## 主题切换走 ESC 设置菜单；正式构建可直接移除。
 
+## 测试效果选项（id 与 GameState.TURN_EFFECT_IDS 对齐；空 = 正常随机）。
+const TEST_EFFECTS := [
+	{"id": "", "name": "随机效果"},
+	{"id": "none", "name": "无效果"},
+	{"id": "six_swap", "name": "6（抽牌堆全 6）"},
+	{"id": "plus_one", "name": "左下角 +1（手牌全 A）"},
+	{"id": "bomb", "name": "炸弹（抽牌堆全炸弹）"},
+]
+
 var main: Node
 var _layout_debug := false
 var _panel: Control = null
@@ -47,15 +56,28 @@ func refresh_panel() -> void:
 	style.border_color = UITheme.color("accent")
 	style.set_border_width_all(1)
 	panel.add_theme_stylebox_override("panel", style)
+	# 内容可能超过屏幕（4 人 + 皮肤 + 测试项）：用 ScrollContainer 限制高度并滚动。
+	var content_w := 260.0
+	var panel_w := content_w + 16.0  # 加上 PanelContainer 左右 content margin
+	var max_h := maxf(240.0, main.size.y - 48.0)
+	var scroll := ScrollContainer.new()
+	scroll.name = "Scroll"
+	scroll.custom_minimum_size = Vector2(content_w, max_h)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	panel.add_child(scroll)
 	var box := VBoxContainer.new()
+	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	box.add_theme_constant_override("separation", 4)
-	panel.add_child(box)
+	scroll.add_child(box)
 	var title := Label.new()
 	title.text = "开发者工具（房主）"
 	title.add_theme_color_override("font_color", UITheme.color("accent"))
 	box.add_child(title)
+	_build_test_mode_row(box)
 	var slap_btn := Button.new()
 	slap_btn.text = "抢牌调试（不限时不限牌）：%s" % ("ON" if GameState.debug_duel else "OFF")
+	slap_btn.clip_text = true
+	slap_btn.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	slap_btn.pressed.connect(_toggle_slap_debug)
 	box.add_child(slap_btn)
 	_build_skin_row(box)
@@ -69,12 +91,73 @@ func refresh_panel() -> void:
 		var btn := Button.new()
 		btn.text = "出局 %s%s" % [str(player.name), "" if alive else "（已出局）"]
 		btn.disabled = not alive
+		btn.clip_text = true
+		btn.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		btn.pressed.connect(main._dev_eliminate.bind(seat))
 		box.add_child(btn)
 	main.add_child(panel)
-	panel.z_index = 60
-	panel.position = Vector2(main.size.x - 232, 12)
+	# 放左上角：右上角留给「本局效果」面板，避免 dev 面板把效果 UI 挡住。
+	# z_index 高于四角 HUD（左下按键/回合徽标），开发模式下面板始终可点。
+	panel.z_index = 100
+	panel.position = Vector2(12, 12)
 	_panel = panel
+
+## 测试模式：强制本局效果 + 按效果准备固定牌堆/手牌（下一局/重开生效）。
+func _build_test_mode_row(box: VBoxContainer) -> void:
+	var toggle := Button.new()
+	toggle.text = "测试模式：%s" % ("ON" if GameState.dev_test_mode else "OFF")
+	toggle.pressed.connect(_toggle_test_mode)
+	box.add_child(toggle)
+	var label := Label.new()
+	label.text = "测试效果（选择后自动重开）"
+	label.add_theme_color_override("font_color", UITheme.color("text_secondary"))
+	box.add_child(label)
+	var opt := OptionButton.new()
+	opt.clip_text = true
+	opt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var selected := 0
+	for i in TEST_EFFECTS.size():
+		var entry: Dictionary = TEST_EFFECTS[i]
+		opt.add_item(str(entry["name"]), i)
+		if str(entry["id"]) == str(GameState.dev_test_effect):
+			selected = i
+	opt.selected = selected
+	opt.disabled = not GameState.dev_test_mode
+	opt.item_selected.connect(_on_test_effect_selected)
+	box.add_child(opt)
+	var restart := Button.new()
+	restart.text = "重开本局（应用测试）"
+	restart.pressed.connect(_restart_with_test)
+	box.add_child(restart)
+
+func _toggle_test_mode() -> void:
+	GameState.dev_test_mode = not GameState.dev_test_mode
+	if GameState.dev_test_mode and GameState.dev_test_effect.is_empty():
+		# 默认用 +1 做可见的测试；可再选其他效果/随机。
+		GameState.dev_test_effect = "plus_one"
+	main._show_toast("测试模式 %s" % ("ON（已应用）" if GameState.dev_test_mode else "OFF"))
+	if GameState.dev_test_mode and Network.is_host:
+		_restart_with_test()
+	else:
+		refresh_panel()
+
+func _on_test_effect_selected(index: int) -> void:
+	if index < 0 or index >= TEST_EFFECTS.size():
+		return
+	GameState.dev_test_effect = str(TEST_EFFECTS[index]["id"])
+	var label := str(TEST_EFFECTS[index]["name"])
+	main._show_toast("测试效果：%s" % label)
+	# 测试模式下选效果立即重开本局，避免玩家以为没生效。
+	if GameState.dev_test_mode and Network.is_host:
+		_restart_with_test()
+	else:
+		refresh_panel()
+
+func _restart_with_test() -> void:
+	if not Network.is_host:
+		return
+	GameState.request_restart_match(main._next_action_id())
+	main._show_toast("已重开本局，应用测试设置")
 
 ## 抢牌调试开关：debug_duel（不判正确性→贴错无罚牌；收集窗 400ms→30s 不限时）。
 func _toggle_slap_debug() -> void:

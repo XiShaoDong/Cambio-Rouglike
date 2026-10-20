@@ -6,7 +6,7 @@ extends Node3D
 
 const MODEL_PATH := "res://assets/3Dmodels/call-bell.glb"
 const SHADER_PATH := "res://assets/shaders/bell_metal.gdshader"
-const SCALE := 0.37                                    # ≈ 旧铃铛尺寸（模型 footprint 1.9 → ~0.70）
+const SCALE := 0.247                                   # 再次整体缩小 1/3（原 0.37 → ×2/3）
 const BASE_COLOR := Color(0.02, 0.02, 0.025)           # 黑底座
 const DOME_COLOR := Color(0.88, 0.62, 0.20)            # 金钟体
 const KNOB_COLOR := Color(0.92, 0.93, 0.96)            # 银顶钮

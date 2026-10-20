@@ -194,6 +194,8 @@ func _on_action(action: String) -> void:
 			interaction.jack_cancel()
 		"joker":
 			_open_joker_transform_panel()
+		"six_swap_power":
+			GameState.request_effect_power(_next_action_id())
 		"restart":
 			_request_restart_confirm()
 		"restart_yes":
@@ -220,13 +222,13 @@ func _interaction_ctx() -> Dictionary:
 		"selected_own_slot": interaction.selected_own_slot,
 	}
 
-## 3D 激活时恒定捕获鼠标（看板交互走准星），准星恒显示。
+## 3D 激活时恒定捕获鼠标（看板交互走准星）。准星默认隐藏，仅按住放大时显示。
 func _sync_table3d_pointer() -> void:
 	if not _table3d_active:
 		return
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	if _crosshair != null and is_instance_valid(_crosshair):
-		_crosshair.visible = true
+		_crosshair.visible = false
 
 ## 3D 自己面板（屏幕右下角）：生命/金钱/卡牌数（无名字）。
 func _ensure_self_panel() -> void:
@@ -264,6 +266,91 @@ func _ensure_hint_hud() -> void:
 	_hint_hud.z_index = 80
 	add_child(_hint_hud)
 
+## 大牌 hover 解释气泡（屏幕空间，跟随大牌投影位置）。
+func _ensure_card_tooltip() -> void:
+	if _card_tooltip != null and is_instance_valid(_card_tooltip):
+		return
+	_card_tooltip = CardTooltip.new()
+	_card_tooltip.name = "CardTooltip"
+	_card_tooltip.z_index = 85
+	add_child(_card_tooltip)
+
+func _hide_card_tooltip() -> void:
+	if _card_tooltip != null and is_instance_valid(_card_tooltip):
+		_card_tooltip.hide_tip()
+
+## 右下角「牌序」面板（3D）：标题 + SHIFT 开关 + 黑桃卡序（堆叠）。
+func _ensure_card_order_panel() -> void:
+	if _card_order_panel != null and is_instance_valid(_card_order_panel):
+		return
+	_card_order_panel = CardOrderPanel.new()
+	_card_order_panel.name = "CardOrderPanel"
+	_card_order_panel.z_index = 80
+	add_child(_card_order_panel)
+	var m := int(round(_corner_margin()))
+	_card_order_panel.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE, m)
+	_card_order_panel.grow_horizontal = Control.GROW_DIRECTION_END
+	_card_order_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
+
+## 每回合随机增强展示面板（3D，右上角）。
+func _ensure_turn_effect_panel() -> void:
+	if _turn_effect_panel != null and is_instance_valid(_turn_effect_panel):
+		return
+	_turn_effect_panel = TurnEffectPanel.new()
+	_turn_effect_panel.name = "TurnEffectPanel"
+	_turn_effect_panel.z_index = 90
+	add_child(_turn_effect_panel)
+
+## 每局开始时（match_id 变化）用快照里的 turn_effect 播「中央→右上」动画。
+## 只在全员 Ready、进入第一回合后触发展示；开局记忆阶段不显示。
+## 效果由服务器在开局抽取并保持整局不变；turn_index 每回合变化，不能作为触发依据。
+func _maybe_new_turn_effect() -> bool:
+	var id := str(latest_state.get("turn_effect", ""))
+	var mid := str(latest_state.get("match_id", ""))
+	if id.is_empty() or mid.is_empty():
+		return false
+	if int(latest_state.get("phase", 0)) != PHASE_EFFECT_REVEAL:
+		return false
+	if mid == _effect_last_match and id == _effect_last_id:
+		return false
+	_effect_last_match = mid
+	_effect_last_id = id
+	_current_effect = TurnEffect.by_id(id)
+	if _current_effect.is_empty():
+		return false
+	_ensure_turn_effect_panel()
+	var m := _corner_margin()
+	_turn_effect_panel.reveal(_current_effect, size * 0.5, Vector2(size.x - m, m))
+	return true
+
+## 悬停在"牌面已知"的牌上（自己手牌/大牌/弃牌顶/已揭示）→ 在牌旁弹信息气泡。
+func _update_card_tooltip() -> void:
+	if _card_tooltip == null or not is_instance_valid(_card_tooltip):
+		return
+	if table3d == null or not is_instance_valid(table3d):
+		_hide_card_tooltip()
+		return
+	var card: Dictionary = table3d.hovered_card()
+	var rank := str(card.get("rank", ""))
+	if rank.is_empty():
+		_hide_card_tooltip()
+		return
+	var source := ""
+	if str((table3d.hovered_pick() as Dictionary).get("kind", "")) == "pending":
+		source = str((latest_state.get("pending", {}) as Dictionary).get("source", "draw"))
+	var text := CardAbilityText.text(rank, source)
+	var cam: Camera3D = table3d.camera.camera_node()
+	if cam == null:
+		_hide_card_tooltip()
+		return
+	var vp := get_viewport().get_visible_rect().size
+	var rect: Rect2 = table3d.hovered_screen_rect(cam)
+	if vp.x > 0.0 and vp.y > 0.0:
+		var sx := size.x / vp.x
+		var sy := size.y / vp.y
+		rect = Rect2(Vector2(rect.position.x * sx, rect.position.y * sy), Vector2(rect.size.x * sx, rect.size.y * sy))
+	_card_tooltip.show_line(text, rect)
+
 ## 驱动 HintHud：文本随 hint 变化，进入新回合（key 变化）时重置 30 并播进场。
 func _update_hint_hud(phase: int, viewer: int, current: int) -> void:
 	if _hint_hud == null or not is_instance_valid(_hint_hud):
@@ -276,12 +363,140 @@ func _update_hint_hud(phase: int, viewer: int, current: int) -> void:
 	elif bool(latest_state.get("slap_open", false)):
 		slap_state = HintHud.SLAP_OPEN
 	_hint_hud.set_slap_state(slap_state)
+	# 游戏开始的第一环节：全员 Ready 后展示本局特效（服务器 EFFECT_REVEAL 阶段 5s）。
+	if phase == PHASE_EFFECT_REVEAL:
+		_maybe_new_turn_effect()
+		var reveal_key := "reveal:%d" % int(latest_state.get("match_number", 1))
+		if reveal_key != _hud_turn_key:
+			_hud_turn_key = reveal_key
+			_hint_hud.reset_turn(EFFECT_REVEAL_SECS, EFFECT_REVEAL_TEXT, 0.0)
+		else:
+			_hint_hud.set_hint(EFFECT_REVEAL_TEXT)
+		return
 	var key := "%d:%d" % [int(latest_state.get("match_number", 1)), current]
 	if phase in _HUD_ACTIVE_PHASES and key != _hud_turn_key:
 		_hud_turn_key = key
-		_hint_hud.reset_turn(HintHud.PHASE_TURN_SECONDS, text)
+		_hint_hud.reset_turn(HintHud.PHASE_TURN_SECONDS, text, 0.0)
 	else:
 		_hint_hud.set_hint(text)
+
+## 在指定槽位上方生成 +1 浮字：1s 上升、随后 1s 淡出，总 2s。
+func _show_plus_one(seat: int, slot: int) -> void:
+	var base := _slot_screen_center(seat, slot)
+	if base.x < -9000.0:
+		return
+	var label := Label.new()
+	label.name = "PlusOneFloat"
+	label.text = "+1"
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	label.z_index = 120
+	label.add_theme_font_size_override("font_size", 30)
+	label.add_theme_color_override("font_color", Color(1.0, 0.86, 0.35))
+	label.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.85))
+	label.add_theme_constant_override("outline_size", 6)
+	var start := base + Vector2(-10.0, -30.0)
+	label.position = start
+	label.modulate = Color(1, 1, 1, 1)
+	add_child(label)
+	var tw := create_tween().set_parallel(true)
+	tw.tween_property(label, "position:y", start.y - 36.0, 1.0).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tw.tween_property(label, "modulate:a", 0.0, 1.0).set_delay(1.0)
+	tw.chain().tween_callback(func():
+		if is_instance_valid(label):
+			label.queue_free())
+
+## 槽位在 main（设计坐标）中的屏幕中心；3D 投影 / 2D 卡牌矩形。
+func _slot_screen_center(seat: int, slot: int) -> Vector2:
+	if _table3d_active and table3d != null and is_instance_valid(table3d):
+		var cam: Camera3D = table3d.camera.camera_node()
+		if cam != null:
+			var world: Vector3 = table3d.slot_xform(seat, slot).origin
+			var vp := get_viewport().get_visible_rect().size
+			if vp.x > 0.0 and vp.y > 0.0 and not cam.is_position_behind(world):
+				var sp := cam.unproject_position(world)
+				return Vector2(sp.x * size.x / vp.x, sp.y * size.y / vp.y)
+	# 2D：用棋盘卡牌节点的全局矩形。
+	if _card_slots.has(seat) and _card_slots[seat].has(slot):
+		var card: Control = _card_slots[seat][slot]
+		if card != null and is_instance_valid(card):
+			var r := card.get_global_rect()
+			return r.position + Vector2(r.size.x * 0.5, r.size.y * 0.5)
+	return Vector2(-10000, -10000)
+
+## 炸弹爆炸：先让当前视图标记/隐藏槽位，再在各槽位中心播漫画爆炸贴图。
+func _handle_bomb_explode(data: Dictionary) -> void:
+	var seat := int(data.get("seat", -1))
+	var slots: Array = data.get("slots", [])
+	if seat < 0 or slots.is_empty():
+		return
+	# 右侧成功 UI：展示爆炸的那张牌（服务器已在爆炸事件中公开）。
+	var cards: Array = data.get("cards", [])
+	if not cards.is_empty() and not (cards[0] as Dictionary).is_empty():
+		_show_card_burst(cards[0], seat, "炸弹爆炸")
+	for slot in slots:
+		_show_bomb_burst(seat, int(slot))
+	if _table3d_active:
+		if table3d != null and is_instance_valid(table3d):
+			table3d.animate_exchange(data)
+	else:
+		animator.handle_exchange(data)
+
+## 槽位中心播放一次性爆炸贴图（0.6s 放大 + 淡出）；2D/3D 共用屏幕空间 overlay。
+## 6 效果成功触发：右侧 UI 展示打出的 6 / 红 Joker。
+func _show_effect_trigger(data: Dictionary) -> void:
+	var actor := int(data.get("actor", -1))
+	var card: Dictionary = data.get("card", {})
+	if card.is_empty():
+		return
+	_show_card_burst(card, actor, "6 效果触发")
+
+## 右侧成功弹层（复用贴牌成功 UI）：可配置标题，card 为要展示的牌。
+func _show_card_burst(card: Dictionary, actor: int, title: String) -> void:
+	if card.is_empty():
+		return
+	if _slap_burst != null and is_instance_valid(_slap_burst):
+		_slap_burst.queue_free()
+		_slap_burst = null
+	var player_name := ""
+	for p in latest_state.get("players", []):
+		if int(p.id) == actor:
+			player_name = str(p.get("name", ""))
+			break
+	var burst := SlapSuccessBurst.new()
+	burst.name = "SlapSuccessBurst"
+	burst.z_index = 90
+	add_child(burst)
+	_slap_burst = burst
+	burst.setup(card, player_name, title)
+
+func _show_bomb_burst(seat: int, slot: int) -> void:
+	var base := _slot_screen_center(seat, slot)
+	if base.x < -9000.0:
+		return
+	var tex: Texture2D = load("res://assets/ui/slap_burst.svg")
+	if tex == null:
+		return
+	var burst := TextureRect.new()
+	burst.name = "BombBurst"
+	burst.texture = tex
+	burst.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	burst.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	burst.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	burst.z_index = 130
+	var sz := 110.0
+	burst.size = Vector2(sz, sz)
+	burst.pivot_offset = burst.size * 0.5
+	burst.position = base - burst.size * 0.5
+	burst.scale = Vector2(0.45, 0.45)
+	burst.rotation = randf_range(-0.22, 0.22)
+	burst.modulate = Color(1, 1, 1, 1)
+	add_child(burst)
+	var tw := create_tween().set_parallel(true)
+	tw.tween_property(burst, "scale", Vector2(1.25, 1.25), 0.6).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tw.tween_property(burst, "modulate:a", 0.0, 0.6)
+	tw.chain().tween_callback(func():
+		if is_instance_valid(burst):
+			burst.queue_free())
 
 ## 3D 左下角按键提示（放大 Command / 手册 Tab）：说明纯白 + 圆角白底按键。
 func _ensure_key_hints() -> void:
@@ -295,6 +510,9 @@ func _ensure_key_hints() -> void:
 	_key_hints.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE, int(round(_corner_margin())))
 	_key_hints.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	_key_hints.grow_horizontal = Control.GROW_DIRECTION_END
+	# 让出左下角最底部给「牌序」面板
+	_key_hints.offset_top -= CARD_ORDER_LIFT
+	_key_hints.offset_bottom -= CARD_ORDER_LIFT
 	_key_hints.setup([["放大", "Command"], ["手册", "Tab"]])
 
 ## 3D 右上角回合徽标（与按键 chip 同款圆角灰底+边框，字号 = Command chip ×2）。
@@ -306,8 +524,9 @@ func _ensure_round_badge() -> void:
 	_round_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_round_badge.z_index = 80
 	add_child(_round_badge)
-	_round_badge.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT, Control.PRESET_MODE_MINSIZE, int(round(_corner_margin())))
-	_round_badge.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	# 局数徽标移到左上角（右上角让给「本局效果」面板）。
+	_round_badge.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT, Control.PRESET_MODE_MINSIZE, int(round(_corner_margin())))
+	_round_badge.grow_horizontal = Control.GROW_DIRECTION_END
 	_round_badge.grow_vertical = Control.GROW_DIRECTION_END
 	_update_round_badge()
 
@@ -519,11 +738,12 @@ func _board_hit() -> Dictionary:
 		return {}
 	var cam: Camera3D = table3d.camera.camera_node()
 	for host in [board3d, hint3d]:
-		if host == board3d and _manual_transparent():
-			continue  # 手册/Stats 点击穿透
 		if host != null and is_instance_valid(host) and host.visible:
 			var c: Vector2i = host.hit_viewport_coord(cam)
 			if c.x >= 0:
+				# 手册/Stats/按键页：仅可交互控件（页签/按钮/键行）接管点击，其余穿透到牌桌
+				if host == board3d and _manual_transparent() and not board3d.interactive_at(c):
+					continue
 				return {"host": host, "coord": c}
 	return {}
 
@@ -572,6 +792,7 @@ func _set_table3d(on: bool) -> void:
 		_sync_table3d_pointer()
 		_ensure_hint_hud()
 		_hint_hud.show_hud(true)
+		_ensure_card_tooltip()
 		_refresh_hint_panel()
 		_ensure_self_panel()
 		_self_panel.visible = true
@@ -580,6 +801,22 @@ func _set_table3d(on: bool) -> void:
 		_key_hints.visible = true
 		_ensure_round_badge()
 		_round_badge.visible = true
+		_ensure_card_order_panel()
+		_card_order_panel.visible = true
+		_ensure_turn_effect_panel()
+		var eff_phase := int(latest_state.get("phase", PHASE_LOBBY))
+		var eff_visible := eff_phase == PHASE_EFFECT_REVEAL \
+			or (eff_phase >= PHASE_TURN_DRAW and eff_phase != PHASE_GAME_OVER and eff_phase != PHASE_SHOP)
+		# 只在效果已经播放过（或已在 3D 中停靠）时直接停靠；首次进入 TURN_DRAW 要保留中央 5s 展示。
+		if eff_visible and str(_effect_last_match) == str(latest_state.get("match_id", "")):
+			if _current_effect.is_empty():
+				var eid := str(latest_state.get("turn_effect", ""))
+				if not eid.is_empty():
+					_current_effect = TurnEffect.by_id(eid)
+			if not _current_effect.is_empty() and not _turn_effect_panel.is_revealing():
+				var em := _corner_margin()
+				_turn_effect_panel.set_effect(_current_effect)
+				_turn_effect_panel.dock_at(Vector2(size.x - em, em))
 		background.visible = false
 		game_panel.visible = false
 	else:
@@ -598,8 +835,13 @@ func _set_table3d(on: bool) -> void:
 			_key_hints.visible = false
 		if _round_badge != null and is_instance_valid(_round_badge):
 			_round_badge.visible = false
+		if _card_order_panel != null and is_instance_valid(_card_order_panel):
+			_card_order_panel.visible = false
+		if _turn_effect_panel != null and is_instance_valid(_turn_effect_panel):
+			_turn_effect_panel.hide_panel()
 		if _hint_hud != null and is_instance_valid(_hint_hud):
 			_hint_hud.show_hud(false)
+		_hide_card_tooltip()
 		if _slap_burst != null and is_instance_valid(_slap_burst):
 			_slap_burst.queue_free()
 			_slap_burst = null
@@ -631,29 +873,49 @@ func _input(event: InputEvent) -> void:
 			if aw != null and is_instance_valid(aw):
 				aw.update_cursor(event.position)
 		return
+	# 按键捕获：正在重绑时拦截键盘/点击，不给游戏与牌桌
+	if manual_panel != null and is_instance_valid(manual_panel) and manual_panel.capturing() != "":
+		if event is InputEventKey and event.pressed and not event.echo:
+			if event.keycode == KEY_ESCAPE:
+				manual_panel.cancel_capture()
+			else:
+				manual_panel.capture_key(event.keycode)
+			get_viewport().set_input_as_handled()
+			return
+		if event is InputEventMouseButton and event.pressed:
+			get_viewport().set_input_as_handled()
+			return
 	var board_panel := _board_has_panel()
-	# 按住 Command/Alt：拉近视场（放大）；松开恢复。不标记 handled，避免影响其他快捷键。
-	if event is InputEventKey and not event.echo and (event.keycode == KEY_META or event.keycode == KEY_ALT):
+	var act := keybinds.action_for(event.keycode) if event is InputEventKey else ""
+	# 按住 Command/Alt（或自定义 kb_zoom）：拉近视场（放大）；松开恢复。不标记 handled。
+	if event is InputEventKey and not event.echo and (act == "kb_zoom" or event.keycode == KEY_ALT):
 		if table3d != null and is_instance_valid(table3d):
 			table3d.camera.set_zoom(event.pressed)
 	if event is InputEventKey and event.pressed and not event.echo:
-		# F10/V 任何时候都可切回 2D（含看板面板打开时；面板会被重挂回 2D）。
-		if event.keycode == KEY_F10 or event.keycode == KEY_V:
+		# Shift：开/关左下角「牌序」卡序
+		if event.keycode == KEY_SHIFT:
+			if _card_order_panel != null and is_instance_valid(_card_order_panel):
+				_card_order_panel.toggle()
+			get_viewport().set_input_as_handled()
+			return
+		# F10 固定别名 + kb_toggle3d：任何时候都可切回 2D
+		if event.keycode == KEY_F10 or act == "kb_toggle3d":
 			_set_table3d(false)
 			get_viewport().set_input_as_handled()
 			return
-		# Tab：开/关手册（3D 全息看板）
-		if event.keycode == KEY_TAB:
+		if act == "kb_manual":
 			_toggle_manual(ManualPanel.TAB_MANUAL)
 			get_viewport().set_input_as_handled()
 			return
-		# S：开/关 Stats 页（弃牌堆出现过的牌）
-		if event.keycode == KEY_S:
+		if act == "kb_stats":
 			_toggle_manual(ManualPanel.TAB_STATS)
 			get_viewport().set_input_as_handled()
 			return
-		# M：切换说话（嘴开合，同步给其他玩家看你的角色）
-		if event.keycode == KEY_M:
+		if act == "kb_keymap":
+			_toggle_manual(ManualPanel.TAB_KEYS)
+			get_viewport().set_input_as_handled()
+			return
+		if act == "kb_talk":
 			_talking_local = not _talking_local
 			get_viewport().set_input_as_handled()
 			return
@@ -665,6 +927,11 @@ func _input(event: InputEvent) -> void:
 		# Y 按下：出表情轮盘
 		if event.keycode == KEY_Y:
 			_open_emote_wheel()
+			get_viewport().set_input_as_handled()
+			return
+		# 手册打开时 Esc 先关手册（沿用本分支；否则 Esc 交给全局设置菜单）。
+		if event.keycode == KEY_ESCAPE and manual_panel != null and is_instance_valid(manual_panel):
+			_close_manual()
 			get_viewport().set_input_as_handled()
 			return
 		# 有看板面板时，Enter 交给面板（Joker/商店）。
@@ -689,6 +956,9 @@ func _process(delta: float) -> void:
 		return
 	if table3d == null or not is_instance_valid(table3d):
 		return
+	# 准星默认隐藏，仅按住放大（Command/Alt）时出现。
+	if _crosshair != null and is_instance_valid(_crosshair):
+		_crosshair.visible = bool(table3d.camera.zoomed)
 	if table3d != null and is_instance_valid(table3d):
 		table3d.set_deal_speed(2.0 if Input.is_key_pressed(KEY_SPACE) else 1.0)
 	if _settings_open():
@@ -707,15 +977,18 @@ func _process(delta: float) -> void:
 	var on_board := _update_board_hover()
 	if _board_has_panel():
 		table3d.clear_hover()
+		_hide_card_tooltip()
 		if _crosshair != null and is_instance_valid(_crosshair):
 			_crosshair.set_active(on_board)
 		return
 	if on_board:
 		table3d.clear_hover()
+		_hide_card_tooltip()
 		if _crosshair != null and is_instance_valid(_crosshair):
 			_crosshair.set_active(true)
 		return
-	var on_target: bool = table3d.update_hover()
+	var on_target: bool = table3d.update_hover(interaction.action_mode != "")
+	_update_card_tooltip()
 	if _crosshair != null and is_instance_valid(_crosshair):
 		_crosshair.set_active(on_target)
 
@@ -777,12 +1050,17 @@ const PHASE_SLAP_EXCHANGE := 6
 const PHASE_GAME_OVER := 7
 const PHASE_SLAP_DUEL := 8
 const PHASE_SHOP := 10
+const PHASE_EFFECT_PASS := 11
+const PHASE_EFFECT_REVEAL := 12
 
 ## HintHud 胶囊显示 + 倒计时重置的阶段（与 HintHud.ACTIVE_PHASES 一致）。
 ## 不含 INITIAL_PEEK：进入房间直到全员 ready 后才开始计时。
-const _HUD_ACTIVE_PHASES := [PHASE_TURN_DRAW, PHASE_TURN_DECISION, PHASE_Q_DECISION, PHASE_SLAP_EXCHANGE, PHASE_SLAP_DUEL]
+const _HUD_ACTIVE_PHASES := [PHASE_TURN_DRAW, PHASE_TURN_DECISION, PHASE_Q_DECISION, PHASE_SLAP_EXCHANGE, PHASE_SLAP_DUEL, PHASE_EFFECT_REVEAL]
 
 const CORNER_MARGIN := 75.0     # 3D 四个角 HUD 到屏幕边缘的统一边距（目标=屏幕像素）
+const CARD_ORDER_LIFT := 82.0  # 左下角「牌序」面板占用的高度（按键提示上移量）
+const EFFECT_REVEAL_SECS := 5.0  # 本局效果展示时长（中央 5s 后开始第一个玩家倒计时）
+const EFFECT_REVEAL_TEXT := "查看本局特效"
 const BOARD_DIST := 3.0        # 回退用：看板沿"相机→桌心"连线距相机的距离（无座位锚点时）
 ## 模态看板锚点（贴玩家、不靠后）：本机座位→桌心的 0..1 深度（用户 0-10 标度的 2/10）。
 const BOARD_DEPTH := 0.2
@@ -860,6 +1138,12 @@ var _emote_wheel = null
 var _last_look_nose := Vector3.ZERO      # 上次上报的鼻子目标（变化即发）
 var _talking_local := false
 var _crosshair: Control = null
+var _card_tooltip: CardTooltip = null
+var _card_order_panel: CardOrderPanel = null
+var _turn_effect_panel: TurnEffectPanel = null
+var _current_effect: Dictionary = {}
+var _effect_last_match := ""
+var _effect_last_id := ""
 var _self_panel: PlayerStatPanel = null
 var is_dev_join := false
 var _cards := CardFactory.new()
@@ -903,12 +1187,14 @@ var settlement_page: Control = null
 var shop_panel: Control = null
 var joker_panel: Control = null
 var manual_panel: Control = null
+var keybinds := KeybindStore.new()
 var _key_hints: KeyHintPanel = null
 var _round_badge: Control = null
 var _hint_hud: HintHud = null
 var _hud_turn_key := ""
 var _shop_result_shown := ""
 var _pending_winner_sfx := false
+var _pending_winner_sfx_index := -1   # 服务器下发的胜利曲目索引（保证全员一致）
 # Q 能力：下一次收到的看牌揭示保持正面（不自动翻回），直到玩家确认交换/不交换。
 var _hold_next_reveal := false
 var _q_hold_active := false
@@ -969,6 +1255,7 @@ func _ready() -> void:
 	get_tree().set_auto_accept_quit(false)
 	# 启动即应用持久化主题，保证 UI 用正确 token 构建
 	UITheme.switch_theme(str(Settings.get_setting("display", "theme", "dark")))
+	keybinds.load()
 	interaction = GameInteraction.new(self)
 	lobby = LobbyView.new(self)
 	game_view = GameView.new(self)
@@ -981,6 +1268,15 @@ func _ready() -> void:
 	GameState.private_reveal_received.connect(_show_private_reveal)
 	# 2D 走 CardAnimator（原逻辑逐字不动）；3D 走 table3d 的飞牌编排。
 	GameState.card_exchange_animated.connect(func(data: Dictionary):
+		if str(data.get("kind", "")) == "bomb_explode":
+			_handle_bomb_explode(data)
+			return
+		if str(data.get("kind", "")) == "effect_trigger":
+			_show_effect_trigger(data)
+			return
+		if str(data.get("kind", "")) == "plus_one":
+			_show_plus_one(int(data.get("seat", -1)), int(data.get("slot", 2)))
+			return
 		if _table3d_active:
 			if str(data.get("kind", "")) == "slap_resolved":
 				_show_slap_success(data)
@@ -1325,6 +1621,12 @@ func _on_sfx(kind: String) -> void:
 			AudioManager.play_bell()
 		"winner":
 			_pending_winner_sfx = true
+			_pending_winner_sfx_index = -1
+		_:
+			# 服务器下发 "winner:<index>" → 全员播同一首
+			if kind.begins_with("winner:"):
+				_pending_winner_sfx = true
+				_pending_winner_sfx_index = int(kind.substr(7))
 
 func _entered_name() -> String:
 	var chosen := name_input.text.strip_edges().left(16)
@@ -1408,6 +1710,14 @@ func _render_game() -> void:
 	#（如超出手牌数的罚牌槽位）指向已释放节点，致后续动画报 freed instance。
 	_card_slots.clear()
 	game_view.render(latest_state)
+	# 新局开局记忆阶段：隐藏上一局的效果面板，等全员 Ready 后重新展示本局效果。
+	var phase := int(latest_state.get("phase", PHASE_LOBBY))
+	if phase == PHASE_LOBBY or phase == PHASE_INITIAL_PEEK:
+		if _turn_effect_panel != null and is_instance_valid(_turn_effect_panel):
+			_turn_effect_panel.hide_panel()
+		_current_effect = {}
+	else:
+		_maybe_new_turn_effect()
 	_render_duel(latest_state)
 	# ExtraLayer 附加卡已同步定位，罚牌 fly 可直接取到正确锚点
 	_flush_slap_penalties()
@@ -1551,6 +1861,7 @@ func _toggle_manual(tab := ManualPanel.TAB_MANUAL) -> void:
 		if manual_panel.current_tab() == tab:
 			_close_manual()
 		else:
+			manual_panel.setup_keymap(keybinds.map, KeybindModel.RESERVED)
 			manual_panel.set_tab(tab)
 			manual_panel.setup_stats(latest_state.get("discard_history", []))
 	else:
@@ -1558,6 +1869,7 @@ func _toggle_manual(tab := ManualPanel.TAB_MANUAL) -> void:
 
 func _open_manual(tab := ManualPanel.TAB_MANUAL) -> void:
 	if manual_panel != null and is_instance_valid(manual_panel):
+		manual_panel.setup_keymap(keybinds.map, KeybindModel.RESERVED)
 		manual_panel.set_tab(tab)
 		manual_panel.setup_stats(latest_state.get("discard_history", []))
 		return
@@ -1566,6 +1878,8 @@ func _open_manual(tab := ManualPanel.TAB_MANUAL) -> void:
 	panel.z_index = 92
 	_mount_modal(panel)
 	manual_panel = panel
+	manual_panel.save_confirmed.connect(_on_keymap_saved)
+	manual_panel.setup_keymap(keybinds.map, KeybindModel.RESERVED)
 	manual_panel.set_tab(tab)
 	manual_panel.setup_stats(latest_state.get("discard_history", []))
 
@@ -1576,6 +1890,11 @@ func _close_manual() -> void:
 			board3d.unmount_panel(manual_panel)
 		manual_panel.queue_free()
 	manual_panel = null
+
+func _on_keymap_saved(new_map: Dictionary) -> void:
+	keybinds.apply(new_map)
+	keybinds.save()
+	_show_toast("按键已保存")
 
 ## 商店裁决结果一次性 toast（每个 shop_result 只提示一次）。
 func _show_shop_result_toast(state: Dictionary) -> void:
@@ -1600,8 +1919,9 @@ func _show_shop_result_toast(state: Dictionary) -> void:
 ## 冠军时刻：若服务器已广播过 winner 音效事件，此刻播放（延迟到冠军出场）。
 func _play_pending_winner() -> void:
 	if _pending_winner_sfx:
-		AudioManager.play_winner()
+		AudioManager.play_winner(_pending_winner_sfx_index)
 		_pending_winner_sfx = false
+		_pending_winner_sfx_index = -1
 
 ## 结算页「再来一局」→ 服务器开新局。
 func _request_next_match() -> void:
@@ -1749,21 +2069,7 @@ func _show_private_reveal(title: String, revealed_cards: Array, target: Dictiona
 ## 记录槽位到 _peek_glow_slots，render 重建卡牌后仍可恢复光晕。
 ## 贴牌成功爆炸弹层（仅 3D）：屏幕空间齿状爆炸 + 卡面 + 「贴牌成功」 + 贴中者名字。
 func _show_slap_success(data: Dictionary) -> void:
-	if _slap_burst != null and is_instance_valid(_slap_burst):
-		_slap_burst.queue_free()
-		_slap_burst = null
-	var actor := int(data.get("actor", -1))
-	var player_name := ""
-	for p in latest_state.get("players", []):
-		if int(p.id) == actor:
-			player_name = str(p.get("name", ""))
-			break
-	var burst := SlapSuccessBurst.new()
-	burst.name = "SlapSuccessBurst"
-	burst.z_index = 90
-	add_child(burst)
-	_slap_burst = burst
-	burst.setup(data.get("card", {}), player_name)
+	_show_card_burst(data.get("card", {}), int(data.get("actor", -1)), SlapSuccessBurst.TITLE_TEXT)
 
 func _on_peek_highlight(data: Dictionary) -> void:
 	if _table3d_active and table3d != null and is_instance_valid(table3d):

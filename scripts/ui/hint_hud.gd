@@ -21,14 +21,14 @@ const COLOR_NORMAL := Color(0.95, 0.97, 1.0)
 const COLOR_WARN := Color(1.0, 0.78, 0.30)
 const COLOR_OVER := Color(1.0, 0.36, 0.34)
 ## 胶囊显示 / 计时的阶段（GameState.Phase 数值）：TURN_DRAW / TURN_DECISION / Q_DECISION / SLAP_EXCHANGE / SLAP_DUEL。
-## 不含 INITIAL_PEEK：进入房间直到全员 ready 后才开始计时。
-const ACTIVE_PHASES := [2, 3, 4, 6, 8]
+## 不含 INITIAL_PEEK：进入房间直到全员 ready 后才开始计时；含 12（本局效果展示）。
+const ACTIVE_PHASES := [2, 3, 4, 6, 8, 12]
 
 ## SLAP 状态行 + 装饰条（纯展示，固定时长不对应真实窗口）。
 const SLAP_HIDDEN := 0
 const SLAP_OPEN := 1
 const SLAP_CLOSE := 2
-const SLAP_BAR_SECONDS := 10.0
+const SLAP_BAR_SECONDS := 5.0
 const SLAP_BAR_W := 260.0
 const SLAP_BAR_H := 8.0
 const SLAP_FONT := 16
@@ -54,6 +54,7 @@ var _slap_label: Label
 var _slap_bar: ProgressBar
 var _slap_state := SLAP_HIDDEN
 var _slap_left := 0.0
+var _start_delay := 0.0     # 新回合倒计时启动前的等待（随机效果展示）
 var _slap_exhausted := false
 var _slap_base_y := 0.0
 var _slap_bar_y := 0.0
@@ -65,7 +66,11 @@ func _ready() -> void:
 	set_process(false)
 
 func _process(delta: float) -> void:
-	_timer.tick(delta)
+	# 新回合开始前可有一段"等待"（随机效果展示），期间倒计时不启动。
+	if _start_delay > 0.0:
+		_start_delay -= delta
+	else:
+		_timer.tick(delta)
 	_update_pill_text()
 	if _slap_state == SLAP_OPEN and not _slap_exhausted:
 		_slap_left -= delta
@@ -258,9 +263,10 @@ func set_hint(text: String) -> void:
 
 ## 新回合：重置计时；直接提交最新文本到单片（不做换字），再播进场掉落。
 ## 避免"换字 Tween 被进场 kill 后旧片残留在顶层、且 _hint_text 已更新导致早退永久遗留"。
-func reset_turn(seconds := PHASE_TURN_SECONDS, text := "") -> void:
+func reset_turn(seconds := PHASE_TURN_SECONDS, text := "", start_delay := 0.0) -> void:
 	if text != "":
 		_hint_text = text
+	_start_delay = maxf(start_delay, 0.0)
 	_timer.reset(seconds)
 	_update_pill_text()
 	if not is_visible_in_tree():

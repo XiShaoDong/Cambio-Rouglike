@@ -8,6 +8,7 @@ const Q_EXCHANGE := "q_exchange"
 const J_KEEP := "j_keep"
 const J_EXCHANGE := "j_exchange"
 const JOKER := "joker"
+const SIX_SWAP_POWER := "six_swap_power"
 
 const PHASE_TURN_DRAW := 2
 const PHASE_TURN_DECISION := 3
@@ -36,6 +37,11 @@ static func conditional_actions(state: Dictionary, ctx: Dictionary = {}) -> Arra
 			out.append({"action": Q_EXCHANGE, "text": "Q：交换", "enabled": true})
 	elif phase == PHASE_TURN_DECISION:
 		var pending: Dictionary = state.get("pending", {})
+		# 6 增强：抽到红 Joker 时可选择使用能力触发顺时针传递。
+		if str(state.get("turn_effect", "")) == "six_swap" \
+				and str(pending.get("source", "draw")) == "draw" \
+				and str(pending.get("rank", "")) == "JOKER" and str(pending.get("suit", "")) == "red":
+			out.append({"action": SIX_SWAP_POWER, "text": "使用能力：顺时针传递", "enabled": true})
 		if str(pending.get("rank", "")) == "JOKER":
 			var run: Dictionary = state.get("run", {})
 			if (run.get("relics", {}) as Dictionary).has(Relics.JOKER_TRANSFORM_ID):

@@ -13,12 +13,29 @@ const CARD_DIR := "res://assets/Cards/"
 const SUIT_FILE := {"♠": "spades", "♥": "hearts", "♣": "clubs", "♦": "diamonds"}
 const RANK_FILE := {"A": "ace", "J": "jack", "Q": "queen", "K": "king", "10": "10"}
 
-## 外发光层：{grow=相对卡边的外扩距离, alpha=该层不透明度}，从外到内。
+## 外发光：单层圆角矩形（{grow=相对卡边的外扩距离, alpha=不透明度}）。
 const GLOW_LAYERS := [
-	{"grow": 0.10, "alpha": 0.15},
-	{"grow": 0.06, "alpha": 0.25},
-	{"grow": 0.03, "alpha": 0.40},
+	{"grow": 0.06, "alpha": 0.45},
 ]
+const GLOW_RADIUS := 0.09            # 外发光圆角半径
+
+## 炫光呼吸闪烁（作用于所有炫光态：黄/红/绿/紫）。从**全灭(0)**到**最亮(AMP)**。
+const GLOW_FLICKER_AMP := 1.0
+const GLOW_FLICKER_SPEED := 2.0      # 角速度 rad/s
+
+## hover 外延虚线边框（卡外一圈虚线；颜色由 table3d_view 按状态给）。
+const BORDER_WHITE := Color(1.0, 1.0, 1.0, 0.9)
+const BORDER_GAP := 0.06             # 边框距卡边外扩（贴近卡边）
+const BORDER_T := 0.018              # 线粗
+const BORDER_DASH_MIN := 0.025       # dash 长度下限（手绘感：长短不一）
+const BORDER_DASH_MAX := 0.085       # dash 长度上限
+const BORDER_SPACE := 0.04           # 段基准间隙
+const BORDER_Y := 0.006              # 离桌面（位于卡外，不被遮挡）
+const BORDER_RADIUS := 0.09          # 边框圆角半径
+const BORDER_STEP := 0.01            # 路径采样步长
+const BORDER_GAP_VARY := 0.20        # 间隙 ±20%
+const BORDER_SEED := 20261016        # 固定随机种子（每帧/每次重建一致）
+const BORDER_CAP := true             # 段端极轻微圆头
 
 static var _back_tex: Texture2D = null
 static var _peek_hidden_tex: Texture2D = null
@@ -32,20 +49,29 @@ var _back_material: StandardMaterial3D
 var _mesh: MeshInstance3D
 var _label: Label3D
 var _label_shadow: Label3D
+var _bomb_badge: Sprite3D
+var _bomb_on := false
 var _material: StandardMaterial3D
 var _area: Area3D
 var _pick_shape: CollisionShape3D
 var _last_slot: Dictionary = {}
+var _reveal_known: Dictionary = {}   # 临时揭示的牌面（看牌/贴牌），供 hover 气泡读取
 var _actionable := false
+var _actionable_color := Table3dLayout.ACTIONABLE_COLOR
 var _pick_enabled := true
 var _showing_back := true
 var _glow_nodes: Array = []      # [{node: MeshInstance3D, mat: StandardMaterial3D, alpha: float}]
 var _glow_base := Color(0, 0, 0, 0)
 var _flash_color := Color(0, 0, 0, 0)
 var _reveal_color := Color(0, 0, 0, 0)   # 揭示炫光色（绿/红/蓝），优先于 actionable/hover
-var _hovered := false
 var _upright := false
-var _hover_color := Color(0.7, 0.95, 1.0)
+var _border_mesh: MeshInstance3D
+var _border_mat: StandardMaterial3D
+var _show_border := false
+var _border_color := BORDER_WHITE
+var _border_offset_y := 0.0     # 边框相对卡面的额外高度（如抽牌堆要压到牌堆底部）
+var _glow_t := 0.0
+var _glow_on := false
 var _flip_tween: Tween = null
 static var _anim_cfg: CardAnimationConfig = null
 var hover_anim_enabled := false
@@ -79,28 +105,27 @@ func _build() -> void:
 	_flip = Node3D.new()
 	_flip.name = "Flip"
 	_visual.add_child(_flip)
-	# 外发光层：垫在卡面下方、略大的平面，仅在卡边露出（随卡朝向/朝向一致）。
-	for i in GLOW_LAYERS.size():
-		var spec: Dictionary = GLOW_LAYERS[i]
-		var grow := float(spec["grow"])
-		var glow := MeshInstance3D.new()
-		glow.name = "Glow%d" % i
-		var gplane := PlaneMesh.new()
-		gplane.orientation = PlaneMesh.FACE_Y
-		gplane.size = Vector2(
-			Table3dLayout.BLOCK_SIZE.x + grow * 2.0,
-			Table3dLayout.BLOCK_SIZE.z + grow * 2.0)
-		glow.mesh = gplane
-		glow.position = Vector3(0.0, -0.002 * float(i + 1), 0.0)
-		var gmat := StandardMaterial3D.new()
-		gmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		gmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		gmat.cull_mode = BaseMaterial3D.CULL_DISABLED
-		gmat.albedo_color = Color(1.0, 1.0, 1.0, 0.0)
-		glow.material_override = gmat
-		glow.visible = false
-		_visual.add_child(glow)
-		_glow_nodes.append({"node": glow, "mat": gmat, "alpha": float(spec["alpha"])})
+	# 外发光：单层圆角矩形（垫在卡面下、仅在卡边露出圆角外圈）。
+	var spec: Dictionary = GLOW_LAYERS[0]
+	var grow := float(spec["grow"])
+	var glow := MeshInstance3D.new()
+	glow.name = "Glow0"
+	var gim := ImmediateMesh.new()
+	gim.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+	_emit_rounded_fill(gim, Table3dLayout.BLOCK_SIZE.x * 0.5 + grow, Table3dLayout.BLOCK_SIZE.z * 0.5 + grow, GLOW_RADIUS)
+	gim.surface_end()
+	glow.mesh = gim
+	glow.position = Vector3(0.0, -0.002, 0.0)
+	var gmat := StandardMaterial3D.new()
+	gmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	gmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	gmat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	gmat.albedo_color = Color(1.0, 1.0, 1.0, 0.0)
+	glow.material_override = gmat
+	glow.visible = false
+	_visual.add_child(glow)
+	_glow_nodes.append({"node": glow, "mat": gmat, "alpha": float(spec["alpha"])})
+	_build_border()
 	_mesh = MeshInstance3D.new()
 	_mesh.name = "Mesh"
 	# 卡面用平面（UV 完整 0–1）。BoxMesh 的 UV 是十字展开，顶面只采样一条线 → 贴图被裁。
@@ -153,6 +178,17 @@ func _build() -> void:
 	_label.font_size = 96
 	_label.position = Vector3(0.0, Table3dLayout.BLOCK_SIZE.y * 0.5 + LABEL_LIFT, 0.0)
 	_flip.add_child(_label)
+	# 炸弹角标（随机增强）：卡牌右上角，billboard 始终朝向相机。
+	_bomb_badge = Sprite3D.new()
+	_bomb_badge.name = "BombBadge"
+	_bomb_badge.texture = BombIcon.texture(64)
+	_bomb_badge.pixel_size = 0.0028
+	_bomb_badge.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_bomb_badge.no_depth_test = true
+	_bomb_badge.position = Vector3(-Table3dLayout.BLOCK_SIZE.x * 0.5 + 0.13, 0.06,
+		Table3dLayout.BLOCK_SIZE.z * 0.5 - 0.13)
+	_bomb_badge.visible = false
+	_visual.add_child(_bomb_badge)
 	# 拾取标记：独立物理层，仅用于射线拾取
 	_area = Area3D.new()
 	_area.name = "PickArea"
@@ -173,6 +209,7 @@ func setup(slot: Dictionary) -> void:
 	_kill_flip()
 	_reveal_p = 0.0
 	_reveal_color = Color(0, 0, 0, 0)
+	_reveal_known = {}
 	if _flip != null:
 		_flip.transform = Transform3D.IDENTITY
 	if _hover_tween != null and _hover_tween.is_valid():
@@ -185,12 +222,22 @@ func setup(slot: Dictionary) -> void:
 	scale = Vector3.ONE
 	_apply_slot(slot)
 
+## 显示/隐藏右上角炸弹角标（公开炸弹标记，不涉及牌面）。
+func set_bomb(on: bool) -> void:
+	_bomb_on = on
+	if _bomb_badge != null and is_instance_valid(_bomb_badge):
+		_bomb_badge.visible = on
+
+func has_bomb() -> bool:
+	return _bomb_on
+
 ## 应用槽位内容（不动画/不打断 tween，供翻牌中点回调复用）。
 func _apply_slot(slot: Dictionary) -> void:
 	_last_slot = slot
 	_flash_color = Color(0, 0, 0, 0)
 	var card: Dictionary = slot.get("card", {})
 	_set_label_text("" if card.is_empty() else card_text(card))
+	set_bomb(bool(slot.get("bomb", false)) or bool(card.get("bomb", false)))
 	_apply_color()
 
 ## 设置拾取元数据（{"kind":"slot","seat":..,"slot":..} 或 hud/deck/...）。
@@ -213,18 +260,43 @@ func set_pick_enabled(on: bool) -> void:
 func is_pick_enabled() -> bool:
 	return _pick_enabled
 
-## 可操作高亮（金色边缘发光）。
+## 可操作高亮（默认金色边缘发光）。
 func set_actionable(on: bool) -> void:
 	_build()
 	_actionable = on
 	_paint_glow()
 
-## 准星悬停高亮（青色边缘发光；有更强状态时被覆盖）。
-func set_hover(on: bool, color := Color(0.7, 0.95, 1.0)) -> void:
+## 可操作高亮的颜色（如弃牌堆"用能力"用橙色、取弃牌顶用金色）。
+func set_actionable_color(c: Color) -> void:
+	_actionable_color = c
+	if _actionable:
+		_paint_glow()
+
+## 准星悬停反馈：卡外一圈虚线边框（颜色由 table3d_view 按状态给：白/绿/红）。
+## 注意：hover 不再驱动炫光（炫光留给 黄=可用 / 红·绿=贴牌对错 / 紫=护盾 提示）。
+func set_hover(on: bool, color := BORDER_WHITE) -> void:
 	_build()
-	_hovered = on
-	_hover_color = color
-	_paint_glow()
+	_show_border = on
+	_border_color = color
+	_apply_border()
+
+## 该卡当前是否可操作（供 table3d_view 决定 hover 边框红/绿）。
+func is_actionable() -> bool:
+	return _actionable
+
+## 当前"对该 viewer 已知"的牌面（槽位公开牌 或 临时揭示牌）；未知返回 {}。
+func known_card() -> Dictionary:
+	var slot_card: Dictionary = _last_slot.get("card", {})
+	if not slot_card.is_empty():
+		return slot_card
+	return _reveal_known
+
+## hover 虚线边框是否存在。
+func has_border() -> bool:
+	return _border_mesh != null and _border_mesh.visible
+
+func border_color() -> Color:
+	return _border_color
 
 ## 揭示翻转到 card（写到底面板，几何连续换面）；color.a>0 时用该色边缘发光。
 ## from_p 为起始翻转进度：0（默认）= 从背面播放完整翻转；>0 用于跨 render 重放时**续播**
@@ -235,6 +307,8 @@ func reveal(card: Dictionary, color := Color(0, 0, 0, 0), from_p := 0.0) -> void
 	_back_material.albedo_color = Color.WHITE
 	_back_is_back = card.is_empty()
 	_set_label_text(card_text(card))
+	set_bomb(bool(card.get("bomb", false)) or bool(_last_slot.get("bomb", false)))
+	_reveal_known = card.duplicate() if not card.is_empty() else {}
 	_reveal_color = color
 	_paint_glow()
 	if from_p <= 0.0:
@@ -246,6 +320,7 @@ func reveal(card: Dictionary, color := Color(0, 0, 0, 0), from_p := 0.0) -> void
 ## 用于 7/8/9/10/Q 看牌时向其他玩家表达"此牌正被人看"，比单纯蓝光更明显。
 func reveal_hidden(color := Color(0, 0, 0, 0), from_p := 0.0) -> void:
 	_build()
+	_reveal_known = {}
 	_back_material.albedo_texture = _peek_hidden_texture()
 	_back_material.albedo_color = Color.WHITE
 	_back_is_back = false
@@ -290,6 +365,7 @@ func _reveal_from(from_p: float) -> void:
 func restore() -> void:
 	_build()
 	_reveal_color = Color(0, 0, 0, 0)
+	_reveal_known = {}
 	var card: Dictionary = _last_slot.get("card", {})
 	_set_label_text("" if card.is_empty() else card_text(card))
 	_paint_glow()
@@ -374,6 +450,7 @@ func show_back(back: bool) -> void:
 ## 按优先级决定边缘发光颜色：flash > reveal（揭示绿/红/蓝）> protected > hover > actionable。
 ## reveal 最高（仅次于 flash）：贴牌对错炫光不被选中/hover/可点高亮覆盖（B38）。
 ## hover 高于 actionable：可点目标（金）在准星悬停时改显浅蓝，便于确认"是否对准了"（否则金光盖住蓝光无法确认选中）。
+## 炫光优先级：flash > reveal > protected > actionable（hover 已改为虚线边框，不再走炫光）。
 func _paint_glow() -> void:
 	if _flash_color.a > 0.0:
 		_apply_glow_layers(_flash_color)
@@ -381,23 +458,183 @@ func _paint_glow() -> void:
 		_apply_glow_layers(_reveal_color)
 	elif bool(_last_slot.get("protected", false)):
 		_apply_glow_layers(PROTECTED_COLOR)
-	elif _hovered:
-		_apply_glow_layers(_hover_color)
 	elif _actionable:
-		_apply_glow_layers(Table3dLayout.ACTIONABLE_COLOR)
+		_apply_glow_layers(_actionable_color)
 	else:
 		_apply_glow_layers(Color(0, 0, 0, 0))
+	if _glow_base.a > 0.0:
+		set_process(true)
 
-## color.a<=0 关闭；否则每层用自身 alpha，颜色取 color.rgb。
+## 呼吸闪烁系数：正弦，从 0（全灭）到 AMP（最亮）。
+func _glow_pulse() -> float:
+	return GLOW_FLICKER_AMP * 0.5 * (1.0 - cos(_glow_t * GLOW_FLICKER_SPEED))
+
+## color.a<=0 关闭；否则每层用自身 alpha × 闪烁系数，颜色取 color.rgb。
 func _apply_glow_layers(color: Color) -> void:
-	_glow_base = color
 	var on := color.a > 0.0
+	# 炫光从关闭→开启时直接置到最亮相位，避免"刚亮起时看起来没亮"（之后继续呼吸到全灭）。
+	if on and not _glow_on:
+		_glow_t = PI / GLOW_FLICKER_SPEED
+	_glow_on = on
+	_glow_base = color
+	var pulse := _glow_pulse()
 	for g in _glow_nodes:
 		var node: MeshInstance3D = g["node"]
 		node.visible = on
 		if on:
 			var mat: StandardMaterial3D = g["mat"]
-			mat.albedo_color = Color(color.r, color.g, color.b, float(g["alpha"]))
+			mat.albedo_color = Color(color.r, color.g, color.b, float(g["alpha"]) * pulse)
+
+## hover 虚线边框：绕卡周 4 边生成小矩形 dash（ImmediateMesh），一次性构建。
+func _build_border() -> void:
+	_border_mesh = MeshInstance3D.new()
+	_border_mesh.name = "HoverBorder"
+	var im := ImmediateMesh.new()
+	var hx := Table3dLayout.BLOCK_SIZE.x * 0.5 + BORDER_GAP
+	var hz := Table3dLayout.BLOCK_SIZE.z * 0.5 + BORDER_GAP
+	var t := BORDER_T * 0.5
+	im.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+	_emit_dashed_ring(im, hx, hz, BORDER_RADIUS, t)
+	im.surface_end()
+	_border_mesh.mesh = im
+	_border_mat = StandardMaterial3D.new()
+	_border_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_border_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_border_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_border_mat.albedo_color = BORDER_WHITE
+	_border_mesh.material_override = _border_mat
+	_border_mesh.position = Vector3(0.0, BORDER_Y + _border_offset_y, 0.0)
+	_border_mesh.visible = false
+	add_child(_border_mesh)
+
+## 设置边框相对卡面的高度偏移（如抽牌堆把 dash line 压到牌堆底部：传 -堆高）。
+func set_border_offset(dy: float) -> void:
+	_border_offset_y = dy
+	if _border_mesh != null and is_instance_valid(_border_mesh):
+		_border_mesh.position = Vector3(0.0, BORDER_Y + dy, 0.0)
+
+## 圆角矩形周长采样点（XZ 平面，顺时针，含 4 段圆角 + 4 条直边，间距≈step）。
+static func _rounded_rect_samples(hx: float, hz: float, r: float, step: float) -> PackedVector2Array:
+	var rr := clampf(r, 0.0, minf(hx, hz))
+	var pts := PackedVector2Array()
+	var corners := [
+		[Vector2(hx - rr, -hz + rr), -PI * 0.5],
+		[Vector2(hx - rr, hz - rr), 0.0],
+		[Vector2(-hx + rr, hz - rr), PI * 0.5],
+		[Vector2(-hx + rr, -hz + rr), PI],
+	]
+	var n := corners.size()
+	for k in n:
+		var cc: Vector2 = corners[k][0]
+		var a0: float = corners[k][1]
+		var arc_n := maxi(2, int(ceil((PI * 0.5 * rr) / step)))
+		for i in range(arc_n + 1):
+			var ang := a0 + (PI * 0.5) * float(i) / float(arc_n)
+			pts.append(cc + Vector2(cos(ang), sin(ang)) * rr)
+		var nc: Vector2 = corners[(k + 1) % n][0]
+		var a1: float = corners[(k + 1) % n][1]
+		var e0 := cc + Vector2(cos(a0 + PI * 0.5), sin(a0 + PI * 0.5)) * rr
+		var e1 := nc + Vector2(cos(a1), sin(a1)) * rr
+		var en := maxi(1, int(ceil(e0.distance_to(e1) / step)))
+		for i in range(1, en):
+			pts.append(e0.lerp(e1, float(i) / float(en)))
+	return pts
+
+## 填充圆角矩形（中心扇形三角化）。
+func _emit_rounded_fill(im: ImmediateMesh, hx: float, hz: float, r: float) -> void:
+	var path := _rounded_rect_samples(hx, hz, r, 0.04)
+	for i in path.size():
+		var a := path[i]
+		var b := path[(i + 1) % path.size()]
+		im.surface_add_vertex(Vector3(0.0, 0.0, 0.0))
+		im.surface_add_vertex(Vector3(a.x, 0.0, a.y))
+		im.surface_add_vertex(Vector3(b.x, 0.0, b.y))
+
+## 沿「完整圆角矩形路径」按累计弧长 s 依次布 dash：dash 用多段折线跟随曲线（过弯连续），
+## 长度/间隙/粗细轻微随机（固定种子，每帧一致），端部极轻微圆头。不整体抖动。
+func _emit_dashed_ring(im: ImmediateMesh, hx: float, hz: float, r: float, half_t: float) -> void:
+	var path := _rounded_rect_samples(hx, hz, r, BORDER_STEP)
+	var n := path.size()
+	if n < 2:
+		return
+	var cum := PackedFloat32Array()
+	cum.resize(n + 1)
+	cum[0] = 0.0
+	for i in n:
+		cum[i + 1] = cum[i] + path[i].distance_to(path[(i + 1) % n])
+	var total := cum[n]
+	var rng := RandomNumberGenerator.new()
+	rng.seed = BORDER_SEED
+	var s := 0.0
+	while s < total - 0.001:
+		var dash_len := rng.randf_range(BORDER_DASH_MIN, BORDER_DASH_MAX)
+		var thick := half_t * rng.randf_range(0.9, 1.1)
+		var e := minf(s + dash_len, total)
+		_emit_path_strip(im, path, cum, s, e, thick)
+		if BORDER_CAP:
+			_emit_cap(im, _point_at_len(path, cum, s), thick)
+			_emit_cap(im, _point_at_len(path, cum, e), thick)
+		s = e + BORDER_SPACE * rng.randf_range(1.0 - BORDER_GAP_VARY, 1.0 + BORDER_GAP_VARY)
+
+## 沿路径弧长 s 取点（线性插值）。
+func _point_at_len(path: PackedVector2Array, cum: PackedFloat32Array, s: float) -> Vector2:
+	var n := path.size()
+	var total := cum[n]
+	s = clampf(s, 0.0, total)
+	var i := 0
+	while i < n - 1 and cum[i + 1] < s:
+		i += 1
+	var seg := cum[i + 1] - cum[i]
+	var t := 0.0 if seg <= 0.0 else (s - cum[i]) / seg
+	return path[i].lerp(path[(i + 1) % n], t)
+
+## 弧长区间 [s0,s1] 的 dash：细分为折线，逐段出四边形（经过圆角时自动跟随曲线）。
+func _emit_path_strip(im: ImmediateMesh, path: PackedVector2Array, cum: PackedFloat32Array, s0: float, s1: float, half_t: float) -> void:
+	if s1 <= s0:
+		return
+	var steps := maxi(2, int(ceil((s1 - s0) / BORDER_STEP)))
+	var prev := _point_at_len(path, cum, s0)
+	for k in range(1, steps + 1):
+		var s := lerpf(s0, s1, float(k) / float(steps))
+		var cur := _point_at_len(path, cum, s)
+		_emit_segment_quad(im, prev, cur, half_t)
+		prev = cur
+
+## 极轻微圆头（正八边形小圆盘，半径 = 线半宽）。
+func _emit_cap(im: ImmediateMesh, c: Vector2, r: float) -> void:
+	var seg := 8
+	for i in seg:
+		var a0 := TAU * float(i) / float(seg)
+		var a1 := TAU * float(i + 1) / float(seg)
+		im.surface_add_vertex(Vector3(c.x, 0.0, c.y))
+		im.surface_add_vertex(Vector3(c.x + cos(a0) * r, 0.0, c.y + sin(a0) * r))
+		im.surface_add_vertex(Vector3(c.x + cos(a1) * r, 0.0, c.y + sin(a1) * r))
+
+## 单段 dash：p→q 沿线、垂直方向半宽 half_t 的矩形。
+func _emit_segment_quad(im: ImmediateMesh, p: Vector2, q: Vector2, half_t: float) -> void:
+	var dir := q - p
+	if dir.length_squared() < 1e-9:
+		return
+	dir = dir.normalized()
+	var nrm := Vector2(-dir.y, dir.x) * half_t
+	var v0 := Vector3(p.x + nrm.x, 0.0, p.y + nrm.y)
+	var v1 := Vector3(q.x + nrm.x, 0.0, q.y + nrm.y)
+	var v2 := Vector3(q.x - nrm.x, 0.0, q.y - nrm.y)
+	var v3 := Vector3(p.x - nrm.x, 0.0, p.y - nrm.y)
+	im.surface_add_vertex(v0)
+	im.surface_add_vertex(v1)
+	im.surface_add_vertex(v2)
+	im.surface_add_vertex(v0)
+	im.surface_add_vertex(v2)
+	im.surface_add_vertex(v3)
+
+func _apply_border() -> void:
+	if _border_mesh == null:
+		return
+	var on := _show_border and _border_color.a > 0.0
+	_border_mesh.visible = on
+	if on:
+		_border_mat.albedo_color = _border_color
 
 static func _back_texture() -> Texture2D:
 	if _back_tex == null:
@@ -525,12 +762,15 @@ func set_hover_pose(on: bool, ray_local: Vector2, immediate := false) -> void:
 	_hover_tween = create_tween()
 	_hover_tween.tween_property(self, "_hover_p", target, dur).set_trans(trans).set_ease(Tween.EASE_OUT)
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	_glow_t += delta
 	_apply_hover_pose()
 	_apply_flip_pose()
+	if _glow_base.a > 0.0:
+		_apply_glow_layers(_glow_base)   # 每帧按闪烁系数重放炫光 alpha
 	var hb := _hover_tween != null and _hover_tween.is_valid()
 	var fb := _flip_tween != null and _flip_tween.is_valid()
-	if not hb and not fb and _hover_p <= 0.0 and _reveal_p <= 0.0:
+	if not hb and not fb and _hover_p <= 0.0 and _reveal_p <= 0.0 and _glow_base.a <= 0.0:
 		set_process(false)
 
 ## 用 compose 的位移/旋转驱动 `_visual`（不写 scale，避免与揭示翻转抢属性）。

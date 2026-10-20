@@ -11,6 +11,7 @@ var checks := 0
 var seen_rejects: Array[int] = []
 
 func _ready() -> void:
+	GameState.turn_effect_rules_enabled = false  # 规则测试由 verify_turn_effect_rules 单独开启
 	GameState.command_rejected.connect(_on_rejected)
 	await _test_single_correct()
 	await _test_duel_both_stop()
