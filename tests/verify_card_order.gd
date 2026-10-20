@@ -22,6 +22,8 @@ func _run() -> void:
 	add_child(p)
 	await get_tree().process_frame
 	_check("14 张卡", p.card_count() == 14)
+	_check("整体缩小 1/3：卡宽", is_equal_approx(CardOrderPanel.CARD_W, 34.0 * 2.0 / 3.0))
+	_check("整体缩小 1/3：卡高", is_equal_approx(CardOrderPanel.CARD_H, 48.0 * 2.0 / 3.0))
 	_check("默认展开", p.is_expanded())
 	_check("首张 Q", p.rank_at(0) == "Q")
 	_check("第三张 10", p.rank_at(2) == "10")

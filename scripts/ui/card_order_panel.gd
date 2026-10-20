@@ -25,10 +25,15 @@ const FILES := {
 	"K": "res://assets/SmallCards/spades_king.png",
 }
 
-const CARD_W := 34.0
-const CARD_H := 48.0
+# 整体尺寸按 2/3 缩放（再缩小 1/3）。
+const SHRINK := 2.0 / 3.0
+const CARD_W := 34.0 * SHRINK   # 原 34 → 缩小 1/3
+const CARD_H := 48.0 * SHRINK   # 原 48 → 缩小 1/3
 const STEP := 0.78          # 堆叠步进（占卡宽比例；越大遮挡越少）
-const ARROW_H := 8.0
+const ARROW_H := 8.0 * SHRINK   # 原 8 → 缩小 1/3
+const TITLE_FONT_SIZE := 12
+const SHIFT_FONT_SIZE := 10
+const CHIP_PAD := 3.0
 
 var _expanded := true
 var _shift_btn: Button
@@ -36,7 +41,7 @@ var _cards: Control
 var _arrow: ThinArrow
 
 func _ready() -> void:
-	add_theme_constant_override("separation", 4)
+	add_theme_constant_override("separation", 3)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_build_header()
 	_build_cards()
@@ -47,7 +52,7 @@ func _ready() -> void:
 func _build_header() -> void:
 	var row := HBoxContainer.new()
 	row.name = "Header"
-	row.add_theme_constant_override("separation", 8)
+	row.add_theme_constant_override("separation", 5)
 	# 标题行按内容收缩（不与下方卡牌同宽），位置仍在左侧不变。
 	row.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -55,7 +60,7 @@ func _build_header() -> void:
 	var title := Label.new()
 	title.name = "Title"
 	title.text = "牌序"
-	title.add_theme_font_size_override("font_size", 18)
+	title.add_theme_font_size_override("font_size", TITLE_FONT_SIZE)
 	title.add_theme_color_override("font_color", Color(1, 1, 1))
 	row.add_child(title)
 	_shift_btn = Button.new()
@@ -63,11 +68,18 @@ func _build_header() -> void:
 	_shift_btn.text = "SHIFT"
 	_shift_btn.focus_mode = Control.FOCUS_NONE
 	for st_name in ["normal", "hover", "pressed", "disabled"]:
-		_shift_btn.add_theme_stylebox_override(st_name, KeyHintPanel.chip_style_box())
+		_shift_btn.add_theme_stylebox_override(st_name, _chip_style())
 	_shift_btn.add_theme_color_override("font_color", KeyHintPanel.chip_text_color())
-	_shift_btn.add_theme_font_size_override("font_size", 15)
+	_shift_btn.add_theme_font_size_override("font_size", SHIFT_FONT_SIZE)
 	_shift_btn.pressed.connect(toggle)
 	row.add_child(_shift_btn)
+
+## SHIFT chip：沿用按键 chip 样式，但内边距/圆角随面板一起缩小。
+func _chip_style() -> StyleBoxFlat:
+	var style := KeyHintPanel.chip_style_box()
+	style.set_content_margin_all(CHIP_PAD)
+	style.set_corner_radius_all(4)
+	return style
 
 ## 下面：卡牌一排（堆叠）。
 func _build_cards() -> void:

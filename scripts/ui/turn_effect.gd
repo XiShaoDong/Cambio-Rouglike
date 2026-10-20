@@ -7,7 +7,7 @@ const EFFECTS := [
 		"id": "none",
 		"name": "无效果",
 		"desc": "本回合没有特殊效果",
-		"card": "",
+		"card": "res://assets/SmallCards/back01.png",
 		"bomb": false,
 	},
 	{
