@@ -56,6 +56,7 @@ enum RejectCode {
 	INVALID_OFFER,
 	PROTECTED,
 	SHOP_REFRESH_UNAVAILABLE,
+	INVALID_SETTING,
 }
 
 var phase: Phase = Phase.LOBBY
@@ -770,7 +771,7 @@ func _server_initial_ready(sender: int) -> void:
 		return
 	# 记忆确认后：先进入「本局效果展示」阶段（5s），再开始第一个玩家的回合。
 	current_player_id = _alive_order()[0]
-	if turn_effect_rules_enabled:
+	if turn_effect_id != "none":
 		_begin_effect_reveal_phase()
 	else:
 		_start_turn(current_player_id)
@@ -1494,6 +1495,17 @@ func _roll_turn_effect() -> void:
 	if dev_test_mode and TURN_EFFECT_IDS.has(dev_test_effect):
 		turn_effect_id = dev_test_effect
 		return
+	# 玩法设置（系列赛级）：fixed=整系列同一特效；normal=无特效；random=每局随机。
+	match str(run_state.get("effect_mode", "normal")):
+		"fixed":
+			var fixed := str(run_state.get("fixed_effect", ""))
+			turn_effect_id = str(fixed) if TURN_EFFECT_IDS.has(fixed) else "none"
+		"random":
+			_roll_random_effect()
+		_:
+			turn_effect_id = "none"
+
+func _roll_random_effect() -> void:
 	# 每局只抽一次，保持到本局结束；避免与上一局相同。
 	var prev := turn_effect_id
 	var pool: Array = []
@@ -2553,6 +2565,10 @@ func _on_series_auto_advance() -> void:
 		return
 	if _alive_count() < KongRules.MIN_PLAYERS:
 		return
+	if not bool(run_state.get("shop_enabled", true)):
+		# 商店关闭：结算展示后直接开下一局。
+		_deal_next_match()
+		return
 	_start_shop()
 
 func _calculate_ranking() -> Array:
@@ -2661,6 +2677,9 @@ func _lobby_snapshot(viewer_seat := -1) -> Dictionary:
 		"min_players": KongRules.MIN_PLAYERS,
 		"max_players": KongRules.MAX_PLAYERS,
 		"match_limit": int(run_state.get("match_limit", KongRules.DEFAULT_MATCH_LIMIT)),
+		"effect_mode": str(run_state.get("effect_mode", "normal")),
+		"fixed_effect": str(run_state.get("fixed_effect", "")),
+		"shop_enabled": bool(run_state.get("shop_enabled", true)),
 	}
 
 ## 逐 peer 下发大厅快照（含各自 your_id）；离线（peer<=0）跳过。
@@ -2716,6 +2735,67 @@ func _server_set_match_limit(sender: int, limit: int, action_id := "") -> void:
 		_reject(sender, RejectCode.DUPLICATE_OR_EXPIRED_ACTION, action_id)
 		return
 	run_state["match_limit"] = clampi(limit, KongRules.MIN_MATCH_LIMIT, KongRules.MAX_MATCH_LIMIT)
+	_broadcast_lobby()
+
+## 房主修改玩法设置：效果模式（normal/random/fixed + fixed 特效 id；系列赛级）。
+func request_set_effect_mode(mode: String, effect_id := "", action_id := "") -> void:
+	if multiplayer.is_server():
+		_server_set_effect_mode(_peer_to_seat(1), mode, effect_id, action_id)
+	else:
+		server_set_effect_mode.rpc_id(1, mode, effect_id, action_id)
+
+@rpc("any_peer", "reliable")
+func server_set_effect_mode(mode: String, effect_id: String, action_id: String) -> void:
+	if multiplayer.is_server():
+		_server_set_effect_mode(_peer_to_seat(multiplayer.get_remote_sender_id()), mode, effect_id, action_id)
+
+func _server_set_effect_mode(sender: int, mode: String, effect_id: String, action_id := "") -> void:
+	if phase != Phase.LOBBY or not players.has(sender):
+		return
+	if sender != host_seat:
+		_reject(sender, RejectCode.NOT_HOST, action_id)
+		return
+	if not _check_action_id(sender, action_id):
+		_reject(sender, RejectCode.DUPLICATE_OR_EXPIRED_ACTION, action_id)
+		return
+	var m := str(mode)
+	if m != "normal" and m != "random" and m != "fixed":
+		_reject(sender, RejectCode.INVALID_SETTING, action_id)
+		return
+	if m == "fixed":
+		var fx := str(effect_id)
+		# 指定特效仅限实际特效之一（none == 普通模式，不作选项）。
+		if fx == "none" or not TURN_EFFECT_IDS.has(fx):
+			_reject(sender, RejectCode.INVALID_SETTING, action_id)
+			return
+		run_state["fixed_effect"] = fx
+		run_state["effect_mode"] = m
+	else:
+		run_state["effect_mode"] = m
+	_broadcast_lobby()
+
+## 房主开关商店（系列赛级；关闭后非把末结算直接开下一局）。
+func request_set_shop_enabled(on: bool, action_id := "") -> void:
+	if multiplayer.is_server():
+		_server_set_shop_enabled(_peer_to_seat(1), on, action_id)
+	else:
+		server_set_shop_enabled.rpc_id(1, on, action_id)
+
+@rpc("any_peer", "reliable")
+func server_set_shop_enabled(on: bool, action_id: String) -> void:
+	if multiplayer.is_server():
+		_server_set_shop_enabled(_peer_to_seat(multiplayer.get_remote_sender_id()), on, action_id)
+
+func _server_set_shop_enabled(sender: int, on: bool, action_id := "") -> void:
+	if phase != Phase.LOBBY or not players.has(sender):
+		return
+	if sender != host_seat:
+		_reject(sender, RejectCode.NOT_HOST, action_id)
+		return
+	if not _check_action_id(sender, action_id):
+		_reject(sender, RejectCode.DUPLICATE_OR_EXPIRED_ACTION, action_id)
+		return
+	run_state["shop_enabled"] = bool(on)
 	_broadcast_lobby()
 
 func _broadcast_state() -> void:

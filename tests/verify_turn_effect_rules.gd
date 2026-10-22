@@ -93,7 +93,9 @@ func _play_through_pass() -> void:
 
 func _test_effect_reveal_phase() -> void:
 	GameState._reset_match()
-	GameState.turn_effect_rules_enabled = true
+	# 固定特效（six_swap）保证展示阶段判定确定性；无特效（normal/抽到 none）不再进入展示。
+	GameState.run_state["effect_mode"] = "fixed"
+	GameState.run_state["fixed_effect"] = "six_swap"
 	_rejections = 0
 	GameState._add_player(1, "A")
 	GameState._add_player(2, "B")
@@ -124,6 +126,7 @@ func _test_effect_persists_per_match() -> void:
 	_check("同一局效果不重抽", GameState.turn_effect_id == id)
 	_check("每回合仍推进 turn_index", GameState.turn_index == ti + 2)
 	GameState.turn_effect_rules_enabled = true
+	GameState.run_state["effect_mode"] = "random"  # 下一局重新随机抽取（保证 id 必不相同）
 	GameState._deal_next_match()
 	_check("下一局结算/商店后重新抽取效果", GameState.turn_effect_id != id)
 

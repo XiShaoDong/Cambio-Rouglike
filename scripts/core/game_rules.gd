@@ -103,7 +103,7 @@ static func display_name(card: Dictionary) -> String:
 static func new_default_run() -> Dictionary:
 	# The MVP leaves modifiers disabled. Future relics/mutators belong in this
 	# serializable run state, rather than in match-flow conditionals.
-	return {
+		return {
 		"health": START_HEALTH,
 		"relic_slots": 3,
 		"relics": {},
@@ -115,4 +115,8 @@ static func new_default_run() -> Dictionary:
 		"mutator_ids": [],
 		"enable_relics": false,
 		"match_limit": DEFAULT_MATCH_LIMIT,
+		# 玩法设置（系列赛级，房主在 LOBBY 修改）：效果模式 / 固定特效 / 商店开关。
+		"effect_mode": "normal",   # normal=无特效 / random=每局随机 / fixed=整系列固定特效
+		"fixed_effect": "",        # fixed 模式下的特效 id（six_swap/plus_one/bomb）
+		"shop_enabled": true,      # 关闭后系列赛非把末结算直接开下一局
 	}

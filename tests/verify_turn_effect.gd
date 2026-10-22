@@ -32,7 +32,9 @@ func _test_data() -> void:
 	for e in TurnEffect.all():
 		ids[str(e["id"])] = true
 	_check("随机结果合法", ids.has(str(TurnEffect.random()["id"])))
-	# 服务器权威抽取：每局抽一次，不推进 turn_index
+	# 服务器权威抽取：每局抽一次，不推进 turn_index（随机模式）
+	GameState.run_state["effect_mode"] = "random"
+	GameState.dev_test_mode = false
 	GameState.turn_index = 0
 	GameState.turn_effect_id = ""
 	GameState._roll_turn_effect()

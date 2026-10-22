@@ -15,6 +15,9 @@ func _ready() -> void:
 	_test_host_seat()
 	_test_kick()
 	_test_match_limit_sync()
+	_test_effect_mode_sync()
+	_test_effect_phase_flow()
+	_test_shop_enabled_gate()
 	_test_dark1_theme()
 	await _test_lobby_ui()
 	print("=== LOBBY RESULT: %d/%d passed%s ===" % [checks - failures, checks, " (FAILURES!)" if failures else ""])
@@ -121,6 +124,93 @@ func _test_match_limit_sync() -> void:
 	_check("lobby 快照含同步局数", int(snap.get("match_limit", 0)) == 8)
 	GameState._server_set_match_limit(0, 99, "ml3")
 	_check("局数夹到上限", int(GameState.run_state["match_limit"]) == KongRules.MAX_MATCH_LIMIT)
+
+## 玩法设置：效果模式（房间权威 + 快照下发）。
+func _test_effect_mode_sync() -> void:
+	_setup_two()
+	last_lobby = {}
+	GameState._server_set_effect_mode(1, "fixed", "bomb", "em1")
+	_check("非房主设固定特效被拒", str(GameState.run_state["effect_mode"]) == "normal")
+	GameState._server_set_effect_mode(0, "fixed", "bomb", "em2")
+	_check("房主设 fixed 同步", str(GameState.run_state["effect_mode"]) == "fixed" \
+		and str(GameState.run_state["fixed_effect"]) == "bomb" and not last_lobby.is_empty())
+	var snap: Dictionary = GameState._lobby_snapshot(0)
+	_check("lobby 快照含 effect_mode/fixed_effect", str(snap.get("effect_mode", "")) == "fixed" \
+		and str(snap.get("fixed_effect", "")) == "bomb")
+	GameState._server_set_effect_mode(0, "fixed", "none", "em3")
+	_check("fixed 拒绝 none（==普通）", str(GameState.run_state["fixed_effect"]) == "bomb")
+	GameState._server_set_effect_mode(0, "unknown", "", "em4")
+	_check("非法 mode 拒绝", str(GameState.run_state["effect_mode"]) == "fixed")
+	GameState._server_set_effect_mode(0, "normal", "", "em5")
+	_check("房主切回 normal", str(GameState.run_state["effect_mode"]) == "normal")
+	GameState.dev_test_mode = false
+	GameState.turn_effect_id = ""
+	GameState._roll_turn_effect()
+	_check("normal 模式特效=none", GameState.turn_effect_id == "none")
+	GameState._server_set_effect_mode(0, "fixed", "plus_one", "em6")
+	GameState._roll_turn_effect()
+	_check("fixed 模式特效=指定", GameState.turn_effect_id == "plus_one")
+	GameState._server_set_effect_mode(0, "random", "", "em7")
+	GameState.turn_effect_id = ""
+	GameState._roll_turn_effect()
+	_check("random 模式抽到合法 id", GameState.TURN_EFFECT_IDS.has(GameState.turn_effect_id))
+	var prev := GameState.turn_effect_id
+	var all_differ := true
+	for i in 8:
+		GameState._roll_turn_effect()
+		if GameState.turn_effect_id == prev:
+			all_differ = false
+		prev = GameState.turn_effect_id
+	_check("random 连抽不与上一局相同", all_differ)
+
+## 玩法设置：效果阶段流（normal 直开回合 / fixed 走展示阶段）。
+func _test_effect_phase_flow() -> void:
+	GameState._reset_match()
+	GameState._add_player(1, "A")
+	GameState._add_player(2, "B")
+	GameState._server_start_match(0, 2)
+	GameState._server_initial_ready(0)
+	GameState._server_initial_ready(1)
+	_check("normal：全员 Ready 直开首回合（不进效果展示）", \
+		GameState.phase == GameState.Phase.TURN_DRAW and GameState.turn_index == 1)
+	GameState._reset_match()
+	GameState._add_player(1, "A")
+	GameState._add_player(2, "B")
+	GameState._server_set_effect_mode(0, "fixed", "plus_one", "ef1")
+	GameState._server_start_match(0, 2)
+	GameState._server_initial_ready(0)
+	GameState._server_initial_ready(1)
+	_check("fixed：全员 Ready 进效果展示", GameState.phase == GameState.Phase.EFFECT_REVEAL)
+	GameState._on_effect_reveal_timeout()
+	_check("fixed：展示结束开首回合", GameState.phase == GameState.Phase.TURN_DRAW and GameState.turn_index == 1)
+
+## 玩法设置：商店开关（非把末结算自动衔接）。
+func _test_shop_enabled_gate() -> void:
+	_setup_two()
+	last_lobby = {}
+	GameState._server_set_shop_enabled(1, false, "sh1")
+	_check("非房主关商店被拒", bool(GameState.run_state["shop_enabled"]))
+	GameState._server_set_shop_enabled(0, false, "sh2")
+	_check("房主关商店同步", not bool(GameState.run_state["shop_enabled"]))
+	var snap: Dictionary = GameState._lobby_snapshot(0)
+	_check("lobby 快照含 shop_enabled", not bool(snap.get("shop_enabled", true)))
+	# 关商店：GAME_OVER → 自动衔接直接开下一局（不进 SHOP）
+	GameState._server_start_match(0, 3)
+	GameState._server_initial_ready(0)
+	GameState._server_initial_ready(1)
+	GameState.phase = GameState.Phase.GAME_OVER
+	GameState._on_series_auto_advance()
+	_check("关商店：结算直接开下一局", \
+		GameState.phase == GameState.Phase.INITIAL_PEEK and GameState.match_number == 2)
+	# 开商店：对照走 SHOP（match_limit=3，此刻第 2 局非把末）
+	GameState.phase = GameState.Phase.LOBBY  # 回大厅（上一分支已开出第 2 局；设置仅 LOBBY 可改）
+	GameState._server_set_shop_enabled(0, true, "sh3")
+	GameState._server_start_match(0, 3)
+	GameState._server_initial_ready(0)
+	GameState._server_initial_ready(1)
+	GameState.phase = GameState.Phase.GAME_OVER
+	GameState._on_series_auto_advance()
+	_check("开商店：结算进 SHOP", GameState.phase == GameState.Phase.SHOP)
 
 func _test_dark1_theme() -> void:
 	var before := UITheme.current
