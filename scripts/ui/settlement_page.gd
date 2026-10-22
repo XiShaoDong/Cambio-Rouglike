@@ -228,7 +228,7 @@ func _show_footer() -> void:
 	_footer.add_child(box)
 	if _is_host:
 		var exit := Button.new()
-		exit.text = "返回大厅"
+		exit.text = "回到等待房间"
 		exit.pressed.connect(func() -> void:
 			if _on_abort.is_valid():
 				_on_abort.call())
@@ -236,7 +236,7 @@ func _show_footer() -> void:
 		status.text = "系列赛结束" if series_done else "即将进入商店…"
 	else:
 		var wait := Label.new()
-		wait.text = "系列赛结束" if series_done else "等待进入商店…"
+		wait.text = "系列赛结束 · 等待房主回到大厅…" if series_done else "等待进入商店…"
 		wait.add_theme_color_override("font_color", UITheme.color("text_secondary"))
 		box.add_child(wait)
 	status.visible = true

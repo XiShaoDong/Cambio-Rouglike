@@ -1329,6 +1329,7 @@ func _ready() -> void:
 	GameState.toast_received.connect(_show_toast)
 	GameState.command_rejected.connect(_on_command_rejected)
 	GameState.match_aborted.connect(_on_match_aborted)
+	GameState.room_reset.connect(_on_room_reset)
 	GameState.registered_token_received.connect(_on_registered_token)
 	GameState.resume_hand_received.connect(_on_resume_hand)
 	GameState.sfx_played.connect(_on_sfx)
@@ -1481,6 +1482,19 @@ func _on_match_aborted(_code: int, message: String) -> void:
 	# 断线后回大厅：若持有 token，在初始界面显示"重连上次对局"入口
 	if not Network.is_host and not _my_token.is_empty():
 		_render_rejoin_entry()
+
+## 系列赛把末 → 全员回到等待房间（保留连接）：重置快照水位线、收弹层、回房间 UI。
+func _on_room_reset() -> void:
+	last_phase = -1
+	_was_in_match = false
+	_view_defaulted_3d = false  # 回到大厅 → 下一届系列赛重新默认 3D
+	_close_settlement()
+	_close_shop_panel()
+	if _table3d_active:
+		_set_table3d(false)
+	if not latest_lobby.is_empty():
+		lobby.update_lobby(latest_lobby)
+	_set_status("系列赛结束，回到等待房间。")
 
 ## 收到服务器发放的身份 token：保存内存 + 持久化（user://identity.cfg）。
 func _on_registered_token(token: String) -> void:
@@ -1870,7 +1884,8 @@ func _open_settlement() -> void:
 	var series: Dictionary = (latest_state.get("result", {}) as Dictionary).get("series", {})
 	var rewards: Dictionary = (latest_state.get("result", {}) as Dictionary).get("rewards", {})
 	page.setup(model, is_room_host(), int(latest_state.get("match_number", 1)),
-		_play_pending_winner, _request_next_match, GameState.request_abort_match,
+		_play_pending_winner, _request_next_match,
+		func() -> void: GameState.request_back_to_lobby(_next_action_id()),
 		_on_settlement_flip, true, match_limit, series, rewards)
 	settlement_page = page
 

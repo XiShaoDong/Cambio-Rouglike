@@ -19,6 +19,7 @@ signal peek_highlighted(data: Dictionary)
 signal registered_token_received(token: String)
 signal resume_hand_received(hand: Array, pending: Dictionary)
 signal sfx_played(kind: String)
+signal room_reset  # 服务器把全体拉回等待房间（系列赛把末）：客户端重置快照水位线并回到房间 UI
 
 enum Phase { LOBBY, INITIAL_PEEK, TURN_DRAW, TURN_DECISION, Q_DECISION, SLAP_WINDOW, SLAP_EXCHANGE, GAME_OVER, SLAP_DUEL, BET, SHOP, EFFECT_PASS, EFFECT_REVEAL }
 
@@ -1381,6 +1382,114 @@ func server_close_room() -> void:
 
 func _server_close_room() -> void:
 	_end_room(RejectCode.HOST_DISCONNECTED, "房间已被房主解散。")
+
+func request_back_to_lobby(action_id := "") -> void:
+	if multiplayer.is_server():
+		if Network.host_is_player:
+			_server_back_to_lobby(_peer_to_seat(1), action_id)
+	else:
+		server_back_to_lobby.rpc_id(1, action_id)
+
+@rpc("any_peer", "reliable")
+func server_back_to_lobby(action_id: String) -> void:
+	if multiplayer.is_server():
+		_server_back_to_lobby(_peer_to_seat(multiplayer.get_remote_sender_id()), action_id)
+
+## 系列赛把末结算后：保留座位/连接全体回到等待房间（新一届系列赛），无需断线重连。
+func _server_back_to_lobby(sender: int, action_id := "") -> void:
+	if phase != Phase.GAME_OVER:
+		_reject(sender, RejectCode.INVALID_PHASE, action_id)
+		return
+	if sender != host_seat:
+		_reject(sender, RejectCode.NOT_HOST, action_id)
+		return
+	if not _series_finished():
+		_reject(sender, RejectCode.INVALID_PHASE, action_id)
+		return
+	if not _check_action_id(sender, action_id):
+		_reject(sender, RejectCode.DUPLICATE_OR_EXPIRED_ACTION, action_id)
+		return
+	_rebuild_to_lobby()
+	_add_log("系列赛结束，全员回到等待房间。")
+	_broadcast_room_reset()
+	_broadcast_lobby()
+
+## 把末重建：保留玩家身份（姓名/颜色/token/peer/账号）与房主座位，清空对局与系列赛数据；
+## 玩法设置（match_limit/effect_mode/fixed_effect/shop_enabled）沿用上一届。
+func _rebuild_to_lobby() -> void:
+	var roster: Array = []
+	for seat in turn_order:
+		var p: Dictionary = players[seat]
+		roster.append({
+			"seat": int(seat),
+			"peer_id": int(p.get("peer_id", -1)),
+			"token": str(p.get("token", "")),
+			"name": str(p.get("name", "")),
+			"color": str(p.get("color", "")),
+			"account_id": str(p.get("account_id", "")),
+		})
+	var keep_limit := int(run_state.get("match_limit", KongRules.DEFAULT_MATCH_LIMIT))
+	var keep_mode := str(run_state.get("effect_mode", "normal"))
+	var keep_fx := str(run_state.get("fixed_effect", ""))
+	var keep_shop := bool(run_state.get("shop_enabled", true))
+	var keep_host := host_seat
+	_reset_match()
+	host_seat = keep_host
+	run_state["match_limit"] = keep_limit
+	run_state["effect_mode"] = keep_mode
+	run_state["fixed_effect"] = keep_fx
+	run_state["shop_enabled"] = keep_shop
+	var used_colors: Array = []
+	for entry in roster:
+		var seat := int(entry["seat"])
+		used_colors.append(str(entry["color"]))
+	for entry in roster:
+		var seat := int(entry["seat"])
+		var color := str(entry["color"])
+		if color.is_empty():
+			color = KongRules.pick_color(used_colors)
+			if not used_colors.has(color):
+				used_colors.append(color)
+		players[seat] = {
+			"seat": seat,
+			"peer_id": int(entry["peer_id"]),
+			"token": str(entry["token"]),
+			"name": str(entry["name"]),
+			"color": color,
+			"cards": [],
+			"has_acted": false,
+			"offline": false,
+			"health": KongRules.START_HEALTH,
+			"eliminated_match": -1,
+			"currency": KongRules.START_CURRENCY,
+			"wins": 0,
+			"protected_slot": -1,
+			"ready": false,
+			"account_id": str(entry["account_id"]),
+		}
+		turn_order.append(seat)
+		_next_seat = seat + 1
+
+## 服务器广播“回到等待房间”：客户端重置快照水位线（state_revision 从 1 重新计数）。
+func _broadcast_room_reset() -> void:
+	for seat in players.keys():
+		var peer := int(players[seat].peer_id)
+		if peer <= 0:
+			continue
+		if peer == 1:
+			_receive_room_reset()
+		else:
+			receive_room_reset.rpc_id(peer, 0)
+
+func _receive_room_reset(_tag := 0) -> void:
+	# 对局中止后 state_revision 从 0 重新计数，客户端必须重置去重水位线，
+	# 否则新一届系列赛所有快照会被误判为旧包丢弃。
+	last_seen_revision = -1
+	room_reset.emit()
+
+@rpc("authority", "call_remote", "reliable")
+func receive_room_reset(tag: int) -> void:
+	_receive_room_reset(tag)
 
 ## 结束本房间：广播中止 → 断开在座客户端 → 重置房间。
 ## 玩家-host：同时关闭服务器连接（房主进程回初始大厅）。

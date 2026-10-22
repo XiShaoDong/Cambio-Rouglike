@@ -18,6 +18,7 @@ func _ready() -> void:
 	_test_effect_mode_sync()
 	_test_effect_phase_flow()
 	_test_shop_enabled_gate()
+	_test_back_to_lobby()
 	_test_dark1_theme()
 	await _test_lobby_ui()
 	print("=== LOBBY RESULT: %d/%d passed%s ===" % [checks - failures, checks, " (FAILURES!)" if failures else ""])
@@ -211,6 +212,39 @@ func _test_shop_enabled_gate() -> void:
 	GameState.phase = GameState.Phase.GAME_OVER
 	GameState._on_series_auto_advance()
 	_check("开商店：结算进 SHOP", GameState.phase == GameState.Phase.SHOP)
+
+## 系列赛把末 → 全体回到等待房间（保留座位/连接，新一届系列赛）。
+func _test_back_to_lobby() -> void:
+	_setup_two()
+	GameState._server_set_effect_mode(0, "fixed", "bomb", "b1")
+	GameState._server_start_match(0, 2)
+	GameState._server_initial_ready(0)
+	GameState._server_initial_ready(1)
+	# 模拟把末：第 1 局、系列赛限一局（match_limit ≤2 越界由服务器回退，这里直改模拟结算态）
+	GameState.run_state["match_limit"] = 1
+	GameState.phase = GameState.Phase.GAME_OVER
+	_check("把末：_series_finished 成立", GameState._series_finished())
+	# 非房主被拒：状态不变
+	GameState._server_back_to_lobby(1, "r1")
+	_check("非房主回大厅被拒", GameState.phase == GameState.Phase.GAME_OVER)
+	# 房主成功：回 LOBBY、保留座位、清空系列赛态、保留玩法设置
+	GameState._server_back_to_lobby(0, "r2")
+	_check("房主回大厅成功", GameState.phase == GameState.Phase.LOBBY)
+	_check("座位保留且全员未准备", GameState.players.size() == 2 \
+		and not bool(GameState.players[0].get("ready", false)) \
+		and not bool(GameState.players[1].get("ready", false)))
+	_check("系列赛数据清零（wins/货币/生命重置）", \
+		int(GameState.players[0].get("wins", -1)) == 0 \
+		and int(GameState.players[0].get("currency", -1)) == KongRules.START_CURRENCY \
+		and int(GameState.players[1].get("health", -1)) == KongRules.START_HEALTH)
+	_check("玩法设置沿用", str(GameState.run_state["effect_mode"]) == "fixed" \
+		and str(GameState.run_state["fixed_effect"]) == "bomb" \
+		and int(GameState.run_state["match_limit"]) == 1)
+	var snap: Dictionary = GameState._lobby_snapshot(0)
+	_check("回大厅广播快照", snap.get("players", []).size() == 2 and str(snap.get("effect_mode", "")) == "fixed")
+	# 回大厅后可立即开新一届系列赛
+	GameState._server_start_match(0, 1)
+	_check("回大厅后可以重新开局", GameState.phase == GameState.Phase.INITIAL_PEEK)
 
 func _test_dark1_theme() -> void:
 	var before := UITheme.current

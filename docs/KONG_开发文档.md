@@ -503,7 +503,9 @@ T01–T20 的前置条件、执行步骤、记录格式、责任人和发布判�
 
 > **实现状态**：**UI + 玩法均已实现**。服务器在**每局开局发牌后**按玩法设置决定 `turn_effect_id` 并**保持整局不变**；本局结束、结算页结束后（含商店流程）开下一局时按模式重新决定。快照公开 `turn_index`/`turn_effect` → 全员一致。旧测试可通过 `GameState.turn_effect_rules_enabled = false` 关闭玩法应用，仅保留抽取/展示。
 >
-> **效果模式（R-16，2026-10-22）**：`run_state.effect_mode`（`normal`/`random`/`fixed`，系列赛级默认 normal）+ `fixed_effect`：normal → 恒 `none`（**不进 EFFECT_REVEAL**，全员记忆确认后直开首回合）；random → 沿用"排除上一局后随机抽取"；fixed → `fixed_effect`（仅 six_swap/plus_one/bomb，none 视作 normal；进 EFFECT_REVEAL 展示）。展示门改为 `turn_effect_id != "none"`（即抽到 none / normal 模式不再空展示 5s）。商店开关 `shop_enabled=false`（R-16）：非把末结算展示后 `_on_series_auto_advance` 直接 `_deal_next_match()`，不进 SHOP。
+> **效果模式（R-16，2026-10-22）**：`run_state.effect_mode`（`normal`/`random`/`fixed`，系列赛级默认 normal）+ `fixed_effect`：normal → 恒 `none`（**不进 EFFECT_REVEAL**，全员记忆确认后直开首回合）；random → 沿用"排除上一局后随机抽取"；fixed → `fixed_effect`（仅 six_swap/plus_one/bomb，none 视作 normal；进 EFFECT_REVEAL 展示）。展示门改为 `turn_effect_id != "none"`（即抽到 none / normal 模式不再空展示 5s）。> 商店开关 `shop_enabled=false`（R-16）：非把末结算展示后 `_on_series_auto_advance` 直接 `_deal_next_match()`，不进 SHOP。
+>
+> **把末收尾（R-16，2026-10-22）**：系列赛把末结算显示"回到等待房间"按钮（结算页替代原"返回大厅=中止"默认值）→ 房主 `back_to_lobby` → `_rebuild_to_lobby()`：保留座位/peer/token/颜色/房主座位，清空对局与系列赛数据（wins/货币/生命重置为开局态），`match_limit/effect_mode/fixed_effect/shop_enabled` 沿用；先广播 `room_reset`（客户端重置 `state_revision` 水位线为 -1 并收起结算/商店弹层），再广播 lobby 快照。与 `_end_room` 的差别：**不断开连接、不回收房间**，新一届系列赛在原房间直接"开始对局"。
 
 每局开局随机抽取一个效果（不与上一局重复），**整局保持同一个效果**；各效果按自己的触发条件生效：
 
