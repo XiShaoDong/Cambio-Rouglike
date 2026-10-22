@@ -63,6 +63,8 @@ static func decision(state: Dictionary, is_current: bool, name: String, action_m
 		return "Replace one of your cards with the drawn card"
 	if str(state.get("turn_effect", "")) == "six_swap" and rank == "JOKER" and str(pending.get("suit", "")) == "red":
 		return "6 effect: use the Red Joker's power to pass a card clockwise, or discard/replace it"
+	if not str(pending.get("granted_ability", "")).is_empty() and action_mode == "replace":
+		return "Relic: use the granted peek, or replace/discard the card"
 	match action_mode:
 		"replace":
 			return "Replace one of your cards, or discard the drawn card"
@@ -70,6 +72,8 @@ static func decision(state: Dictionary, is_current: bool, name: String, action_m
 			return "Choose one of your own cards to peek"
 		"peek_other":
 			return "Choose another player's card to peek"
+		"peek_any":
+			return "Vision swap: choose any player's card to peek"
 		"queen_target":
 			return "Peek another player's card, then peek one of your own cards"
 		"q_view_own":

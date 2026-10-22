@@ -32,7 +32,7 @@ func set_corner_style(on := true) -> void:
 		set_data(str(data.get("name", "")), int(data.get("health", 0)), int(data.get("currency", 0)), int(data.get("cards", 0)))
 
 func _corner_active() -> bool:
-	return _corner and UITheme.current == "dark"
+	return _corner and UITheme.current in ["dark", "dark-1"]
 
 func _frame_bg() -> Color:
 	return CORNER_BG if _corner_active() else BG_COLOR

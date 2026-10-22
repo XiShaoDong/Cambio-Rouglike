@@ -12,6 +12,7 @@ signal toast_received(message: String)
 signal command_rejected(code: int, message: String)
 signal match_aborted(code: int, message: String)
 signal card_exchange_animated(data: Dictionary)
+signal item_card_used(data: Dictionary)
 signal mark_placed(seat: int, pos: Vector3, style: String, icon: String, text: String)
 signal emote_played(seat: int, index: int)
 signal peek_highlighted(data: Dictionary)
@@ -54,6 +55,7 @@ enum RejectCode {
 	INVALID_AMOUNT,
 	INVALID_OFFER,
 	PROTECTED,
+	SHOP_REFRESH_UNAVAILABLE,
 }
 
 var phase: Phase = Phase.LOBBY
@@ -90,6 +92,10 @@ var turn_index := 0              # 本局第几个回合（每次换回合 +1）
 var turn_effect_id := ""         # 本局随机增强 id（开局抽取并保持整局；快照全员一致）
 ## 随机增强玩法开关（旧测试置 false 保持确定性；真实对局默认开启）。
 var turn_effect_rules_enabled := true
+## 每局遗物一次性效果使用记录：{seat: {relic_id: true}}；每局开局清空。
+var relic_used: Dictionary = {}
+## 道具卡每回合一次：{seat: turn_index}；开局清空。
+var item_used_turn: Dictionary = {}
 ## Joker 增强选牌阶段：{queue:[seat], picks:{seat:slot}, index:int, clockwise:bool, initiator:int}
 var effect_pass: Dictionary = {}
 ## 本局效果展示阶段 deadline（服务器时钟 ms；0=不在展示）。
@@ -228,6 +234,8 @@ func _reset_match() -> void:
 	shop = {}
 	shop_result = {}
 	effect_pass.clear()
+	relic_used.clear()
+	item_used_turn.clear()
 	turn_effect_id = ""
 	run_state = KongRules.new_default_run()
 	match_number = 1
@@ -267,9 +275,10 @@ func _reject_code_message(code: int) -> String:
 		RejectCode.MATCH_SUSPENDED: return "对局已暂停（有玩家离线），等待重连或房主处理。"
 		RejectCode.INVALID_TOKEN: return "重连凭据无效或座位已被移除。"
 		RejectCode.SPECTATOR: return "你已出局，只能观战。"
-		RejectCode.INVALID_AMOUNT: return "押注金额不合法（入场 %d，+%d 递增，上限 %d）。" % [KongRules.MIN_BET, KongRules.BET_STEP, KongRules.MAX_BET]
-		RejectCode.INVALID_OFFER: return "该遗物不在本店货架中。"
+		RejectCode.INVALID_AMOUNT: return "货币不足或金额不合法。"
+		RejectCode.INVALID_OFFER: return "该遗物不在本店货架中，或已拥有/遗物栏已满。"
 		RejectCode.PROTECTED: return "该格受防守护盾保护，不能指定。"
+		RejectCode.SHOP_REFRESH_UNAVAILABLE: return "当前无法刷新（已锁满、已完成或遗物栏已满）。"
 	return "操作被拒绝。"
 
 ## 对局是否处于条件暂停（当前行动者离线 / 开局记忆阶段有人离线）。
@@ -410,8 +419,10 @@ func _apply_match_start_relics() -> void:
 			run_state["shield_match"] = match_number
 			run_state["shield_slot"] = slot
 			run_state["shield_owner"] = int(seat)
-			run_state["relics"].erase(Relics.GUARD_SHIELD_ID)
-			run_state.get("relic_owners", {}).erase(Relics.GUARD_SHIELD_ID)
+			# 护盾一局消耗：从该玩家遗物栏移除；定义目录保留（其他玩家可能也持有）。
+			var inventory: Array = _relic_inventory(int(seat))
+			inventory.erase(Relics.GUARD_SHIELD_ID)
+			run_state["relic_inventories"][int(seat)] = inventory
 			_add_log("%s 的防守护盾随机保护了第 %d 格。" % [players[seat].name, slot])
 			return
 
@@ -419,11 +430,51 @@ func _apply_match_start_relics() -> void:
 func _is_protected(seat: int, slot: int) -> bool:
 	return players.has(seat) and int(players[seat].get("protected_slot", -1)) == slot
 
-## 是否持有某遗物（relics 为共享字典，持有者记录在 run_state.relic_owners）。
+## 某玩家的遗物栏（固定最多 3 件；不同玩家可重复持有同一遗物）。
+func _relic_inventory(seat: int) -> Array:
+	var all_inventories: Dictionary = run_state.get("relic_inventories", {})
+	if not all_inventories.has(seat):
+		all_inventories[seat] = []
+	return all_inventories[seat]
+
+## 某玩家的道具卡栏（最多 3 张）。
+func _item_inventory(seat: int) -> Array:
+	var all_inventories: Dictionary = run_state.get("item_inventories", {})
+	if not all_inventories.has(seat):
+		all_inventories[seat] = []
+	return all_inventories[seat]
+
+## 是否持有某遗物（每人独立遗物栏）。
 func _is_relic_owner(seat: int, relic_id: String) -> bool:
-	if not run_state.get("relics", {}).has(relic_id):
+	return relic_id in _relic_inventory(seat)
+
+## 该遗物本局一次性的触发机会是否还在（每名持有者各自一次）。
+func _relic_available(seat: int, relic_id: String) -> bool:
+	if not _is_relic_owner(seat, relic_id):
 		return false
-	return int(run_state.get("relic_owners", {}).get(relic_id, -1)) == seat
+	return not (relic_used.get(seat, {}) as Dictionary).has(relic_id)
+
+## 消耗该遗物本局的触发机会；成功返回 true。
+func _use_relic_once(seat: int, relic_id: String) -> bool:
+	if not _relic_available(seat, relic_id):
+		return false
+	var used: Dictionary = relic_used.get(seat, {})
+	used[relic_id] = true
+	relic_used[seat] = used
+	return true
+
+## 抽到无能力的奇数/偶数牌时，授予一次性的可选 7/8 或 9/10 能力。
+func _granted_peek_for(seat: int, card_id: String) -> String:
+	if not cards.has(card_id):
+		return ""
+	var rank := str(cards[card_id].rank)
+	if rank == "JOKER" or KongRules.has_ability(rank):
+		return ""
+	if KongRules.is_odd_rank(rank) and _use_relic_once(seat, Relics.ODD_PEEK_ID):
+		return "peek_own"
+	if KongRules.is_even_rank(rank) and _use_relic_once(seat, Relics.EVEN_PEEK_ID):
+		return "peek_other"
+	return ""
 
 ## 结算/揭示统一分值：持有 Joker 遗物者的 JOKER 卡 +2（已变换后不再是 JOKER，不适用）。
 func _relic_card_value(seat: int, card_id: String) -> int:
@@ -439,6 +490,19 @@ func _joker_bonus_map() -> Dictionary:
 		if _is_relic_owner(int(seat), Relics.JOKER_TRANSFORM_ID):
 			joker_bonus[int(seat)] = true
 	return joker_bonus
+
+## 结算类饰品：{seat: {relic_id: true}}（供 ScoreSystem 统一计算）。
+func _relic_score_mods() -> Dictionary:
+	var out: Dictionary = {}
+	for seat in _alive_order():
+		var mods: Dictionary = {}
+		for id in [Relics.TAX_HAND_ID, Relics.FOUR_SUITS_ID, Relics.ODD_HAND_ID,
+				Relics.DUPLICATE_ID, Relics.TRIPLE_ID]:
+			if _is_relic_owner(int(seat), str(id)):
+				mods[str(id)] = true
+		if not mods.is_empty():
+			out[int(seat)] = mods
+	return out
 
 ## 已出局（观战）玩家操作拦截：返回 true 表示已拒绝。
 func _guard_spectator(sender: int, action_id: String) -> bool:
@@ -553,6 +617,8 @@ func _deal_new_match() -> void:
 	discard_history.clear()
 	turn_index = 0
 	effect_pass.clear()
+	relic_used.clear()
+	item_used_turn.clear()
 	pending_draw.clear()
 	q_context.clear()
 	final_queue.clear()
@@ -753,6 +819,10 @@ func _server_take(sender: int, source: String, action_id := "") -> void:
 		_reject(sender, RejectCode.DRAW_UNAVAILABLE, action_id)
 		return
 	pending_draw = {"card_id": card_id, "source": source}
+	if source == "draw":
+		var granted := _granted_peek_for(sender, card_id)
+		if not granted.is_empty():
+			pending_draw["granted_ability"] = granted
 	slap_open = false
 	phase = Phase.TURN_DECISION
 	_add_log("%s 取了一张牌。" % players[sender].name)
@@ -989,10 +1059,14 @@ func _server_use_ability(sender: int, data: Dictionary, action_id := "") -> void
 		_reject(sender, RejectCode.DUPLICATE_OR_EXPIRED_ACTION, action_id)
 		return
 	var rank: String = cards[pending_draw.card_id].rank
-	if not KongRules.has_ability(rank):
+	var granted := str(pending_draw.get("granted_ability", ""))
+	if granted.is_empty() and not KongRules.has_ability(rank):
 		_reject(sender, RejectCode.ABILITY_FORBIDDEN, action_id)
 		return
-	effects.resolve_ability(sender, rank, data, action_id)
+	if not granted.is_empty():
+		effects.resolve_granted_peek(sender, granted, data, action_id)
+	else:
+		effects.resolve_ability(sender, rank, data, action_id)
 
 func request_q_decision(exchange: bool, own_slot := -1, action_id := "") -> void:
 	if multiplayer.is_server():
@@ -1442,6 +1516,13 @@ func _start_turn(seat: int) -> void:
 func _apply_test_mode_setup() -> void:
 	if not dev_test_mode:
 		return
+	# 测试模式：每名存活玩家开局带齐 3 张道具卡（下一局/重开后生效）。
+	var test_cards: Array = []
+	for card in ItemCards.pool():
+		test_cards.append(str(card.get("id", "")))
+	for seat in _alive_order():
+		run_state["item_inventories"][int(seat)] = test_cards.duplicate()
+	_add_log("测试模式：所有玩家开局获得 3 张道具卡。")
 	match turn_effect_id:
 		"plus_one":
 			_test_hands_all_aces()
@@ -1852,25 +1933,217 @@ func _finish_game(reason := "") -> void:
 func _start_series_timer() -> void:
 	series_timer.start(KongRules.SERIES_AUTO_ADVANCE_MS / 1000.0)
 
-## 进入商店阶段：随机展示至多 3 件遗物，等待全员出价或跳过。
+## 进入商店阶段：每人独立 2 个遗物位 + 3 个道具卡位，锁定货位跨商店保留。
 func _start_shop() -> void:
 	if _series_finished():
 		return
-	shop = {"offers": _pick_shop_offers(), "sold": {}, "done": {}}
+	var seats: Dictionary = {}
+	for seat in _alive_order():
+		var s := int(seat)
+		seats[s] = {
+			"offers": _build_shop_offers(s), "relic_bought": false,
+			"card_offers": _build_shop_card_offers(s), "card_bought": false,
+		}
+	shop = {"seats": seats, "done": {}}
 	shop_result = {}
 	phase = Phase.SHOP
-	_add_log("进入商店：每人限购 1 件（固定价 %d）。" % Relics.RELIC_PRICE)
+	_add_log("进入商店：遗物 2 件、道具卡 3 张；刷新 %d / %d。" % [Relics.SHOP_REFRESH_COST, ItemCards.REFRESH_COST])
 	_broadcast_state()
 
-func _pick_shop_offers() -> Array:
-	var pool: Array = Relics.pool().duplicate()
-	pool.shuffle()
-	var offers: Array = []
-	var count := mini(3, pool.size())
-	for i in count:
-		var relic: Dictionary = pool[i]
-		offers.append({"index": i, "relic_id": str(relic.id), "name": str(relic.name), "price": int(relic.get("price", Relics.RELIC_PRICE))})
+## 某玩家的遗物锁：{slot: relic_id}。
+func _shop_locks_for(seat: int) -> Dictionary:
+	var all_locks: Dictionary = run_state.get("shop_locks", {})
+	if not all_locks.has(seat):
+		all_locks[seat] = {}
+	return all_locks[seat]
+
+## 某玩家的道具卡锁：{slot: card_id}。
+func _item_locks_for(seat: int) -> Dictionary:
+	var all_locks: Dictionary = run_state.get("item_locks", {})
+	if not all_locks.has(seat):
+		all_locks[seat] = {}
+	return all_locks[seat]
+
+## 写入/清除某玩家某货位的锁。
+func _shop_set_lock(seat: int, slot: int, relic_id: String, locked: bool) -> void:
+	var all_locks: Dictionary = run_state.get("shop_locks", {})
+	var locks: Dictionary = all_locks.get(seat, {})
+	if locked:
+		locks[slot] = relic_id
+	else:
+		locks.erase(slot)
+	if locks.is_empty():
+		all_locks.erase(seat)
+	else:
+		all_locks[seat] = locks
+	run_state["shop_locks"] = all_locks
+
+func _item_set_lock(seat: int, slot: int, card_id: String, locked: bool) -> void:
+	var all_locks: Dictionary = run_state.get("item_locks", {})
+	var locks: Dictionary = all_locks.get(seat, {})
+	if locked:
+		locks[slot] = card_id
+	else:
+		locks.erase(slot)
+	if locks.is_empty():
+		all_locks.erase(seat)
+	else:
+		all_locks[seat] = locks
+	run_state["item_locks"] = all_locks
+
+func _offer_from_relic(slot: int, relic: Dictionary, locked: bool) -> Dictionary:
+	return {"index": slot, "relic_id": str(relic.get("id", "")),
+		"name": str(relic.get("name", "")), "price": int(relic.get("price", Relics.RELIC_PRICE)),
+		"locked": locked}
+
+func _offer_from_item_card(slot: int, card: Dictionary, locked: bool) -> Dictionary:
+	return {"index": slot, "item_id": str(card.get("id", "")),
+		"name": str(card.get("name", "")), "desc": str(card.get("desc", "")),
+		"price": int(card.get("price", ItemCards.PRICE)),
+		"target_mode": str(card.get("target_mode", ItemCards.TARGET_NONE)),
+		"locked": locked}
+
+## 随机一个未被 excluded 的遗物定义；池取尽返回 {}。
+func _random_relic_def(excluded: Dictionary) -> Dictionary:
+	var candidates: Array = []
+	for relic in Relics.pool():
+		if excluded.has(str(relic.get("id", ""))):
+			continue
+		candidates.append(relic)
+	if candidates.is_empty():
+		return {}
+	return candidates[randi() % candidates.size()]
+
+func _random_item_card_def(excluded: Dictionary) -> Dictionary:
+	var candidates: Array = []
+	for card in ItemCards.pool():
+		if excluded.has(str(card.get("id", ""))):
+			continue
+		candidates.append(card)
+	if candidates.is_empty():
+		return {}
+	return candidates[randi() % candidates.size()]
+
+## 为一名玩家生成 2 个遗物货位：有效锁优先，其余随机（排除已持有/另一格/已锁）。
+func _build_shop_offers(seat: int) -> Array:
+	var inventory: Array = _relic_inventory(seat)
+	var owned := {}
+	for id in inventory:
+		owned[str(id)] = true
+	var locks: Dictionary = _shop_locks_for(seat)
+	var used := {}
+	var offers: Array = [null, null]
+	var valid_locks := {}
+	for slot in 2:
+		var locked_id := str(locks.get(slot, ""))
+		if locked_id.is_empty() or owned.has(locked_id) or used.has(locked_id):
+			continue
+		var def := Relics.def_by_id(locked_id)
+		if def.is_empty():
+			continue
+		offers[slot] = _offer_from_relic(slot, def, true)
+		used[locked_id] = true
+		valid_locks[slot] = locked_id
+	for slot in 2:
+		if offers[slot] != null:
+			continue
+		var excluded := owned.duplicate()
+		for key in used:
+			excluded[key] = true
+		var def := _random_relic_def(excluded)
+		if def.is_empty():
+			continue
+		offers[slot] = _offer_from_relic(slot, def, false)
+		used[str(def.get("id", ""))] = true
+	for slot in 2:
+		if offers[slot] == null:
+			offers[slot] = {}
+	if valid_locks.is_empty():
+		var all_locks: Dictionary = run_state.get("shop_locks", {})
+		all_locks.erase(seat)
+		run_state["shop_locks"] = all_locks
+	else:
+		var all_locks: Dictionary = run_state.get("shop_locks", {})
+		all_locks[seat] = valid_locks
+		run_state["shop_locks"] = all_locks
 	return offers
+
+## 为一名玩家生成 3 个道具卡货位：有效锁优先，其余随机（排除已持有/另一格/已锁）。
+func _build_shop_card_offers(seat: int) -> Array:
+	var inventory: Array = _item_inventory(seat)
+	var owned := {}
+	for id in inventory:
+		owned[str(id)] = true
+	var locks: Dictionary = _item_locks_for(seat)
+	var used := {}
+	var offers: Array = [null, null, null]
+	var valid_locks := {}
+	for slot in ItemCards.SLOT_LIMIT:
+		var locked_id := str(locks.get(slot, ""))
+		if locked_id.is_empty() or owned.has(locked_id) or used.has(locked_id):
+			continue
+		var def := ItemCards.def_by_id(locked_id)
+		if def.is_empty():
+			continue
+		offers[slot] = _offer_from_item_card(slot, def, true)
+		used[locked_id] = true
+		valid_locks[slot] = locked_id
+	for slot in ItemCards.SLOT_LIMIT:
+		if offers[slot] != null:
+			continue
+		var excluded := owned.duplicate()
+		for key in used:
+			excluded[key] = true
+		var def := _random_item_card_def(excluded)
+		if def.is_empty():
+			continue
+		offers[slot] = _offer_from_item_card(slot, def, false)
+		used[str(def.get("id", ""))] = true
+	for slot in ItemCards.SLOT_LIMIT:
+		if offers[slot] == null:
+			offers[slot] = {}
+	if valid_locks.is_empty():
+		var all_locks: Dictionary = run_state.get("item_locks", {})
+		all_locks.erase(seat)
+		run_state["item_locks"] = all_locks
+	else:
+		var all_locks: Dictionary = run_state.get("item_locks", {})
+		all_locks[seat] = valid_locks
+		run_state["item_locks"] = all_locks
+	return offers
+
+func _shop_seat(seat: int) -> Dictionary:
+	return shop.get("seats", {}).get(seat, {})
+
+func _shop_offers_for(seat: int) -> Array:
+	return _shop_seat(seat).get("offers", [])
+
+func _shop_card_offers_for(seat: int) -> Array:
+	return _shop_seat(seat).get("card_offers", [])
+
+func _shop_can_refresh(seat: int) -> bool:
+	if phase != Phase.SHOP or not players.has(seat) or _shop_submitted(seat):
+		return false
+	if _relic_inventory(seat).size() >= int(run_state.get("relic_slots", 3)):
+		return false
+	if int(players[seat].currency) < Relics.SHOP_REFRESH_COST:
+		return false
+	for offer in _shop_offers_for(seat):
+		if not bool((offer as Dictionary).get("locked", false)):
+			return true
+	return false
+
+func _shop_card_can_refresh(seat: int) -> bool:
+	if phase != Phase.SHOP or not players.has(seat) or _shop_submitted(seat):
+		return false
+	if _item_inventory(seat).size() >= int(run_state.get("item_slots", ItemCards.SLOT_LIMIT)):
+		return false
+	if int(players[seat].currency) < ItemCards.REFRESH_COST:
+		return false
+	for offer in _shop_card_offers_for(seat):
+		if not bool((offer as Dictionary).get("locked", false)):
+			return true
+	return false
 
 func request_shop_buy(offer: int, action_id := "") -> void:
 	if multiplayer.is_server():
@@ -1883,7 +2156,7 @@ func server_shop_buy(offer: int, action_id: String) -> void:
 	if multiplayer.is_server():
 		_server_shop_buy(_peer_to_seat(multiplayer.get_remote_sender_id()), offer, action_id)
 
-## 固定价购买：货币≥售价即扣款、遗物入库并记持有者、该件标记售出；每人限购 1 件。
+## 固定价购买遗物：只从自己的 2 个货位购买；扣款、入个人遗物栏、清该槽锁。
 func _server_shop_buy(sender: int, offer: int, action_id := "") -> void:
 	if phase != Phase.SHOP:
 		_reject(sender, RejectCode.INVALID_PHASE, action_id)
@@ -1895,26 +2168,274 @@ func _server_shop_buy(sender: int, offer: int, action_id := "") -> void:
 	if not players.has(sender) or _shop_submitted(sender):
 		_reject(sender, RejectCode.DUPLICATE_OR_EXPIRED_ACTION, action_id)
 		return
-	var offers: Array = shop.get("offers", [])
-	if offer < 0 or offer >= offers.size() or shop.get("sold", {}).has(offer):
+	if bool(_shop_seat(sender).get("relic_bought", false)):
+		_reject(sender, RejectCode.DUPLICATE_OR_EXPIRED_ACTION, action_id)
+		return
+	var offers: Array = _shop_offers_for(sender)
+	if offer < 0 or offer >= offers.size() or (offers[offer] as Dictionary).is_empty():
 		_reject(sender, RejectCode.INVALID_OFFER, action_id)
 		return
-	var price: int = int(offers[offer].price)
+	var offer_data: Dictionary = offers[offer]
+	var relic_id: String = str(offer_data.get("relic_id", ""))
+	if relic_id.is_empty() or _is_relic_owner(sender, relic_id) \
+			or _relic_inventory(sender).size() >= int(run_state.get("relic_slots", 3)):
+		_reject(sender, RejectCode.INVALID_OFFER, action_id)
+		return
+	var price: int = int(offer_data.get("price", Relics.RELIC_PRICE))
 	if price > int(players[sender].currency):
 		_reject(sender, RejectCode.INVALID_AMOUNT, action_id)
 		return
 	players[sender].currency = int(players[sender].currency) - price
-	var relic_id: String = str(offers[offer].relic_id)
+	var inventory: Array = _relic_inventory(sender)
+	inventory.append(relic_id)
+	run_state["relic_inventories"][sender] = inventory
 	run_state["relics"][relic_id] = Relics.def_by_id(relic_id)
-	run_state["relic_owners"][relic_id] = sender
-	shop.sold[offer] = sender
-	shop.done[sender] = true
-	shop_result[str(offer)] = {"relic_id": relic_id, "name": str(offers[offer].name), "winner": sender, "amount": price}
-	_add_log("%s 以 %d 购买了 %s。" % [players[sender].name, price, offers[offer].name])
-	if _shop_all_done():
-		_deal_next_match()
+	_shop_set_lock(sender, offer, relic_id, false)
+	offer_data["locked"] = false
+	_shop_seat(sender)["relic_bought"] = true
+	shop_result["relic_%d_%d" % [sender, offer]] = {"relic_id": relic_id, "name": str(offer_data.get("name", "")),
+		"winner": sender, "amount": price, "slot": offer, "kind": "relic"}
+	_add_log("%s 以 %d 购买了 %s。" % [players[sender].name, price, offer_data.get("name", "")])
+	_broadcast_state()
+
+## 购买道具卡：$50、每人每店 1 张、卡牌栏 3 格、不可重复持有。
+func request_shop_buy_card(slot: int, action_id := "") -> void:
+	if multiplayer.is_server():
+		_server_shop_buy_card(_peer_to_seat(1), slot, action_id)
 	else:
-		_broadcast_state()
+		server_shop_buy_card.rpc_id(1, slot, action_id)
+
+@rpc("any_peer", "reliable")
+func server_shop_buy_card(slot: int, action_id: String) -> void:
+	if multiplayer.is_server():
+		_server_shop_buy_card(_peer_to_seat(multiplayer.get_remote_sender_id()), slot, action_id)
+
+func _server_shop_buy_card(sender: int, slot: int, action_id := "") -> void:
+	if phase != Phase.SHOP:
+		_reject(sender, RejectCode.INVALID_PHASE, action_id)
+		return
+	if _guard_suspended(sender, action_id):
+		return
+	if _guard_spectator(sender, action_id):
+		return
+	if not players.has(sender) or _shop_submitted(sender):
+		_reject(sender, RejectCode.DUPLICATE_OR_EXPIRED_ACTION, action_id)
+		return
+	if bool(_shop_seat(sender).get("card_bought", false)):
+		_reject(sender, RejectCode.DUPLICATE_OR_EXPIRED_ACTION, action_id)
+		return
+	var offers: Array = _shop_card_offers_for(sender)
+	if slot < 0 or slot >= offers.size() or (offers[slot] as Dictionary).is_empty():
+		_reject(sender, RejectCode.INVALID_OFFER, action_id)
+		return
+	var offer: Dictionary = offers[slot]
+	var card_id := str(offer.get("item_id", ""))
+	if card_id.is_empty() or _item_inventory(sender).has(card_id) \
+			or _item_inventory(sender).size() >= int(run_state.get("item_slots", ItemCards.SLOT_LIMIT)):
+		_reject(sender, RejectCode.INVALID_OFFER, action_id)
+		return
+	var price := int(offer.get("price", ItemCards.PRICE))
+	if price > int(players[sender].currency):
+		_reject(sender, RejectCode.INVALID_AMOUNT, action_id)
+		return
+	players[sender].currency = int(players[sender].currency) - price
+	var inventory: Array = _item_inventory(sender)
+	inventory.append(card_id)
+	run_state["item_inventories"][sender] = inventory
+	_item_set_lock(sender, slot, card_id, false)
+	offer["locked"] = false
+	_shop_seat(sender)["card_bought"] = true
+	shop_result["card_%d_%d" % [sender, slot]] = {"card_id": card_id, "name": str(offer.get("name", "")),
+		"winner": sender, "amount": price, "slot": slot, "kind": "card"}
+	_add_log("%s 以 %d 购买了道具卡 %s。" % [players[sender].name, price, offer.get("name", "")])
+	_broadcast_state()
+
+## 刷新遗物：扣 10，只重掷未锁货位。
+func request_shop_refresh(action_id := "") -> void:
+	if multiplayer.is_server():
+		_server_shop_refresh(_peer_to_seat(1), action_id)
+	else:
+		server_shop_refresh.rpc_id(1, action_id)
+
+@rpc("any_peer", "reliable")
+func server_shop_refresh(action_id: String) -> void:
+	if multiplayer.is_server():
+		_server_shop_refresh(_peer_to_seat(multiplayer.get_remote_sender_id()), action_id)
+
+func _server_shop_refresh(sender: int, action_id := "") -> void:
+	if phase != Phase.SHOP:
+		_reject(sender, RejectCode.INVALID_PHASE, action_id)
+		return
+	if _guard_suspended(sender, action_id):
+		return
+	if _guard_spectator(sender, action_id):
+		return
+	if not players.has(sender) or _shop_submitted(sender) or not _check_action_id(sender, action_id):
+		_reject(sender, RejectCode.DUPLICATE_OR_EXPIRED_ACTION, action_id)
+		return
+	if _relic_inventory(sender).size() >= int(run_state.get("relic_slots", 3)):
+		_reject(sender, RejectCode.SHOP_REFRESH_UNAVAILABLE, action_id)
+		return
+	if int(players[sender].currency) < Relics.SHOP_REFRESH_COST:
+		_reject(sender, RejectCode.INVALID_AMOUNT, action_id)
+		return
+	var has_unlocked := false
+	for offer in _shop_offers_for(sender):
+		if not bool((offer as Dictionary).get("locked", false)):
+			has_unlocked = true
+			break
+	if not has_unlocked:
+		_reject(sender, RejectCode.SHOP_REFRESH_UNAVAILABLE, action_id)
+		return
+	players[sender].currency = int(players[sender].currency) - Relics.SHOP_REFRESH_COST
+	_reroll_unlocked_offers(sender)
+	_add_log("%s 花 %d 刷新了遗物。" % [players[sender].name, Relics.SHOP_REFRESH_COST])
+	_broadcast_state()
+
+## 只替换未锁货位；排除已持有、另一格与已锁饰品。
+func _reroll_unlocked_offers(seat: int) -> void:
+	var offers: Array = _shop_offers_for(seat)
+	var excluded := {}
+	for id in _relic_inventory(seat):
+		excluded[str(id)] = true
+	for offer in offers:
+		if bool((offer as Dictionary).get("locked", false)):
+			excluded[str((offer as Dictionary).get("relic_id", ""))] = true
+	for i in offers.size():
+		var offer: Dictionary = offers[i]
+		if bool(offer.get("locked", false)):
+			continue
+		var def := _random_relic_def(excluded)
+		if def.is_empty():
+			continue
+		offers[i] = _offer_from_relic(i, def, false)
+		excluded[str(def.get("id", ""))] = true
+
+## 刷新道具卡：扣 10，只重掷未锁卡位。
+func request_shop_card_refresh(action_id := "") -> void:
+	if multiplayer.is_server():
+		_server_shop_card_refresh(_peer_to_seat(1), action_id)
+	else:
+		server_shop_card_refresh.rpc_id(1, action_id)
+
+@rpc("any_peer", "reliable")
+func server_shop_card_refresh(action_id: String) -> void:
+	if multiplayer.is_server():
+		_server_shop_card_refresh(_peer_to_seat(multiplayer.get_remote_sender_id()), action_id)
+
+func _server_shop_card_refresh(sender: int, action_id := "") -> void:
+	if phase != Phase.SHOP:
+		_reject(sender, RejectCode.INVALID_PHASE, action_id)
+		return
+	if _guard_suspended(sender, action_id):
+		return
+	if _guard_spectator(sender, action_id):
+		return
+	if not players.has(sender) or _shop_submitted(sender) or not _check_action_id(sender, action_id):
+		_reject(sender, RejectCode.DUPLICATE_OR_EXPIRED_ACTION, action_id)
+		return
+	if _item_inventory(sender).size() >= int(run_state.get("item_slots", ItemCards.SLOT_LIMIT)):
+		_reject(sender, RejectCode.SHOP_REFRESH_UNAVAILABLE, action_id)
+		return
+	if int(players[sender].currency) < ItemCards.REFRESH_COST:
+		_reject(sender, RejectCode.INVALID_AMOUNT, action_id)
+		return
+	var has_unlocked := false
+	for offer in _shop_card_offers_for(sender):
+		if not bool((offer as Dictionary).get("locked", false)):
+			has_unlocked = true
+			break
+	if not has_unlocked:
+		_reject(sender, RejectCode.SHOP_REFRESH_UNAVAILABLE, action_id)
+		return
+	players[sender].currency = int(players[sender].currency) - ItemCards.REFRESH_COST
+	_reroll_unlocked_card_offers(sender)
+	_add_log("%s 花 %d 刷新了道具卡。" % [players[sender].name, ItemCards.REFRESH_COST])
+	_broadcast_state()
+
+func _reroll_unlocked_card_offers(seat: int) -> void:
+	var offers: Array = _shop_card_offers_for(seat)
+	var excluded := {}
+	for id in _item_inventory(seat):
+		excluded[str(id)] = true
+	for offer in offers:
+		if bool((offer as Dictionary).get("locked", false)):
+			excluded[str((offer as Dictionary).get("item_id", ""))] = true
+	for i in offers.size():
+		var offer: Dictionary = offers[i]
+		if bool(offer.get("locked", false)):
+			continue
+		var def := _random_item_card_def(excluded)
+		if def.is_empty():
+			continue
+		offers[i] = _offer_from_item_card(i, def, false)
+		excluded[str(def.get("id", ""))] = true
+
+## 锁定/解锁遗物货位。
+func request_shop_lock(slot: int, locked: bool, action_id := "") -> void:
+	if multiplayer.is_server():
+		_server_shop_lock(_peer_to_seat(1), slot, locked, action_id)
+	else:
+		server_shop_lock.rpc_id(1, slot, locked, action_id)
+
+@rpc("any_peer", "reliable")
+func server_shop_lock(slot: int, locked: bool, action_id: String) -> void:
+	if multiplayer.is_server():
+		_server_shop_lock(_peer_to_seat(multiplayer.get_remote_sender_id()), slot, locked, action_id)
+
+func _server_shop_lock(sender: int, slot: int, locked: bool, action_id := "") -> void:
+	if phase != Phase.SHOP:
+		_reject(sender, RejectCode.INVALID_PHASE, action_id)
+		return
+	if _guard_suspended(sender, action_id):
+		return
+	if _guard_spectator(sender, action_id):
+		return
+	if not players.has(sender) or _shop_submitted(sender) or not _check_action_id(sender, action_id):
+		_reject(sender, RejectCode.DUPLICATE_OR_EXPIRED_ACTION, action_id)
+		return
+	var offers: Array = _shop_offers_for(sender)
+	if slot < 0 or slot >= offers.size() or (offers[slot] as Dictionary).is_empty():
+		_reject(sender, RejectCode.INVALID_SLOT, action_id)
+		return
+	var offer: Dictionary = offers[slot]
+	offer["locked"] = locked
+	_shop_set_lock(sender, slot, str(offer.get("relic_id", "")), locked)
+	_add_log("%s %s了第 %d 件遗物。" % [players[sender].name, "锁定" if locked else "解锁", slot + 1])
+	_broadcast_state()
+
+## 锁定/解锁道具卡货位。
+func request_shop_card_lock(slot: int, locked: bool, action_id := "") -> void:
+	if multiplayer.is_server():
+		_server_shop_card_lock(_peer_to_seat(1), slot, locked, action_id)
+	else:
+		server_shop_card_lock.rpc_id(1, slot, locked, action_id)
+
+@rpc("any_peer", "reliable")
+func server_shop_card_lock(slot: int, locked: bool, action_id: String) -> void:
+	if multiplayer.is_server():
+		_server_shop_card_lock(_peer_to_seat(multiplayer.get_remote_sender_id()), slot, locked, action_id)
+
+func _server_shop_card_lock(sender: int, slot: int, locked: bool, action_id := "") -> void:
+	if phase != Phase.SHOP:
+		_reject(sender, RejectCode.INVALID_PHASE, action_id)
+		return
+	if _guard_suspended(sender, action_id):
+		return
+	if _guard_spectator(sender, action_id):
+		return
+	if not players.has(sender) or _shop_submitted(sender) or not _check_action_id(sender, action_id):
+		_reject(sender, RejectCode.DUPLICATE_OR_EXPIRED_ACTION, action_id)
+		return
+	var offers: Array = _shop_card_offers_for(sender)
+	if slot < 0 or slot >= offers.size() or (offers[slot] as Dictionary).is_empty():
+		_reject(sender, RejectCode.INVALID_SLOT, action_id)
+		return
+	var offer: Dictionary = offers[slot]
+	offer["locked"] = locked
+	_item_set_lock(sender, slot, str(offer.get("item_id", "")), locked)
+	_add_log("%s %s了第 %d 张道具卡。" % [players[sender].name, "锁定" if locked else "解锁", slot + 1])
+	_broadcast_state()
 
 func request_shop_skip(action_id := "") -> void:
 	if multiplayer.is_server():
@@ -1927,7 +2448,7 @@ func server_shop_skip(action_id: String) -> void:
 	if multiplayer.is_server():
 		_server_shop_skip(_peer_to_seat(multiplayer.get_remote_sender_id()), action_id)
 
-## 跳过购买（离开商店）：标记完成；全员完成 → 开下一局。
+## 结束商店（跳过剩余遗物+道具卡）：标记整体完成；不清锁；全员完成 → 开下一局。
 func _server_shop_skip(sender: int, action_id := "") -> void:
 	if phase != Phase.SHOP:
 		_reject(sender, RejectCode.INVALID_PHASE, action_id)
@@ -1939,8 +2460,8 @@ func _server_shop_skip(sender: int, action_id := "") -> void:
 	if not players.has(sender) or _shop_submitted(sender):
 		_reject(sender, RejectCode.DUPLICATE_OR_EXPIRED_ACTION, action_id)
 		return
-	shop.done[sender] = true
-	_add_log("%s 跳过购买。" % players[sender].name)
+	shop["done"][sender] = true
+	_add_log("%s 结束了商店。" % players[sender].name)
 	if _shop_all_done():
 		_deal_next_match()
 	else:
@@ -1955,6 +2476,77 @@ func _shop_all_done() -> bool:
 			return false
 	return true
 
+## 下一位存活玩家（按 turn_order 顺时针）；没有其他存活者返回 -1。
+func _next_alive_after(seat: int) -> int:
+	var order := _alive_order()
+	if order.size() <= 1:
+		return -1
+	var idx := order.find(seat)
+	if idx < 0:
+		return int(order[0])
+	return int(order[(idx + 1) % order.size()])
+
+## 使用道具卡：自己回合、每回合 1 张、免费动作、使用后消耗。
+func request_use_item_card(slot: int, target_seat: int, action_id := "") -> void:
+	if multiplayer.is_server():
+		_server_use_item_card(_peer_to_seat(1), slot, target_seat, action_id)
+	else:
+		server_use_item_card.rpc_id(1, slot, target_seat, action_id)
+
+@rpc("any_peer", "reliable")
+func server_use_item_card(slot: int, target_seat: int, action_id: String) -> void:
+	if multiplayer.is_server():
+		_server_use_item_card(_peer_to_seat(multiplayer.get_remote_sender_id()), slot, target_seat, action_id)
+
+func _server_use_item_card(sender: int, slot: int, target_seat: int, action_id := "") -> void:
+	if _guard_final_settle(sender, action_id):
+		return
+	if phase != Phase.TURN_DRAW and phase != Phase.TURN_DECISION:
+		_reject(sender, RejectCode.INVALID_PHASE, action_id)
+		return
+	if _guard_suspended(sender, action_id):
+		return
+	if _guard_spectator(sender, action_id):
+		return
+	if sender != current_player_id:
+		_reject(sender, RejectCode.NOT_CURRENT_PLAYER, action_id)
+		return
+	if not _check_action_id(sender, action_id):
+		_reject(sender, RejectCode.DUPLICATE_OR_EXPIRED_ACTION, action_id)
+		return
+	if int(item_used_turn.get(sender, -999)) == turn_index:
+		_reject(sender, RejectCode.DUPLICATE_OR_EXPIRED_ACTION, action_id)
+		return
+	var inventory: Array = _item_inventory(sender)
+	if slot < 0 or slot >= inventory.size() or str(inventory[slot]).is_empty():
+		_reject(sender, RejectCode.INVALID_SLOT, action_id)
+		return
+	var card_id := str(inventory[slot])
+	var def := ItemCards.def_by_id(card_id)
+	if def.is_empty():
+		_reject(sender, RejectCode.INVALID_SLOT, action_id)
+		return
+	var target := -1
+	match str(def.get("target_mode", ItemCards.TARGET_NONE)):
+		ItemCards.TARGET_NEXT:
+			target = _next_alive_after(sender)
+			if target < 0:
+				_reject(sender, RejectCode.INVALID_TARGET, action_id)
+				return
+		ItemCards.TARGET_SELF:
+			target = sender
+		ItemCards.TARGET_OPPONENT:
+			if target_seat < 0 or target_seat == sender or not players.has(target_seat) or not _is_alive(target_seat):
+				_reject(sender, RejectCode.INVALID_TARGET, action_id)
+				return
+			target = target_seat
+	inventory.remove_at(slot)
+	run_state["item_inventories"][sender] = inventory
+	item_used_turn[sender] = turn_index
+	_broadcast_item_card_used({"actor": sender, "card": def, "target": target})
+	_add_log("%s 使用了道具卡「%s」。" % [players[sender].name, str(def.get("name", ""))])
+	_broadcast_state()
+
 ## 局间自动衔接：到点且仍处结算、未把末时进入商店（非把末结算展示后）。
 func _on_series_auto_advance() -> void:
 	if phase != Phase.GAME_OVER or _series_finished():
@@ -1964,7 +2556,7 @@ func _on_series_auto_advance() -> void:
 	_start_shop()
 
 func _calculate_ranking() -> Array:
-	return ScoreSystem.calculate_ranking(players, cards, _alive_order(), _joker_bonus_map())
+	return ScoreSystem.calculate_ranking(players, cards, _alive_order(), _joker_bonus_map(), _relic_score_mods())
 
 func _is_lower_score(a: Dictionary, b: Dictionary) -> bool:
 	return ScoreSystem._is_lower_score(a, b)
@@ -2015,7 +2607,7 @@ func _finish_game_over_hand(failed_seat: int) -> void:
 	for seat in others:
 		if _is_relic_owner(seat, Relics.JOKER_TRANSFORM_ID):
 			joker_bonus[seat] = true
-	var ranking := ScoreSystem.calculate_ranking(players, cards, others, joker_bonus)
+	var ranking := ScoreSystem.calculate_ranking(players, cards, others, joker_bonus, _relic_score_mods())
 	var rewards: Dictionary = _settle_rewards(ranking, [failed_seat])
 	var winners: Array[int] = []
 	if not ranking.is_empty():
@@ -2102,6 +2694,30 @@ func _server_set_ready(sender: int, on: bool) -> void:
 	players[sender].ready = on
 	_broadcast_lobby()
 
+## 房主修改系列赛局数（LOBBY 同步；其他客户端通过 lobby 快照看到）。
+func request_set_match_limit(limit: int, action_id := "") -> void:
+	if multiplayer.is_server():
+		_server_set_match_limit(_peer_to_seat(1), limit, action_id)
+	else:
+		server_set_match_limit.rpc_id(1, limit, action_id)
+
+@rpc("any_peer", "reliable")
+func server_set_match_limit(limit: int, action_id: String) -> void:
+	if multiplayer.is_server():
+		_server_set_match_limit(_peer_to_seat(multiplayer.get_remote_sender_id()), limit, action_id)
+
+func _server_set_match_limit(sender: int, limit: int, action_id := "") -> void:
+	if phase != Phase.LOBBY or not players.has(sender):
+		return
+	if sender != host_seat:
+		_reject(sender, RejectCode.NOT_HOST, action_id)
+		return
+	if not _check_action_id(sender, action_id):
+		_reject(sender, RejectCode.DUPLICATE_OR_EXPIRED_ACTION, action_id)
+		return
+	run_state["match_limit"] = clampi(limit, KongRules.MIN_MATCH_LIMIT, KongRules.MAX_MATCH_LIMIT)
+	_broadcast_lobby()
+
 func _broadcast_state() -> void:
 	state_revision += 1
 	var by_peer: Dictionary = {}
@@ -2141,6 +2757,17 @@ func _broadcast_exchange(data: Dictionary) -> void:
 			_receive_exchange_animated(data)
 		else:
 			receive_exchange_animated.rpc_id(peer, data)
+
+## 道具卡使用事件：使用后卡面公开，所有客户端弹出贴牌成功样式提示。
+func _broadcast_item_card_used(data: Dictionary) -> void:
+	for seat in players.keys():
+		var peer := int(players[seat].peer_id)
+		if peer <= 0:
+			continue
+		if peer == 1:
+			_receive_item_card_used(data)
+		else:
+			receive_item_card_used.rpc_id(peer, data)
 
 ## 6 效果触发：广播触发的牌（6 / 红 Joker）+ 触发者，供右侧成功 UI 展示。
 func _broadcast_effect_trigger(actor: int, card_id: String) -> void:
@@ -2218,6 +2845,9 @@ func _receive_exchange_animated(data: Dictionary) -> void:
 func _receive_peek_highlight(data: Dictionary) -> void:
 	peek_highlighted.emit(data)
 
+func _receive_item_card_used(data: Dictionary) -> void:
+	item_card_used.emit(data)
+
 @rpc("authority", "call_remote", "reliable")
 func receive_lobby(lobby: Dictionary) -> void:
 	_receive_lobby(lobby)
@@ -2237,6 +2867,10 @@ func receive_exchange_animated(data: Dictionary) -> void:
 @rpc("authority", "call_remote", "reliable")
 func receive_peek_highlight(data: Dictionary) -> void:
 	_receive_peek_highlight(data)
+
+@rpc("authority", "call_remote", "reliable")
+func receive_item_card_used(data: Dictionary) -> void:
+	_receive_item_card_used(data)
 
 @rpc("authority", "call_remote", "reliable")
 func receive_toast(message: String) -> void:

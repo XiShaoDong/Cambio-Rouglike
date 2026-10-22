@@ -91,7 +91,7 @@ run_single "swap"       res://tests/verify_swap.tscn
 run_single "duel"       res://tests/verify_duel.tscn
 run_single "reconnect"  res://tests/verify_reconnect.tscn
 run_single "lobby"      res://tests/verify_lobby.tscn
-run_single "dedicated"  res://tests/verify_dedicated.tscn
+run_single "dedicated"  res://tests/verify_dedicated.tscn -- --port 17081
 run_single "directory_client" res://tests/verify_directory_client.tscn
 run_single "account_client"  res://tests/verify_account_client.tscn
 run_single "steam_stub"      res://tests/verify_steam_stub.tscn
@@ -101,6 +101,11 @@ run_single "series"     res://tests/verify_series.tscn
 run_single "economy"    res://tests/verify_economy.tscn
 run_single "shop"       res://tests/verify_shop.tscn
 run_single "relics"     res://tests/verify_relics.tscn
+run_single "relic_rules" res://tests/verify_relic_rules.tscn
+run_single "relic_ui"   res://tests/verify_relic_ui.tscn
+run_single "table3d_relics" res://tests/verify_table3d_relics.tscn
+run_single "item_cards" res://tests/verify_item_cards.tscn
+run_single "item_hand" res://tests/verify_item_hand.tscn
 run_single "card_skin"  res://tests/verify_card_skin.tscn
 run_single "table3d_layout" res://tests/verify_table3d_layout.tscn
 run_single "table3d" res://tests/verify_table3d.tscn

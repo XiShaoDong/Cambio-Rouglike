@@ -41,6 +41,17 @@ func _run() -> void:
 	_check("自定义标题=炸弹爆炸", bomb_burst.title_text() == "炸弹爆炸")
 	bomb_burst.queue_free()
 	burst.queue_free()
+	# 道具卡弹层：外部卡面 + 说明框
+	var item_burst := SlapSuccessBurst.new()
+	add_child(item_burst)
+	var item_card := ItemCardView.new()
+	item_card.setup(ItemCards.def_by_id(ItemCards.FATE_PLUS2_ID))
+	item_burst.setup({}, "玩家C", "命运·加二", "下一位玩家 +2\n目标：B", item_card)
+	await get_tree().process_frame
+	_check("道具卡弹层标题=卡名", item_burst.title_text() == "命运·加二")
+	_check("道具卡弹层使用 ItemCardView", item_burst.get_node_or_null("VBox/CardCenter/Card") is ItemCardView)
+	_check("道具卡弹层说明框", item_burst.description_text().contains("下一位玩家") and item_burst.description_text().contains("目标：B"))
+	item_burst.queue_free()
 
 	# 集成：3D 下收到 slap_resolved 弹层；切回 2D 移除
 	var main_node: Node = load("res://scenes/main.tscn").instantiate()
@@ -78,4 +89,9 @@ func _run() -> void:
 	main_node._set_table3d(false)
 	await get_tree().process_frame
 	_check("切回 2D 后爆炸层已移除", main_node._slap_burst == null)
+	# 道具卡使用事件：所有客户端弹层（标题=卡名、说明=目标）
+	GameState.item_card_used.emit({"actor": 0, "target": 1, "card": ItemCards.def_by_id(ItemCards.FATE_PLUS2_ID)})
+	await get_tree().process_frame
+	_check("道具卡使用弹层", main_node._slap_burst != null and main_node._slap_burst.title_text() == "命运·加二")
+	_check("道具卡弹层显示目标", main_node._slap_burst != null and main_node._slap_burst.description_text().contains("B"))
 	main_node.queue_free()

@@ -14,6 +14,8 @@ func _ready() -> void:
 	_test_ready_reset_on_match()
 	_test_host_seat()
 	_test_kick()
+	_test_match_limit_sync()
+	_test_dark1_theme()
 	await _test_lobby_ui()
 	print("=== LOBBY RESULT: %d/%d passed%s ===" % [checks - failures, checks, " (FAILURES!)" if failures else ""])
 	get_tree().quit(1 if failures else 0)
@@ -107,11 +109,44 @@ func _test_kick() -> void:
 	GameState._server_kick(0, 1)
 	_check("踢出后剩房主一人", GameState.players.size() == 1 and GameState.players.has(0))
 
+func _test_match_limit_sync() -> void:
+	_setup_two()
+	GameState.run_state["match_limit"] = 5
+	last_lobby = {}
+	GameState._server_set_match_limit(1, 7, "ml1")
+	_check("非房主修改局数被拒", int(GameState.run_state["match_limit"]) == 5)
+	GameState._server_set_match_limit(0, 8, "ml2")
+	_check("房主修改局数同步", int(GameState.run_state["match_limit"]) == 8 and not last_lobby.is_empty())
+	var snap: Dictionary = GameState._lobby_snapshot(0)
+	_check("lobby 快照含同步局数", int(snap.get("match_limit", 0)) == 8)
+	GameState._server_set_match_limit(0, 99, "ml3")
+	_check("局数夹到上限", int(GameState.run_state["match_limit"]) == KongRules.MAX_MATCH_LIMIT)
+
+func _test_dark1_theme() -> void:
+	var before := UITheme.current
+	UITheme.switch_theme("dark-1")
+	_check("dark-1 底色/靛蓝强调", UITheme.color("bg_table") == Color("151821") \
+		and UITheme.color("accent") == Color("526BDE"))
+	_check("dark-1 主按钮文字色", UITheme.color("text_on_accent") == Color("FFFFFF"))
+	var sm := SettingsMenu.new()
+	add_child(sm)
+	_check("设置菜单有 dark/dark-1/light 三项", sm._theme_option.item_count == 3)
+	_check("设置菜单有自动/宽屏/紧凑布局", sm._lobby_layout_option.item_count == 3)
+	sm.queue_free()
+	UITheme.switch_theme(before)
+
 ## 大厅 UI 两态 + 槽位 + 按钮可见性（headless 实例化 main 场景驱动）。
 func _test_lobby_ui() -> void:
 	var scene = load("res://scenes/main.tscn").instantiate()
 	add_child(scene)
 	await get_tree().process_frame
+	scene.lobby.layout_mode_override = "compact"
+	scene.lobby.refresh_layout()
+	_check("大厅主面板居中容器存在", scene.lobby._panel != null)
+	_check("玩家信息框昵称/编辑按钮存在", scene.lobby._nickname_label != null and scene.lobby._edit_button != null)
+	_check("高级连接折叠栏存在", scene.lobby._advanced_toggle != null and scene.lobby._advanced_box != null)
+	_check("重连入口默认隐藏", scene.lobby._rejoin_button != null and not scene.lobby._rejoin_button.visible)
+	_check("昵称显示与输入一致", scene.lobby._nickname_label.text == scene.name_input.text.strip_edges())
 	var snap_guest := {
 		"players": [{"id": 0, "name": "Host", "ready": false}, {"id": 1, "name": "Me", "ready": true}],
 		"host_id": 0, "room_host": 0, "your_id": 1,
@@ -119,15 +154,29 @@ func _test_lobby_ui() -> void:
 	}
 	scene.lobby.update_lobby(snap_guest)
 	_check("客人：显示房间态", scene.lobby._room_box.visible and not scene.lobby._menu_box.visible)
+	_check("房间无滚动容器", scene.lobby._room_box.get_parent() == scene.lobby_panel)
+	_check("大厅背景图存在且不拦截输入", scene.lobby_bg != null and scene.lobby_bg.mouse_filter == Control.MOUSE_FILTER_IGNORE)
 	_check("槽位数量 = max_players", scene.lobby._slots_box.get_child_count() == 4)
 	_check("客人：见准备按钮、无开始", scene.lobby._ready_button.visible and not scene.lobby._start_button.visible)
 	_check("客人：准备按钮文案=取消准备", scene.lobby._ready_button.text == "取消准备")
+	var seats: GridContainer = scene.lobby._slots_box
+	_check("固定 4 个席位", seats.get_child_count() == 4)
+	_check("座位初始为 2×2", seats.columns == 2)
+	_check("席位号码稳定", (seats.get_child(0) as LobbySeatCard).seat_number() == 1 \
+		and (seats.get_child(3) as LobbySeatCard).seat_number() == 4)
+	_check("房主席位显示房主徽章", (seats.get_child(0) as LobbySeatCard).has_host_badge())
+	_check("空席位显示等待加入", (seats.get_child(3) as LobbySeatCard).is_empty_seat() \
+		and (seats.get_child(3) as LobbySeatCard).status_text().contains("等待加入"))
+	_check("客人局数只读", scene.lobby._match_minus.disabled and scene.lobby._match_plus.disabled)
+	_check("客人无解散、有离开", not scene.lobby._disband_button.visible and scene.lobby._leave_button.visible)
 
 	var snap_host_ready := snap_guest.duplicate(true)
 	snap_host_ready["your_id"] = 0
 	scene.lobby.update_lobby(snap_host_ready)
 	_check("房主：见开始/解散", scene.lobby._start_button.visible and scene.lobby._disband_button.visible)
 	_check("房主：全员 ready → 开始可用", not scene.lobby._start_button.disabled)
+	_check("房主：可改局数", not scene.lobby._match_minus.disabled or scene.lobby._match_limit_value <= KongRules.MIN_MATCH_LIMIT)
+	_check("房主：解散按钮存在且带确认", scene.lobby._disband_button.visible and scene.lobby._disband_dialog != null)
 
 	var snap_host_wait := snap_host_ready.duplicate(true)
 	snap_host_wait["players"] = [{"id": 0, "name": "Host", "ready": false}, {"id": 1, "name": "Me", "ready": false}]
@@ -136,5 +185,21 @@ func _test_lobby_ui() -> void:
 
 	scene.lobby.reset_lobby()
 	_check("reset_lobby 回主菜单态", scene.lobby._menu_box.visible and not scene.lobby._room_box.visible)
+	# 主题切换重建大厅后仍保持 4 个稳定席位
+	scene.lobby.update_lobby(snap_guest)
+	UITheme.switch_theme("dark-1")
+	scene.lobby.apply_theme()
+	_check("dark-1 切换后大厅重建", scene.lobby._slots_box != null and scene.lobby._slots_box.get_child_count() == 4)
+	UITheme.switch_theme("dark")
+	scene.lobby.apply_theme()
+	# 宽屏布局：三列、席位纵向列表、中央舞台、右侧设置
+	scene.lobby.layout_mode_override = "wide"
+	scene.lobby.refresh_layout()
+	scene.lobby.update_lobby(snap_guest)
+	_check("宽屏：面板变宽", scene.lobby._panel.custom_minimum_size.x > 700.0)
+	_check("宽屏：席位纵向列表", scene.lobby._slots_box is VBoxContainer and scene.lobby._slots_box.get_child_count() == 4)
+	_check("宽屏：中央舞台存在", scene.lobby._center_art != null and scene.lobby._center_art.get_child_count() == 3)
+	_check("宽屏：顶部房间码/状态", scene.lobby._header_room_code != null and scene.lobby._header_room_code.text.contains("Room:"))
+	_check("宽屏：右侧主按钮", scene.lobby._start_button != null and scene.lobby._invite_button != null)
 	scene.queue_free()
 	await get_tree().process_frame

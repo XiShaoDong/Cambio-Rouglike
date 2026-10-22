@@ -83,14 +83,14 @@ func _test_shield_survives_restart() -> void:
 	GameState._add_player(1, "H")
 	GameState._add_player(2, "C")
 	GameState.run_state["relics"][Relics.GUARD_SHIELD_ID] = Relics.def_by_id(Relics.GUARD_SHIELD_ID)
-	GameState.run_state["relic_owners"][Relics.GUARD_SHIELD_ID] = 0
+	GameState.run_state["relic_inventories"][0] = [Relics.GUARD_SHIELD_ID]
 	GameState._server_start_match(0, 5)
 	var slot_before := int(GameState.players[0].protected_slot)
 	_check("护盾开局生效(随机选格)", slot_before >= 0)
-	_check("开局后护盾已从 relics 消耗", not GameState.run_state.relics.has(Relics.GUARD_SHIELD_ID))
+	_check("开局后护盾已从遗物栏消耗", not (Relics.GUARD_SHIELD_ID in GameState.run_state["relic_inventories"].get(0, [])))
 	GameState._server_restart_match(0, "r2")
 	_check("重开保留护盾保护格", int(GameState.players[0].protected_slot) == slot_before)
-	_check("重开不复活护盾(relics 仍无)", not GameState.run_state.relics.has(Relics.GUARD_SHIELD_ID))
+	_check("重开不复活护盾(遗物栏仍无)", not (Relics.GUARD_SHIELD_ID in GameState.run_state["relic_inventories"].get(0, [])))
 	# 进入新一局（match_number+1）：护盾记录作废、不再保护
 	GameState._deal_next_match()
 	_check("新一局护盾失效", int(GameState.players[0].protected_slot) == -1)

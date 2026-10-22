@@ -56,14 +56,20 @@ static func snapshot_for(state: Node, viewer_id: int) -> Dictionary:
 		"ready_count": state.initial_confirmed.size() if phase == GameState.Phase.INITIAL_PEEK else 0,
 		"event_log": state.event_log.duplicate(),
 		"result": state.last_result.duplicate(),
-		"run": state.run_state.duplicate(),
-		"shop": _shop_snapshot(state) if int(state.phase) == GameState.Phase.SHOP else {},
+		"run": _run_snapshot(state),
+		"shop": _shop_snapshot(state, viewer_id) if int(state.phase) == GameState.Phase.SHOP else {},
 		"shop_result": state.shop_result.duplicate() if not state.shop_result.is_empty() else {},
+		# 道具卡库存私有：只给 viewer 本人的卡 id 列表；其他玩家看不到。
+		"item_cards": (state.run_state.get("item_inventories", {}).get(viewer_id, []) as Array).duplicate(),
+		"item_card_used": int(state.item_used_turn.get(viewer_id, -999)) == int(state.turn_index),
 	}
 	if (phase == GameState.Phase.TURN_DECISION or phase == GameState.Phase.Q_DECISION) and not state.pending_draw.is_empty():
 		if viewer_id == current_seat:
 			var pending: Dictionary = public_card(state, str(state.pending_draw.card_id))
 			pending["source"] = str(state.pending_draw.get("source", "draw"))
+			var granted := str(state.pending_draw.get("granted_ability", ""))
+			if not granted.is_empty():
+				pending["granted_ability"] = granted
 			snapshot["pending"] = pending
 		else:
 			# 其他玩家：只看到一张背面大牌（仅无语义令牌，不泄漏牌面）
@@ -135,11 +141,16 @@ static func _player_snapshot(state: Node, seat: int, reveal_all: bool, viewer_id
 	for cid in player.cards:
 		if not str(cid).is_empty():
 			non_empty += 1
+	var inventory: Array = state.run_state.get("relic_inventories", {}).get(seat, [])
+	var relics: Array = []
+	for i in 3:
+		relics.append(str(inventory[i]) if i < inventory.size() else "")
 	return {"id": seat, "name": player.name, "count": non_empty, "health": player.health,
 		"color": str(player.get("color", "")),
 		# 淘汰延后一局生效：出局当局仍视为正常参与者（本局正常结算），下一局起才标观战
 		"eliminated": int(player.get("health", 0)) <= 0 and int(state.match_number) > int(player.get("eliminated_match", -1)),
 		"currency": int(player.currency),
+		"relics": relics,
 		"ready": state.initial_confirmed.has(seat), "slots": slots}
 
 ## 卡牌公共表示（不含身份敏感信息之外的内容，仅用于展示/能力提示）。
@@ -163,18 +174,45 @@ static func _q_decision_snapshot(state: Node) -> Dictionary:
 	return {"actor": int(q.get("actor", -1)), "target": int(q.get("target", -1)),
 		"target_slot": int(q.get("target_slot", -1)), "own_viewed": bool(q.get("own_viewed", false))}
 
-## 商店快照：offers 含 id/name/price 与 sold_by（固定价购买公开），done 为已完成玩家名单。
-static func _shop_snapshot(state: Node) -> Dictionary:
-	var sold: Dictionary = state.shop.get("sold", {})
+## run 公开投影：隐藏服务器内部的商店锁（别人看不到你的锁定选择）。
+static func _run_snapshot(state: Node) -> Dictionary:
+	var run: Dictionary = state.run_state.duplicate(true)
+	run.erase("shop_locks")
+	run.erase("item_inventories")
+	run.erase("item_locks")
+	return run
+
+## 商店快照（按 viewer 投影）：只下发 viewer 自己的 2 个货位；done 为全员完成名单。
+static func _shop_snapshot(state: Node, viewer_id: int) -> Dictionary:
+	var seat_data: Dictionary = state.shop.get("seats", {}).get(viewer_id, {})
 	var offers: Array = []
-	for offer in state.shop.get("offers", []):
-		var oi: int = int(offer.index)
-		offers.append({"index": oi, "id": str(offer.relic_id), "name": str(offer.name), "price": int(offer.price),
-			"sold_by": int(sold.get(oi, -1))})
+	for offer in seat_data.get("offers", []):
+		var o: Dictionary = offer
+		if o.is_empty():
+			continue
+		offers.append({"index": int(o.get("index", offers.size())), "id": str(o.get("relic_id", "")),
+			"name": str(o.get("name", "")), "price": int(o.get("price", 0)),
+			"locked": bool(o.get("locked", false))})
+	var card_offers: Array = []
+	for offer in seat_data.get("card_offers", []):
+		var c: Dictionary = offer
+		if c.is_empty():
+			continue
+		card_offers.append({"index": int(c.get("index", card_offers.size())),
+			"id": str(c.get("item_id", "")), "name": str(c.get("name", "")),
+			"desc": str(c.get("desc", "")), "price": int(c.get("price", 0)),
+			"target_mode": str(c.get("target_mode", ItemCards.TARGET_NONE)),
+			"locked": bool(c.get("locked", false))})
 	var done: Array = []
 	for seat in state.shop.get("done", {}):
 		done.append(int(seat))
-	return {"offers": offers, "done": done}
+	return {"offers": offers, "card_offers": card_offers, "done": done,
+		"refresh_cost": Relics.SHOP_REFRESH_COST,
+		"card_refresh_cost": ItemCards.REFRESH_COST,
+		"can_refresh": state._shop_can_refresh(viewer_id),
+		"card_can_refresh": state._shop_card_can_refresh(viewer_id),
+		"relic_bought": bool(seat_data.get("relic_bought", false)),
+		"card_bought": bool(seat_data.get("card_bought", false))}
 
 static func _phase_name(phase: int) -> String:
 	match phase:

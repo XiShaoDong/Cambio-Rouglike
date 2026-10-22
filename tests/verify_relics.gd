@@ -35,6 +35,13 @@ func _check(name: String, ok: bool) -> void:
 func _count_reject(_c: int, _m: String) -> void:
 	_rejections += 1
 
+func _give_relic(seat: int, relic_id: String) -> void:
+	GameState.run_state["relics"][relic_id] = Relics.def_by_id(relic_id)
+	var inventory: Array = GameState.run_state["relic_inventories"].get(seat, [])
+	if not relic_id in inventory:
+		inventory.append(relic_id)
+	GameState.run_state["relic_inventories"][seat] = inventory
+
 ## 3 人开局；seat_shield（默认房主 0）持防守护盾。返回后 phase=TURN_DRAW（已押注）。
 func _open_shield(seat_shield := 0) -> void:
 	GameState._reset_match()
@@ -42,8 +49,7 @@ func _open_shield(seat_shield := 0) -> void:
 	GameState._add_player(1, "A")
 	GameState._add_player(2, "B")
 	GameState._add_player(3, "C")
-	GameState.run_state["relics"][Relics.GUARD_SHIELD_ID] = Relics.def_by_id(Relics.GUARD_SHIELD_ID)
-	GameState.run_state["relic_owners"][Relics.GUARD_SHIELD_ID] = seat_shield
+	_give_relic(seat_shield, Relics.GUARD_SHIELD_ID)
 	GameState._server_start_match(0)
 	GameState._server_initial_ready(0)
 	GameState._server_initial_ready(1)
@@ -59,7 +65,7 @@ func _draw_rank(seat: int, rank: String, action_id: String) -> void:
 func _test_guard_apply() -> void:
 	_open_shield(0)
 	_check("护盾在下一局开局生效(随机选格)", GameState.players[0].protected_slot >= 0 and GameState.players[0].protected_slot < GameState.players[0].cards.size())
-	_check("护盾一局后消耗", not GameState.run_state.relics.has(Relics.GUARD_SHIELD_ID))
+	_check("护盾一局后消耗", not (Relics.GUARD_SHIELD_ID in GameState.run_state["relic_inventories"].get(0, [])))
 	_check("他人无护盾", int(GameState.players[1].protected_slot) == -1 and int(GameState.players[2].protected_slot) == -1)
 
 func _test_guard_slap() -> void:
@@ -133,8 +139,7 @@ func _open_joker(transform: bool) -> void:
 	GameState._add_player(1, "A")
 	GameState._add_player(2, "B")
 	if transform:
-		GameState.run_state["relics"][Relics.JOKER_TRANSFORM_ID] = Relics.def_by_id(Relics.JOKER_TRANSFORM_ID)
-		GameState.run_state["relic_owners"][Relics.JOKER_TRANSFORM_ID] = 0
+		_give_relic(0, Relics.JOKER_TRANSFORM_ID)
 	GameState._server_start_match(0)
 	GameState._server_initial_ready(0)
 	GameState._server_initial_ready(1)
@@ -164,8 +169,7 @@ func _test_joker_penalty() -> void:
 	GameState._reset_match()
 	GameState._add_player(1, "A")
 	GameState._add_player(2, "B")
-	GameState.run_state["relics"][Relics.JOKER_TRANSFORM_ID] = Relics.def_by_id(Relics.JOKER_TRANSFORM_ID)
-	GameState.run_state["relic_owners"][Relics.JOKER_TRANSFORM_ID] = 0
+	_give_relic(0, Relics.JOKER_TRANSFORM_ID)
 	GameState._server_start_match(0)
 	GameState.players[0].cards = ["ja"]
 	GameState.cards["ja"] = {"id": "ja", "rank": "JOKER", "suit": "black", "value": 0}
@@ -181,8 +185,7 @@ func _test_joker_transform_clears_penalty() -> void:
 	GameState._reset_match()
 	GameState._add_player(1, "A")
 	GameState._add_player(2, "B")
-	GameState.run_state["relics"][Relics.JOKER_TRANSFORM_ID] = Relics.def_by_id(Relics.JOKER_TRANSFORM_ID)
-	GameState.run_state["relic_owners"][Relics.JOKER_TRANSFORM_ID] = 0
+	_give_relic(0, Relics.JOKER_TRANSFORM_ID)
 	GameState._server_start_match(0)
 	GameState.players[0].cards = ["jc"]
 	GameState.cards["jc"] = {"id": "jc", "rank": "7", "suit": "♠", "value": 7}

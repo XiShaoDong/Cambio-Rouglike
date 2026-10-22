@@ -10,14 +10,36 @@ var _menu_box: VBoxContainer
 # 房间态
 var _room_box: VBoxContainer
 var _header_label: Label
+var _room_status_label: Label
+var _player_count_label: Label
 var _share_field: LineEdit
-var _slots_box: VBoxContainer
-var _match_limit_spin: SpinBox
+var _share_hint: Label
+var _header_room_code: Label
+var _center_art: Control
+var _center_cards: Array = []
+var _wide_active := false
+var layout_mode_override := ""
+var _resizing_layout := false
+var _slots_box: Container
+var _match_minus: Button
+var _match_value: Label
+var _match_plus: Button
+var _match_limit_value := KongRules.DEFAULT_MATCH_LIMIT
+var _disband_dialog: ConfirmationDialog
 var _ready_button: Button
 var _start_button: Button
 var _disband_button: Button
 var _invite_button: Button
 var _leave_button: Button
+var _panel: PanelContainer
+var _avatar_label: Label
+var _nickname_label: Label
+var _edit_button: Button
+var _advanced_toggle: Button
+var _advanced_box: VBoxContainer
+var _rejoin_button: Button
+var _nickname_dialog: ConfirmationDialog
+var _nickname_edit: LineEdit
 
 func _init(owner_node: Node) -> void:
 	main = owner_node
@@ -29,164 +51,1105 @@ func build() -> void:
 	_show_menu()
 
 func _build_menu() -> void:
+	_wide_active = _use_wide_layout()
+	_apply_frame_style()
+	if _wide_active:
+		_build_menu_wide()
+	else:
+		_build_menu_compact()
+
+func _build_menu_wide() -> void:
+	_panel = main.lobby_panel.get_parent() as PanelContainer
 	_menu_box = VBoxContainer.new()
+	_menu_box.name = "MenuWide"
+	_menu_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_menu_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_menu_box.add_theme_constant_override("separation", 10)
+	main.lobby_panel.add_child(_menu_box)
+	if not main.resized.is_connected(_on_main_resized):
+		main.resized.connect(_on_main_resized)
+	_update_panel_size()
+
+	# Header
+	var header := HBoxContainer.new()
+	header.name = "Header"
+	header.custom_minimum_size = Vector2(0, 68)
+	header.add_theme_constant_override("separation", 14)
+	_menu_box.add_child(header)
+	var logo := TextureRect.new()
+	logo.texture = load("res://assets/Cards/back07.png")
+	logo.custom_minimum_size = Vector2(34, 48)
+	logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	logo.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	header.add_child(logo)
+	var brand := VBoxContainer.new()
+	brand.add_theme_constant_override("separation", 0)
+	brand.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(brand)
+	var brand_title := Label.new()
+	brand_title.text = "KONG · LAN MVP"
+	brand_title.add_theme_font_size_override("font_size", 26)
+	brand_title.add_theme_color_override("font_color", UITheme.color("accent"))
+	brand.add_child(brand_title)
+	var brand_sub := Label.new()
+	brand_sub.text = "LAN MULTIPLAYER CARD GAME"
+	brand_sub.add_theme_font_size_override("font_size", 10)
+	brand_sub.add_theme_color_override("font_color", UITheme.color("text_muted"))
+	brand.add_child(brand_sub)
+
+	var status_row := HBoxContainer.new()
+	status_row.add_theme_constant_override("separation", 6)
+	status_row.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	header.add_child(status_row)
+	var dot := Label.new()
+	dot.text = "●"
+	dot.add_theme_color_override("font_color", UITheme.color("success"))
+	status_row.add_child(dot)
+	main.lobby_status_label = Label.new()
+	main.lobby_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	main.lobby_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	main.lobby_status_label.add_theme_font_size_override("font_size", 12)
+	main.lobby_status_label.add_theme_color_override("font_color", UITheme.color("text_secondary"))
+	main.lobby_status_label.custom_minimum_size = Vector2(280, 0)
+	status_row.add_child(main.lobby_status_label)
+	var settings: Button = main._button("⚙")
+	settings.name = "SettingsButton"
+	settings.custom_minimum_size = Vector2(42, 42)
+	settings.tooltip_text = "设置（ESC）"
+	settings.pressed.connect(main._toggle_settings)
+	_apply_secondary_style(settings)
+	header.add_child(settings)
+	main.lobby_status_label.text = "输入昵称，创建房间或凭房间码加入。"
+
+	var content := HBoxContainer.new()
+	content.name = "MainContent"
+	content.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	content.add_theme_constant_override("separation", 18)
+	_menu_box.add_child(content)
+
+	# 左：控制面板
+	var left := PanelContainer.new()
+	left.name = "LobbyPanel"
+	var left_style := StyleBoxFlat.new()
+	left_style.bg_color = UITheme.color("bg_surface")
+	left_style.bg_color.a = 0.84
+	left_style.set_corner_radius_all(14)
+	left_style.set_content_margin_all(20)
+	left_style.border_color = UITheme.color("border")
+	left_style.set_border_width_all(1)
+	left.add_theme_stylebox_override("panel", left_style)
+	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	left.size_flags_stretch_ratio = 58.0
+	left.custom_minimum_size = Vector2(560, 0)
+	content.add_child(left)
+	var lv := VBoxContainer.new()
+	lv.add_theme_constant_override("separation", 12)
+	left.add_child(lv)
+
+	# 玩家资料
+	var profile := PanelContainer.new()
+	profile.name = "PlayerProfile"
+	profile.add_theme_stylebox_override("panel", _card_style())
+	lv.add_child(profile)
+	var prow := HBoxContainer.new()
+	prow.add_theme_constant_override("separation", 14)
+	profile.add_child(prow)
+	var avatar := PanelContainer.new()
+	avatar.custom_minimum_size = Vector2(56, 56)
+	avatar.size = Vector2(56, 56)
+	var av := StyleBoxFlat.new()
+	av.bg_color = UITheme.color("accent_soft")
+	av.set_corner_radius_all(28)
+	avatar.add_theme_stylebox_override("panel", av)
+	prow.add_child(avatar)
+	_avatar_label = Label.new()
+	_avatar_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_avatar_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_avatar_label.add_theme_font_size_override("font_size", 22)
+	_avatar_label.add_theme_color_override("font_color", UITheme.color("accent"))
+	avatar.add_child(_avatar_label)
+	var info := VBoxContainer.new()
+	info.add_theme_constant_override("separation", 2)
+	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	info.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	prow.add_child(info)
+	var caption := Label.new()
+	caption.text = "当前玩家"
+	caption.add_theme_font_size_override("font_size", 12)
+	caption.add_theme_color_override("font_color", UITheme.color("text_muted"))
+	info.add_child(caption)
+	_nickname_label = Label.new()
+	_nickname_label.add_theme_font_size_override("font_size", 21)
+	_nickname_label.add_theme_color_override("font_color", UITheme.color("text_primary"))
+	info.add_child(_nickname_label)
+	var nick_hint := Label.new()
+	nick_hint.text = "本地昵称 · 仅用于显示"
+	nick_hint.add_theme_font_size_override("font_size", 10)
+	nick_hint.add_theme_color_override("font_color", UITheme.color("text_muted"))
+	info.add_child(nick_hint)
+	_edit_button = main._button("✎")
+	_edit_button.name = "EditNickname"
+	_edit_button.custom_minimum_size = Vector2(44, 44)
+	_edit_button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_edit_button.tooltip_text = "修改昵称（仅用于之后创建/加入房间，不改变当前连接身份）"
+	_edit_button.pressed.connect(_open_nickname_dialog)
+	_apply_secondary_style(_edit_button)
+	prow.add_child(_edit_button)
+
+	main.name_input = LineEdit.new()
+	main.name_input.visible = false
+	main.name_input.text = str(Settings.get_setting("profile", "nickname", "玩家"))
+	lv.add_child(main.name_input)
+	refresh_player_info()
+
+	# 加入房间
+	var join_label := Label.new()
+	join_label.text = "加入现有房间"
+	join_label.add_theme_font_size_override("font_size", 13)
+	join_label.add_theme_color_override("font_color", UITheme.color("text_secondary"))
+	lv.add_child(join_label)
+	var code_row := HBoxContainer.new()
+	code_row.add_theme_constant_override("separation", 12)
+	lv.add_child(code_row)
+	main.room_code_input = LineEdit.new()
+	main.room_code_input.placeholder_text = "请输入房间码（如：K7X2Q9）"
+	main.room_code_input.custom_minimum_size = Vector2(0, 52)
+	main.room_code_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	main.room_code_input.size_flags_stretch_ratio = 68.0
+	code_row.add_child(main.room_code_input)
+	var join_code: Button = main._button("加入房间")
+	join_code.custom_minimum_size = Vector2(0, 52)
+	join_code.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	join_code.size_flags_stretch_ratio = 32.0
+	join_code.pressed.connect(join_by_code)
+	join_code.disabled = main.is_dev_join
+	_apply_secondary_style(join_code)
+	code_row.add_child(join_code)
+
+	# 创建房间主操作
+	var host: Button = main._button("＋\n创建房间\n开启一场新的对局")
+	host.custom_minimum_size = Vector2(0, 100)
+	host.add_theme_font_size_override("font_size", 18)
+	host.pressed.connect(host_game)
+	host.disabled = main.is_dev_join
+	_apply_primary_style(host)
+	lv.add_child(host)
+
+	# 高级连接
+	_advanced_toggle = main._button("›  高级连接选项\n       IP 直连 · 手动配置")
+	_advanced_toggle.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_advanced_toggle.custom_minimum_size = Vector2(0, 70)
+	_advanced_toggle.add_theme_font_size_override("font_size", 13)
+	_apply_secondary_style(_advanced_toggle)
+	lv.add_child(_advanced_toggle)
+	_advanced_box = VBoxContainer.new()
+	_advanced_box.visible = false
+	_advanced_box.add_theme_constant_override("separation", 8)
+	lv.add_child(_advanced_box)
+	_advanced_toggle.pressed.connect(func():
+		_advanced_box.visible = not _advanced_box.visible
+		_advanced_toggle.text = ("⌄  高级连接选项\n       IP 直连 · 手动配置" if _advanced_box.visible else "›  高级连接选项\n       IP 直连 · 手动配置"))
+	var adv_row := HBoxContainer.new()
+	adv_row.add_theme_constant_override("separation", 10)
+	_advanced_box.add_child(adv_row)
+	main.address_input = LineEdit.new()
+	main.address_input.placeholder_text = "房主 IP"
+	main.address_input.text = "127.0.0.1"
+	main.address_input.custom_minimum_size = Vector2(0, 44)
+	main.address_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	adv_row.add_child(main.address_input)
+	main.port_input = LineEdit.new()
+	main.port_input.placeholder_text = "端口"
+	main.port_input.text = str(KongNetwork.DEFAULT_PORT)
+	main.port_input.custom_minimum_size = Vector2(90, 44)
+	main.port_input.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	adv_row.add_child(main.port_input)
+	var join_ip: Button = main._button("直连加入")
+	join_ip.custom_minimum_size = Vector2(100, 44)
+	join_ip.pressed.connect(join_game)
+	join_ip.disabled = main.is_dev_join
+	_apply_secondary_style(join_ip)
+	adv_row.add_child(join_ip)
+	var dev: Button = main._button("开发者：本机双开")
+	dev.custom_minimum_size = Vector2(0, 40)
+	dev.pressed.connect(dev_launch_second)
+	dev.add_theme_color_override("font_color", UITheme.color("success"))
+	dev.disabled = main.is_dev_join
+	_apply_secondary_style(dev)
+	_advanced_box.add_child(dev)
+
+	var spacer := Control.new()
+	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	lv.add_child(spacer)
+	_rejoin_button = main._button("↻  重连上次对局")
+	_rejoin_button.name = "RejoinEntry"
+	_rejoin_button.custom_minimum_size = Vector2(0, 62)
+	_rejoin_button.visible = false
+	_rejoin_button.pressed.connect(main._do_reconnect)
+	_apply_secondary_style(_rejoin_button)
+	lv.add_child(_rejoin_button)
+
+	# 右：视觉区（背景图由 main 铺满；这里只放低对比水印）
+	var visual := Control.new()
+	visual.name = "GameVisual"
+	visual.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	visual.size_flags_stretch_ratio = 42.0
+	visual.custom_minimum_size = Vector2(300, 0)
+	visual.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content.add_child(visual)
+	var mark := Label.new()
+	mark.text = "KONG"
+	mark.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	mark.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	mark.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	mark.add_theme_font_size_override("font_size", 118)
+	mark.add_theme_color_override("font_color", Color(0.82, 0.86, 1.0, 0.10))
+	mark.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	visual.add_child(mark)
+	var mark_sub := Label.new()
+	mark_sub.text = "LAN MVP"
+	mark_sub.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	mark_sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	mark_sub.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	mark_sub.offset_top = 72
+	mark_sub.add_theme_font_size_override("font_size", 14)
+	mark_sub.add_theme_color_override("font_color", Color(0.82, 0.86, 1.0, 0.18))
+	mark_sub.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	visual.add_child(mark_sub)
+
+	var footer := Label.new()
+	footer.text = "KONG · LAN MVP   |   连接你的游戏世界"
+	footer.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	footer.add_theme_font_size_override("font_size", 11)
+	footer.add_theme_color_override("font_color", UITheme.color("text_muted"))
+	footer.custom_minimum_size = Vector2(0, 30)
+	_menu_box.add_child(footer)
+
+	_ensure_nickname_dialog()
+
+func _build_menu_compact() -> void:
+	_panel = main.lobby_panel.get_parent() as PanelContainer
+	_menu_box = VBoxContainer.new()
+	_menu_box.name = "MenuBox"
+	_menu_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_menu_box.add_theme_constant_override("separation", 12)
 	main.lobby_panel.add_child(_menu_box)
+	if not main.resized.is_connected(_on_main_resized):
+		main.resized.connect(_on_main_resized)
+	_update_panel_size()
 
 	var lobby_title := Label.new()
 	lobby_title.text = "KONG  ·  LAN MVP"
-	lobby_title.add_theme_font_size_override("font_size", 30)
+	lobby_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lobby_title.add_theme_font_size_override("font_size", 34)
 	lobby_title.add_theme_color_override("font_color", UITheme.color("accent"))
 	_menu_box.add_child(lobby_title)
 
 	main.lobby_status_label = Label.new()
 	main.lobby_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	main.lobby_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	main.lobby_status_label.add_theme_font_size_override("font_size", 13)
 	main.lobby_status_label.add_theme_color_override("font_color", UITheme.color("text_secondary"))
 	main.lobby_status_label.text = "输入昵称，创建房间或凭房间码加入。"
 	_menu_box.add_child(main.lobby_status_label)
 
-	# 昵称
-	var name_row := HBoxContainer.new()
-	name_row.add_theme_constant_override("separation", 10)
-	_menu_box.add_child(name_row)
-	main.name_input = LineEdit.new()
-	main.name_input.placeholder_text = "昵称"
-	main.name_input.text = "玩家"
-	main.name_input.custom_minimum_size = Vector2(200, 42)
-	name_row.add_child(main.name_input)
+	# 当前玩家信息卡
+	var player_card := PanelContainer.new()
+	player_card.name = "PlayerCard"
+	player_card.add_theme_stylebox_override("panel", _card_style())
+	_menu_box.add_child(player_card)
+	var player_row := HBoxContainer.new()
+	player_row.add_theme_constant_override("separation", 12)
+	player_card.add_child(player_row)
+	var avatar := PanelContainer.new()
+	avatar.custom_minimum_size = Vector2(44, 44)
+	avatar.size = Vector2(44, 44)
+	var avatar_style := StyleBoxFlat.new()
+	avatar_style.bg_color = UITheme.color("accent")
+	avatar_style.set_corner_radius_all(22)
+	avatar.add_theme_stylebox_override("panel", avatar_style)
+	player_row.add_child(avatar)
+	_avatar_label = Label.new()
+	_avatar_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_avatar_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_avatar_label.add_theme_font_size_override("font_size", 18)
+	_avatar_label.add_theme_color_override("font_color", Color(0.08, 0.09, 0.12))
+	avatar.add_child(_avatar_label)
+	var info := VBoxContainer.new()
+	info.add_theme_constant_override("separation", 1)
+	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	info.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	player_row.add_child(info)
+	var caption := Label.new()
+	caption.text = "当前玩家"
+	caption.add_theme_font_size_override("font_size", 12)
+	caption.add_theme_color_override("font_color", UITheme.color("text_secondary"))
+	info.add_child(caption)
+	_nickname_label = Label.new()
+	_nickname_label.add_theme_font_size_override("font_size", 20)
+	_nickname_label.add_theme_color_override("font_color", UITheme.color("text_primary"))
+	info.add_child(_nickname_label)
+	_edit_button = main._button("✎")
+	_edit_button.name = "EditNickname"
+	_edit_button.custom_minimum_size = Vector2(44, 44)
+	_edit_button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_edit_button.tooltip_text = "修改昵称（仅用于之后创建/加入房间，不改变当前连接身份）"
+	_edit_button.pressed.connect(_open_nickname_dialog)
+	_apply_secondary_style(_edit_button)
+	player_row.add_child(_edit_button)
 
-	# 加入房间：房间码
+	# 隐藏的昵称存储（保持 _entered_name / dev join 兼容）
+	main.name_input = LineEdit.new()
+	main.name_input.visible = false
+	main.name_input.text = str(Settings.get_setting("profile", "nickname", "玩家"))
+	_menu_box.add_child(main.name_input)
+	refresh_player_info()
+
+	# 加入现有房间
+	var join_label := Label.new()
+	join_label.text = "加入现有房间"
+	join_label.add_theme_font_size_override("font_size", 14)
+	join_label.add_theme_color_override("font_color", UITheme.color("text_secondary"))
+	_menu_box.add_child(join_label)
 	var code_row := HBoxContainer.new()
 	code_row.add_theme_constant_override("separation", 10)
 	_menu_box.add_child(code_row)
 	main.room_code_input = LineEdit.new()
-	main.room_code_input.placeholder_text = "房间码（如 K7X2Q9）"
-	main.room_code_input.custom_minimum_size = Vector2(240, 42)
+	main.room_code_input.placeholder_text = "K7X2Q9"
+	main.room_code_input.custom_minimum_size = Vector2(0, 50)
+	main.room_code_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	code_row.add_child(main.room_code_input)
 	var join_code: Button = main._button("加入房间")
+	join_code.custom_minimum_size = Vector2(120, 50)
 	join_code.pressed.connect(join_by_code)
 	join_code.disabled = main.is_dev_join
+	_apply_secondary_style(join_code)
 	code_row.add_child(join_code)
 
-	# 创建房间
-	var host: Button = main._button("创建房间")
+	# 创建房间（主操作）
+	var host: Button = main._button("＋  创建房间\n开启一场新的对局")
+	host.text = "＋  创建房间\n开启一场新的对局"
+	host.custom_minimum_size = Vector2(0, 78)
+	host.add_theme_font_size_override("font_size", 18)
 	host.pressed.connect(host_game)
 	host.disabled = main.is_dev_join
+	_apply_primary_style(host)
 	_menu_box.add_child(host)
 
-	# 高级（IP 直连），默认折叠
-	var adv_toggle: Button = main._button("▸ 高级（IP 直连）")
-	adv_toggle.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	_menu_box.add_child(adv_toggle)
-	var adv := VBoxContainer.new()
-	adv.visible = false
-	adv.add_theme_constant_override("separation", 8)
-	_menu_box.add_child(adv)
-	adv_toggle.pressed.connect(func(): adv.visible = not adv.visible)
+	# 弹性空白：主要操作在上，次要操作靠下
+	var spacer := Control.new()
+	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	spacer.custom_minimum_size = Vector2(0, 8)
+	_menu_box.add_child(spacer)
+
+	# 高级连接（折叠）
+	_advanced_toggle = main._button("›  高级连接选项\n    IP 直连 · 手动配置")
+	_advanced_toggle.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_advanced_toggle.custom_minimum_size = Vector2(0, 58)
+	_advanced_toggle.add_theme_font_size_override("font_size", 13)
+	_apply_secondary_style(_advanced_toggle)
+	_menu_box.add_child(_advanced_toggle)
+	_advanced_box = VBoxContainer.new()
+	_advanced_box.visible = false
+	_advanced_box.add_theme_constant_override("separation", 8)
+	_menu_box.add_child(_advanced_box)
+	_advanced_toggle.pressed.connect(func():
+		_advanced_box.visible = not _advanced_box.visible
+		_advanced_toggle.text = ("⌄  高级连接选项\n    IP 直连 · 手动配置" if _advanced_box.visible else "›  高级连接选项\n    IP 直连 · 手动配置"))
 	var adv_row := HBoxContainer.new()
 	adv_row.add_theme_constant_override("separation", 10)
-	adv.add_child(adv_row)
+	_advanced_box.add_child(adv_row)
 	main.address_input = LineEdit.new()
 	main.address_input.placeholder_text = "房主 IP"
 	main.address_input.text = "127.0.0.1"
-	main.address_input.custom_minimum_size = Vector2(170, 42)
+	main.address_input.custom_minimum_size = Vector2(0, 44)
+	main.address_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	adv_row.add_child(main.address_input)
 	main.port_input = LineEdit.new()
 	main.port_input.placeholder_text = "端口"
 	main.port_input.text = str(KongNetwork.DEFAULT_PORT)
-	main.port_input.custom_minimum_size = Vector2(95, 42)
+	main.port_input.custom_minimum_size = Vector2(90, 44)
 	main.port_input.alignment = HORIZONTAL_ALIGNMENT_CENTER
 	adv_row.add_child(main.port_input)
 	var join_ip: Button = main._button("直连加入")
+	join_ip.custom_minimum_size = Vector2(100, 44)
 	join_ip.pressed.connect(join_game)
 	join_ip.disabled = main.is_dev_join
 	adv_row.add_child(join_ip)
 	var dev: Button = main._button("开发者：本机双开")
+	dev.custom_minimum_size = Vector2(0, 40)
 	dev.pressed.connect(dev_launch_second)
 	dev.add_theme_color_override("font_color", UITheme.color("success"))
 	dev.disabled = main.is_dev_join
-	adv_row.add_child(dev)
+	_advanced_box.add_child(dev)
+
+	# 重连入口（底部）
+	_rejoin_button = main._button("↻  重连上次对局")
+	_rejoin_button.name = "RejoinEntry"
+	_rejoin_button.custom_minimum_size = Vector2(0, 54)
+	_rejoin_button.visible = false
+	_rejoin_button.pressed.connect(main._do_reconnect)
+	_apply_secondary_style(_rejoin_button)
+	_menu_box.add_child(_rejoin_button)
+
+	# 昵称编辑弹窗
+	_ensure_nickname_dialog()
+
+func _apply_frame_style() -> void:
+	if _panel == null or not is_instance_valid(_panel):
+		return
+	var st := StyleBoxFlat.new()
+	st.set_content_margin_all(22)
+	if _wide_active:
+		st.bg_color = Color(0, 0, 0, 0)
+		st.border_width_left = 0
+		st.border_width_top = 0
+		st.border_width_right = 0
+		st.border_width_bottom = 0
+	else:
+		st.bg_color = UITheme.color("bg_elevated")
+		st.bg_color.a = 0.96
+		st.set_corner_radius_all(16)
+		st.border_color = UITheme.color("border")
+		st.set_border_width_all(1)
+	_panel.add_theme_stylebox_override("panel", st)
+
+func _on_main_resized() -> void:
+	if _resizing_layout:
+		return
+	if _room_box != null and _room_box.visible and layout_mode_override == "" \
+			and str(Settings.get_setting("display", "lobby_layout", "auto")) == "auto":
+		if _use_wide_layout() != _wide_active:
+			_resizing_layout = true
+			refresh_layout()
+			_resizing_layout = false
+			return
+	_update_panel_size()
+
+func _update_panel_size() -> void:
+	if _panel == null or not is_instance_valid(_panel) or main == null:
+		return
+	var max_w := 480.0
+	if _wide_active:
+		max_w = 1680.0
+	elif _room_box != null and _room_box.visible:
+		max_w = 680.0
+	var w: float = minf(max_w, maxf(320.0, main.size.x * 0.9))
+	var h: float = maxf(500.0, main.size.y - 56.0) if _wide_active \
+		else minf(760.0, maxf(480.0, main.size.y * 0.92))
+	_panel.custom_minimum_size = Vector2(w, h)
+	_update_seat_columns()
+
+func _card_style() -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = UITheme.color("bg_elevated")
+	style.bg_color.a = 0.62
+	style.set_corner_radius_all(10)
+	style.set_content_margin_all(12)
+	style.border_color = UITheme.color("border")
+	style.set_border_width_all(1)
+	return style
+
+func refresh_player_info() -> void:
+	if _nickname_label == null or main.name_input == null:
+		return
+	var n: String = main.name_input.text.strip_edges()
+	if n.is_empty():
+		n = "玩家"
+	_nickname_label.text = n
+	if _avatar_label != null:
+		_avatar_label.text = n.left(1)
+
+func _ensure_nickname_dialog() -> void:
+	if _nickname_dialog != null and is_instance_valid(_nickname_dialog):
+		return
+	_nickname_dialog = ConfirmationDialog.new()
+	_nickname_dialog.title = "修改玩家名称"
+	_nickname_dialog.get_ok_button().text = "保存"
+	_nickname_dialog.add_cancel_button("取消")
+	_nickname_edit = LineEdit.new()
+	_nickname_edit.custom_minimum_size = Vector2(320, 44)
+	_nickname_edit.max_length = 16
+	_nickname_dialog.add_child(_nickname_edit)
+	_nickname_dialog.register_text_enter(_nickname_edit)
+	_nickname_edit.text_changed.connect(func(_t: String):
+		_nickname_dialog.get_ok_button().disabled = _nickname_edit.text.strip_edges().is_empty())
+	_nickname_dialog.confirmed.connect(_save_nickname)
+	_nickname_dialog.about_to_popup.connect(func():
+		_nickname_edit.text = main.name_input.text
+		_nickname_edit.select_all()
+		_nickname_edit.grab_focus())
+	main.add_child(_nickname_dialog)
+
+func _open_nickname_dialog() -> void:
+	if _nickname_dialog == null:
+		return
+	_nickname_dialog.popup_centered(Vector2(380, 0))
+
+func _save_nickname() -> void:
+	var n: String = _nickname_edit.text.strip_edges().left(16)
+	if n.is_empty():
+		return
+	main.name_input.text = n
+	Settings.set_setting("profile", "nickname", n)
+	refresh_player_info()
+	main._show_toast("昵称已更新：%s" % n)
+
+func show_rejoin(on: bool) -> void:
+	if _rejoin_button != null:
+		_rejoin_button.visible = on
 
 func _build_room() -> void:
+	_wide_active = _use_wide_layout()
+	_apply_frame_style()
+	if _wide_active:
+		_build_room_wide()
+	else:
+		_build_room_compact()
+
+func _use_wide_layout() -> bool:
+	if layout_mode_override == "wide":
+		return true
+	if layout_mode_override == "compact":
+		return false
+	var mode := str(Settings.get_setting("display", "lobby_layout", "auto"))
+	if mode == "wide":
+		return true
+	if mode == "compact":
+		return false
+	return main != null and main.size.x >= 1100.0
+
+## 设置菜单切换布局后调用：重建房间布局并保留当前快照。
+func refresh_layout() -> void:
+	var wide := _use_wide_layout()
+	if wide == _wide_active and _menu_box != null and _room_box != null:
+		_update_panel_size()
+		return
+	_wide_active = wide
+	_rebuild_all()
+
+func _build_room_compact() -> void:
 	_room_box = VBoxContainer.new()
-	_room_box.add_theme_constant_override("separation", 12)
+	_room_box.name = "RoomBox"
+	_room_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_room_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_room_box.add_theme_constant_override("separation", 8)
 	main.lobby_panel.add_child(_room_box)
 
-	# 分享行：房间地址 + 复制
-	var share_row := HBoxContainer.new()
-	share_row.add_theme_constant_override("separation", 8)
-	_room_box.add_child(share_row)
-	var share_lbl := Label.new()
-	share_lbl.text = "房间码 / 地址（发给朋友）："
-	share_row.add_child(share_lbl)
-	_share_field = LineEdit.new()
-	_share_field.editable = false
-	_share_field.custom_minimum_size = Vector2(260, 42)
-	share_row.add_child(_share_field)
-	var copy_btn: Button = main._button("复制")
-	copy_btn.pressed.connect(_on_copy_share)
-	share_row.add_child(copy_btn)
-
 	_header_label = Label.new()
-	_header_label.add_theme_font_size_override("font_size", 18)
+	_header_label.text = "房间大厅"
+	_header_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_header_label.add_theme_font_size_override("font_size", 28)
 	_header_label.add_theme_color_override("font_color", UITheme.color("accent"))
 	_room_box.add_child(_header_label)
+	_room_status_label = Label.new()
+	_room_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_room_status_label.add_theme_font_size_override("font_size", 13)
+	_room_status_label.add_theme_color_override("font_color", UITheme.color("text_secondary"))
+	_room_box.add_child(_room_status_label)
 
-	_slots_box = VBoxContainer.new()
-	_slots_box.add_theme_constant_override("separation", 6)
+	# 房间码 / 邀请地址
+	var invite_panel := PanelContainer.new()
+	invite_panel.name = "InvitePanel"
+	invite_panel.add_theme_stylebox_override("panel", _card_style())
+	_room_box.add_child(invite_panel)
+	var invite_vb := VBoxContainer.new()
+	invite_vb.add_theme_constant_override("separation", 6)
+	invite_panel.add_child(invite_vb)
+	var invite_lbl := Label.new()
+	invite_lbl.text = "房间码 / 邀请地址"
+	invite_lbl.add_theme_font_size_override("font_size", 13)
+	invite_lbl.add_theme_color_override("font_color", UITheme.color("text_secondary"))
+	invite_vb.add_child(invite_lbl)
+	var share_row := HBoxContainer.new()
+	share_row.add_theme_constant_override("separation", 10)
+	invite_vb.add_child(share_row)
+	_share_field = LineEdit.new()
+	_share_field.editable = false
+	_share_field.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_share_field.custom_minimum_size = Vector2(0, 48)
+	_share_field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_share_field.add_theme_font_size_override("font_size", 26)
+	_share_field.add_theme_color_override("font_color", UITheme.color("text_primary"))
+	share_row.add_child(_share_field)
+	var copy_btn: Button = main._button("复制")
+	copy_btn.custom_minimum_size = Vector2(96, 48)
+	copy_btn.pressed.connect(_on_copy_share)
+	_apply_secondary_style(copy_btn)
+	share_row.add_child(copy_btn)
+	_share_hint = Label.new()
+	_share_hint.text = "复制房间码发给朋友；无房间码时复制局域网直连地址。"
+	_share_hint.add_theme_font_size_override("font_size", 11)
+	_share_hint.add_theme_color_override("font_color", UITheme.color("text_muted"))
+	invite_vb.add_child(_share_hint)
+
+	# 固定 4 席位
+	var seats_head := HBoxContainer.new()
+	seats_head.add_theme_constant_override("separation", 8)
+	_room_box.add_child(seats_head)
+	var seats_lbl := Label.new()
+	seats_lbl.text = "房间玩家"
+	seats_lbl.add_theme_font_size_override("font_size", 15)
+	seats_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	seats_head.add_child(seats_lbl)
+	_player_count_label = Label.new()
+	_player_count_label.add_theme_font_size_override("font_size", 13)
+	_player_count_label.add_theme_color_override("font_color", UITheme.color("text_secondary"))
+	seats_head.add_child(_player_count_label)
+	_slots_box = GridContainer.new()
+	_slots_box.name = "SeatGrid"
+	_slots_box.columns = 2
+	_slots_box.add_theme_constant_override("h_separation", 10)
+	_slots_box.add_theme_constant_override("v_separation", 10)
+	_slots_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_room_box.add_child(_slots_box)
 
-	# 局数设置（房主可编辑，客人只读可见）
-	var limits := HBoxContainer.new()
-	limits.add_theme_constant_override("separation", 8)
-	_room_box.add_child(limits)
-	var limits_lbl := Label.new()
-	limits_lbl.text = "系列赛局数："
-	limits.add_child(limits_lbl)
-	_match_limit_spin = SpinBox.new()
-	_match_limit_spin.min_value = KongRules.MIN_MATCH_LIMIT
-	_match_limit_spin.max_value = KongRules.MAX_MATCH_LIMIT
-	_match_limit_spin.step = 1
-	_match_limit_spin.value = KongRules.DEFAULT_MATCH_LIMIT
-	_match_limit_spin.custom_minimum_size = Vector2(100, 0)
-	limits.add_child(_match_limit_spin)
+	# 系列赛局数（房主 ±，其他只读）
+	var series_panel := PanelContainer.new()
+	series_panel.name = "SeriesPanel"
+	series_panel.add_theme_stylebox_override("panel", _card_style())
+	_room_box.add_child(series_panel)
+	var series_row := HBoxContainer.new()
+	series_row.add_theme_constant_override("separation", 10)
+	series_panel.add_child(series_row)
+	var series_lbl := Label.new()
+	series_lbl.text = "系列赛局数"
+	series_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	series_lbl.add_theme_font_size_override("font_size", 15)
+	series_row.add_child(series_lbl)
+	_match_minus = main._button("−")
+	_match_minus.custom_minimum_size = Vector2(40, 40)
+	_match_minus.pressed.connect(_change_match_limit.bind(-1))
+	_apply_secondary_style(_match_minus)
+	series_row.add_child(_match_minus)
+	_match_value = Label.new()
+	_match_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_match_value.custom_minimum_size = Vector2(56, 0)
+	_match_value.add_theme_font_size_override("font_size", 22)
+	_match_value.add_theme_color_override("font_color", UITheme.color("accent"))
+	series_row.add_child(_match_value)
+	_match_plus = main._button("+")
+	_match_plus.custom_minimum_size = Vector2(40, 40)
+	_match_plus.pressed.connect(_change_match_limit.bind(1))
+	_apply_secondary_style(_match_plus)
+	series_row.add_child(_match_plus)
 
-	var controls := HBoxContainer.new()
-	controls.add_theme_constant_override("separation", 10)
-	_room_box.add_child(controls)
-
+	# 主操作：开始对局 / 非房主准备
 	_ready_button = main._button("准备")
+	_ready_button.custom_minimum_size = Vector2(0, 50)
+	_ready_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_ready_button.add_theme_font_size_override("font_size", 18)
 	_ready_button.pressed.connect(_on_ready_pressed)
-	controls.add_child(_ready_button)
-
+	_apply_secondary_style(_ready_button)
+	_room_box.add_child(_ready_button)
 	_start_button = main._button("开始对局")
+	_start_button.custom_minimum_size = Vector2(0, 56)
+	_start_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_start_button.add_theme_font_size_override("font_size", 19)
 	_start_button.pressed.connect(_on_start_pressed)
-	controls.add_child(_start_button)
+	_apply_primary_style(_start_button)
+	_room_box.add_child(_start_button)
 
-	_disband_button = main._button("解散房间")
-	_disband_button.add_theme_color_override("font_color", UITheme.color("danger"))
-	_disband_button.pressed.connect(GameState.request_close_room)
-	controls.add_child(_disband_button)
-
+	# 次级操作：邀请 / 解散或离开
+	var secondary := HBoxContainer.new()
+	secondary.add_theme_constant_override("separation", 10)
+	_room_box.add_child(secondary)
 	_invite_button = main._button("邀请好友")
+	_invite_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_invite_button.custom_minimum_size = Vector2(0, 42)
 	_invite_button.pressed.connect(main._on_invite_friends)
-	controls.add_child(_invite_button)
-
-	_leave_button = main._button("退出房间")
+	_apply_secondary_style(_invite_button)
+	secondary.add_child(_invite_button)
+	_disband_button = main._button("解散房间")
+	_disband_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_disband_button.custom_minimum_size = Vector2(0, 42)
+	_disband_button.add_theme_color_override("font_color", UITheme.color("danger"))
+	_disband_button.pressed.connect(_open_disband_dialog)
+	_apply_danger_style(_disband_button)
+	secondary.add_child(_disband_button)
+	_leave_button = main._button("离开房间")
+	_leave_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_leave_button.custom_minimum_size = Vector2(0, 42)
 	_leave_button.pressed.connect(_leave_room)
-	controls.add_child(_leave_button)
+	_apply_secondary_style(_leave_button)
+	secondary.add_child(_leave_button)
+
+	_ensure_disband_dialog()
+
+func _build_room_wide() -> void:
+	_room_box = VBoxContainer.new()
+	_room_box.name = "RoomWide"
+	_room_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_room_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_room_box.add_theme_constant_override("separation", 10)
+	main.lobby_panel.add_child(_room_box)
+
+	# 顶栏：标题 / 房间码 / 状态
+	var top := HBoxContainer.new()
+	top.add_theme_constant_override("separation", 12)
+	top.custom_minimum_size = Vector2(0, 40)
+	_room_box.add_child(top)
+	_header_label = Label.new()
+	_header_label.text = "KONG · LAN MVP"
+	_header_label.add_theme_font_size_override("font_size", 22)
+	_header_label.add_theme_color_override("font_color", UITheme.color("accent"))
+	_header_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(_header_label)
+	_header_room_code = Label.new()
+	_header_room_code.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_header_room_code.add_theme_font_size_override("font_size", 15)
+	_header_room_code.add_theme_color_override("font_color", UITheme.color("text_secondary"))
+	_header_room_code.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(_header_room_code)
+	_room_status_label = Label.new()
+	_room_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_room_status_label.add_theme_font_size_override("font_size", 12)
+	_room_status_label.add_theme_color_override("font_color", UITheme.color("text_secondary"))
+	_room_status_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(_room_status_label)
+
+	var body := HBoxContainer.new()
+	body.add_theme_constant_override("separation", 12)
+	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_room_box.add_child(body)
+
+	# 左列：固定 4 席位纵向列表
+	var left := PanelContainer.new()
+	left.name = "PlayersColumn"
+	left.add_theme_stylebox_override("panel", _card_style())
+	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	left.size_flags_stretch_ratio = 28.0
+	left.custom_minimum_size = Vector2(230, 0)
+	body.add_child(left)
+	var lv := VBoxContainer.new()
+	lv.add_theme_constant_override("separation", 8)
+	left.add_child(lv)
+	var ltitle := Label.new()
+	ltitle.text = "PLAYERS · 房间玩家"
+	ltitle.add_theme_font_size_override("font_size", 13)
+	ltitle.add_theme_color_override("font_color", UITheme.color("text_secondary"))
+	lv.add_child(ltitle)
+	_player_count_label = Label.new()
+	_player_count_label.add_theme_font_size_override("font_size", 12)
+	_player_count_label.add_theme_color_override("font_color", UITheme.color("text_muted"))
+	lv.add_child(_player_count_label)
+	_slots_box = VBoxContainer.new()
+	_slots_box.name = "SeatList"
+	_slots_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_slots_box.add_theme_constant_override("separation", 6)
+	lv.add_child(_slots_box)
+
+	# 中列：视觉主舞台 + 房间码
+	var center := PanelContainer.new()
+	center.name = "CenterStage"
+	var center_style := _card_style()
+	center_style.bg_color = UITheme.color("bg_surface")
+	center.add_theme_stylebox_override("panel", center_style)
+	center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	center.size_flags_stretch_ratio = 44.0
+	center.custom_minimum_size = Vector2(340, 0)
+	body.add_child(center)
+	var cv := VBoxContainer.new()
+	cv.add_theme_constant_override("separation", 6)
+	center.add_child(cv)
+	var big_title := Label.new()
+	big_title.text = "KONG"
+	big_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	big_title.add_theme_font_size_override("font_size", 52)
+	big_title.add_theme_color_override("font_color", UITheme.color("accent"))
+	cv.add_child(big_title)
+	var sub := Label.new()
+	sub.text = "LAN MVP · ROOM LOBBY"
+	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sub.add_theme_font_size_override("font_size", 12)
+	sub.add_theme_color_override("font_color", UITheme.color("text_muted"))
+	cv.add_child(sub)
+	_center_art = Control.new()
+	_center_art.name = "CenterArt"
+	_center_art.custom_minimum_size = Vector2(0, 160)
+	_center_art.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_center_art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_center_art.resized.connect(_layout_center_art)
+	cv.add_child(_center_art)
+	_center_cards.clear()
+	var back_tex: Texture2D = load("res://assets/Cards/back07.png")
+	for i in 3:
+		var tr := TextureRect.new()
+		tr.texture = back_tex
+		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		tr.size = Vector2(96, 134)
+		tr.pivot_offset = tr.size * 0.5
+		tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_center_art.add_child(tr)
+		_center_cards.append(tr)
+	_share_field = LineEdit.new()
+	_share_field.editable = false
+	_share_field.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_share_field.custom_minimum_size = Vector2(0, 52)
+	_share_field.add_theme_font_size_override("font_size", 28)
+	_share_field.add_theme_color_override("font_color", UITheme.color("text_primary"))
+	cv.add_child(_share_field)
+	var copy_row := HBoxContainer.new()
+	copy_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	cv.add_child(copy_row)
+	var copy_btn: Button = main._button("复制邀请")
+	copy_btn.custom_minimum_size = Vector2(160, 44)
+	copy_btn.pressed.connect(_on_copy_share)
+	_apply_secondary_style(copy_btn)
+	copy_row.add_child(copy_btn)
+	_share_hint = Label.new()
+	_share_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_share_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_share_hint.add_theme_font_size_override("font_size", 11)
+	_share_hint.add_theme_color_override("font_color", UITheme.color("text_muted"))
+	cv.add_child(_share_hint)
+
+	# 右列：局数 / 主操作 / 次级操作
+	var right := PanelContainer.new()
+	right.name = "SettingsColumn"
+	right.add_theme_stylebox_override("panel", _card_style())
+	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	right.size_flags_stretch_ratio = 28.0
+	right.custom_minimum_size = Vector2(240, 0)
+	body.add_child(right)
+	var rv := VBoxContainer.new()
+	rv.add_theme_constant_override("separation", 10)
+	right.add_child(rv)
+	var stitle := Label.new()
+	stitle.text = "MATCH SETTINGS · 对局设置"
+	stitle.add_theme_font_size_override("font_size", 13)
+	stitle.add_theme_color_override("font_color", UITheme.color("text_secondary"))
+	rv.add_child(stitle)
+	var series_row := HBoxContainer.new()
+	series_row.add_theme_constant_override("separation", 8)
+	rv.add_child(series_row)
+	var series_lbl := Label.new()
+	series_lbl.text = "系列赛局数"
+	series_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	series_lbl.add_theme_font_size_override("font_size", 14)
+	series_row.add_child(series_lbl)
+	_match_minus = main._button("−")
+	_match_minus.custom_minimum_size = Vector2(36, 36)
+	_match_minus.pressed.connect(_change_match_limit.bind(-1))
+	_apply_secondary_style(_match_minus)
+	series_row.add_child(_match_minus)
+	_match_value = Label.new()
+	_match_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_match_value.custom_minimum_size = Vector2(44, 0)
+	_match_value.add_theme_font_size_override("font_size", 20)
+	_match_value.add_theme_color_override("font_color", UITheme.color("accent"))
+	series_row.add_child(_match_value)
+	_match_plus = main._button("+")
+	_match_plus.custom_minimum_size = Vector2(36, 36)
+	_match_plus.pressed.connect(_change_match_limit.bind(1))
+	_apply_secondary_style(_match_plus)
+	series_row.add_child(_match_plus)
+	_ready_button = main._button("准备")
+	_ready_button.custom_minimum_size = Vector2(0, 50)
+	_ready_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_ready_button.pressed.connect(_on_ready_pressed)
+	_apply_secondary_style(_ready_button)
+	rv.add_child(_ready_button)
+	_start_button = main._button("开始对局")
+	_start_button.custom_minimum_size = Vector2(0, 56)
+	_start_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_start_button.add_theme_font_size_override("font_size", 19)
+	_start_button.pressed.connect(_on_start_pressed)
+	_apply_primary_style(_start_button)
+	rv.add_child(_start_button)
+	var gap := Control.new()
+	gap.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	rv.add_child(gap)
+	_invite_button = main._button("邀请好友")
+	_invite_button.custom_minimum_size = Vector2(0, 42)
+	_invite_button.pressed.connect(main._on_invite_friends)
+	_apply_secondary_style(_invite_button)
+	rv.add_child(_invite_button)
+	_disband_button = main._button("解散房间")
+	_disband_button.custom_minimum_size = Vector2(0, 42)
+	_disband_button.add_theme_color_override("font_color", UITheme.color("danger"))
+	_disband_button.pressed.connect(_open_disband_dialog)
+	_apply_danger_style(_disband_button)
+	rv.add_child(_disband_button)
+	_leave_button = main._button("离开房间")
+	_leave_button.custom_minimum_size = Vector2(0, 42)
+	_leave_button.pressed.connect(_leave_room)
+	_apply_secondary_style(_leave_button)
+	rv.add_child(_leave_button)
+	_ensure_disband_dialog()
+
+func _layout_center_art() -> void:
+	if _center_art == null or _center_cards.is_empty():
+		return
+	var c := _center_art.size
+	var cx := c.x * 0.5
+	var cy := c.y * 0.52
+	for i in _center_cards.size():
+		var card: TextureRect = _center_cards[i]
+		var off := (float(i) - 1.0) * 44.0
+		card.size = Vector2(96, 134)
+		card.pivot_offset = card.size * 0.5
+		card.position = Vector2(cx + off - 48.0, cy - 67.0 + absf(off) * 0.12)
+		card.rotation_degrees = (float(i) - 1.0) * 9.0
+
+func _ensure_disband_dialog() -> void:
+	if _disband_dialog != null and is_instance_valid(_disband_dialog):
+		return
+	_disband_dialog = ConfirmationDialog.new()
+	_disband_dialog.title = "解散房间"
+	_disband_dialog.dialog_text = "确定解散整个房间？所有玩家都会回到主菜单。"
+	_disband_dialog.get_ok_button().text = "解散"
+	_disband_dialog.add_cancel_button("取消")
+	_disband_dialog.confirmed.connect(GameState.request_close_room)
+	main.add_child(_disband_dialog)
+
+func _apply_secondary_style(btn: Button) -> void:
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = UITheme.color("bg_elevated")
+	normal.bg_color.a = 0.92
+	normal.set_corner_radius_all(8)
+	normal.set_content_margin_all(8)
+	normal.border_color = UITheme.color("border")
+	normal.set_border_width_all(1)
+	btn.add_theme_stylebox_override("normal", normal)
+	var hover: StyleBoxFlat = normal.duplicate()
+	hover.bg_color = UITheme.color("bg_surface_alt")
+	btn.add_theme_stylebox_override("hover", hover)
+	var pressed: StyleBoxFlat = normal.duplicate()
+	pressed.bg_color = UITheme.color("bg_hover")
+	btn.add_theme_stylebox_override("pressed", pressed)
+	btn.add_theme_color_override("font_color", UITheme.color("text_primary"))
+
+func _apply_danger_style(btn: Button) -> void:
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = UITheme.color("danger")
+	normal.bg_color.a = 0.88
+	normal.set_corner_radius_all(8)
+	normal.set_content_margin_all(8)
+	normal.border_color = UITheme.color("danger")
+	normal.set_border_width_all(1)
+	btn.add_theme_stylebox_override("normal", normal)
+	var hover: StyleBoxFlat = normal.duplicate()
+	hover.bg_color = UITheme.color("danger").lightened(0.12)
+	btn.add_theme_stylebox_override("hover", hover)
+	var pressed: StyleBoxFlat = normal.duplicate()
+	pressed.bg_color = UITheme.color("danger").darkened(0.12)
+	btn.add_theme_stylebox_override("pressed", pressed)
+	btn.add_theme_color_override("font_color", Color.WHITE)
+
+func _apply_primary_style(btn: Button) -> void:
+	var acc := UITheme.color("accent")
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = acc
+	normal.set_corner_radius_all(10)
+	normal.set_content_margin_all(10)
+	normal.border_color = UITheme.color("accent_hover")
+	normal.set_border_width_all(1)
+	btn.add_theme_stylebox_override("normal", normal)
+	var hover: StyleBoxFlat = normal.duplicate()
+	hover.bg_color = UITheme.color("accent_hover")
+	btn.add_theme_stylebox_override("hover", hover)
+	var pressed: StyleBoxFlat = normal.duplicate()
+	pressed.bg_color = UITheme.color("accent_pressed")
+	btn.add_theme_stylebox_override("pressed", pressed)
+	btn.add_theme_color_override("font_color", UITheme.color("text_on_accent"))
+
+func _change_match_limit(delta: int) -> void:
+	if main.latest_lobby.is_empty():
+		return
+	var your_id := int(main.latest_lobby.get("your_id", -1))
+	if your_id != int(main.latest_lobby.get("room_host", 0)):
+		return
+	var v := clampi(_match_limit_value + delta, KongRules.MIN_MATCH_LIMIT, KongRules.MAX_MATCH_LIMIT)
+	if v == _match_limit_value:
+		return
+	_match_limit_value = v
+	_match_value.text = str(v)
+	GameState.request_set_match_limit(v, main._next_action_id())
+
+func _open_disband_dialog() -> void:
+	if _disband_dialog != null:
+		_disband_dialog.popup_centered(Vector2(420, 0))
+
+## 主题切换后重建大厅（保留昵称/房间码/地址输入与当前房间快照）。
+func apply_theme() -> void:
+	if main.latest_state not in [null, {}] and int((main.latest_state as Dictionary).get("phase", GameState.Phase.LOBBY)) != GameState.Phase.LOBBY:
+		return
+	_rebuild_all()
+
+func _rebuild_all() -> void:
+	var name_text: String = main.name_input.text if main.name_input != null else "玩家"
+	var code_text: String = main.room_code_input.text if main.room_code_input != null else ""
+	var addr_text: String = main.address_input.text if main.address_input != null else "127.0.0.1"
+	var port_text: String = main.port_input.text if main.port_input != null else str(KongNetwork.DEFAULT_PORT)
+	if _menu_box != null and is_instance_valid(_menu_box):
+		main.lobby_panel.remove_child(_menu_box)
+		_menu_box.queue_free()
+	if _room_box != null and is_instance_valid(_room_box):
+		main.lobby_panel.remove_child(_room_box)
+		_room_box.queue_free()
+	if _nickname_dialog != null and is_instance_valid(_nickname_dialog):
+		main.remove_child(_nickname_dialog)
+		_nickname_dialog.queue_free()
+	if _disband_dialog != null and is_instance_valid(_disband_dialog):
+		main.remove_child(_disband_dialog)
+		_disband_dialog.queue_free()
+	_menu_box = null
+	_room_box = null
+	_slots_box = null
+	_nickname_dialog = null
+	_disband_dialog = null
+	_apply_frame_style()
+	_build_menu()
+	_build_room()
+	main.name_input.text = name_text
+	main.room_code_input.text = code_text
+	main.address_input.text = addr_text
+	main.port_input.text = port_text
+	refresh_player_info()
+	if not main.latest_lobby.is_empty():
+		update_lobby(main.latest_lobby)
+	else:
+		_show_menu()
+
+func _set_lobby_bg_visible(on: bool) -> void:
+	if main.lobby_bg != null:
+		main.lobby_bg.visible = on
+	if main.lobby_bg_dim != null:
+		main.lobby_bg_dim.visible = on
 
 func _show_menu() -> void:
+	_set_lobby_bg_visible(true)
 	if _menu_box != null:
 		_menu_box.visible = true
 	if _room_box != null:
 		_room_box.visible = false
+	_update_panel_size()
 
 func _show_room() -> void:
+	_set_lobby_bg_visible(true)
 	if _menu_box != null:
 		_menu_box.visible = false
+	if layout_mode_override == "" and str(Settings.get_setting("display", "lobby_layout", "auto")) == "auto" \
+			and _use_wide_layout() != _wide_active:
+		_wide_active = _use_wide_layout()
+		if _room_box != null and is_instance_valid(_room_box):
+			main.lobby_panel.remove_child(_room_box)
+			_room_box.queue_free()
+		_room_box = null
+		_slots_box = null
+		_build_room()
 	if _room_box != null:
 		_room_box.visible = true
+	_update_panel_size()
+
+func _update_seat_columns() -> void:
+	if _slots_box == null or _panel == null or not (_slots_box is GridContainer):
+		return
+	var width: float = maxf(_panel.size.x, _panel.custom_minimum_size.x)
+	(_slots_box as GridContainer).columns = 2 if width >= 560.0 else 1
 
 func host_game() -> void:
 	Network.host_game({"name": main._entered_name()}, main._entered_port())
@@ -247,6 +1210,7 @@ func apply_dev_join() -> void:
 	var address: String = parts[0] if parts.size() == 2 else "127.0.0.1"
 	var port: int = int(parts[1]) if parts.size() == 2 else KongNetwork.DEFAULT_PORT
 	main.name_input.text = "开发者2"
+	refresh_player_info()
 	main.address_input.text = address
 	main.port_input.text = str(port)
 	Network.join_game(address, {"name": "开发者2"}, port)
@@ -260,31 +1224,43 @@ func reset_lobby() -> void:
 	_show_menu()
 	main._view_defaulted_3d = false  # 回到大厅 → 下一局重新默认 3D
 	main.lobby_panel.visible = true
+	if main.lobby_root != null:
+		main.lobby_root.visible = true
 	main.game_panel.visible = false
 
 ## 刷新房间界面（服务器逐 peer 下发的 lobby 快照）。
 func update_lobby(lobby: Dictionary) -> void:
 	main.latest_lobby = lobby
 	main.lobby_panel.visible = true
+	if main.lobby_root != null:
+		main.lobby_root.visible = true
 	main.game_panel.visible = false
+	_set_lobby_bg_visible(true)
 	_show_room()
 
 	var your_id: int = int(lobby.get("your_id", -1))
 	var is_host: bool = your_id == int(lobby.get("room_host", 0))
 	var entries: Array = lobby.get("players", [])
-	_header_label.text = "房间玩家（%d/%d）" % [entries.size(), int(lobby.get("max_players", KongRules.MAX_PLAYERS))]
+	var maxp := int(lobby.get("max_players", KongRules.MAX_PLAYERS))
+	_header_label.text = "KONG · LAN MVP" if _wide_active else "房间大厅"
+	if _header_room_code != null:
+		_header_room_code.text = "Room: %s" % _share_text()
+	_player_count_label.text = "%d / %d" % [entries.size(), maxp]
+	_room_status_label.text = "等待玩家加入" if entries.size() < int(lobby.get("min_players", KongRules.MIN_PLAYERS)) \
+		else ("全员已准备，等待房主开始" if _all_ready(lobby) else "等待玩家准备")
 
-	_rebuild_slots(lobby, is_host)
+	_rebuild_slots(lobby, is_host, your_id)
 
-	# 房间地址
 	_share_field.text = _share_text()
+	_share_hint.text = ("房间码用于加入；复制按钮会复制当前邀请值。" if not str(main.room_code).is_empty() \
+		else "当前未拿到房间码，复制按钮会复制局域网直连地址。")
 
-	# 局数：显示权威值；房主可编辑
 	var limit := int(lobby.get("match_limit", KongRules.DEFAULT_MATCH_LIMIT))
-	_match_limit_spin.set_value_no_signal(limit)
-	_match_limit_spin.editable = is_host
+	_match_limit_value = clampi(limit, KongRules.MIN_MATCH_LIMIT, KongRules.MAX_MATCH_LIMIT)
+	_match_value.text = str(_match_limit_value)
+	_match_minus.disabled = not is_host or _match_limit_value <= KongRules.MIN_MATCH_LIMIT
+	_match_plus.disabled = not is_host or _match_limit_value >= KongRules.MAX_MATCH_LIMIT
 
-	# 控制按钮
 	var my_ready := false
 	for e in entries:
 		if int(e.get("id", -1)) == your_id:
@@ -294,16 +1270,14 @@ func update_lobby(lobby: Dictionary) -> void:
 	_ready_button.disabled = false
 
 	_start_button.visible = is_host
+	_start_button.disabled = not (entries.size() >= int(lobby.get("min_players", KongRules.MIN_PLAYERS)) and _all_ready(lobby))
+	_invite_button.visible = true
 	_disband_button.visible = is_host
-	_invite_button.visible = is_host
 	_leave_button.visible = not is_host
 
-	if is_host:
-		var ok := entries.size() >= int(lobby.get("min_players", KongRules.MIN_PLAYERS)) and _all_ready(lobby)
-		_start_button.disabled = not ok
-
-func _rebuild_slots(lobby: Dictionary, is_host: bool) -> void:
+func _rebuild_slots(lobby: Dictionary, is_host: bool, your_id: int) -> void:
 	for c in _slots_box.get_children():
+		_slots_box.remove_child(c)
 		c.queue_free()
 	var maxp := int(lobby.get("max_players", KongRules.MAX_PLAYERS))
 	var host := int(lobby.get("room_host", 0))
@@ -311,25 +1285,17 @@ func _rebuild_slots(lobby: Dictionary, is_host: bool) -> void:
 	for e in lobby.get("players", []):
 		taken[int(e.get("id", -1))] = e
 	for seat in range(maxp):
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 10)
-		var lbl := Label.new()
-		if taken.has(seat):
-			var e: Dictionary = taken[seat]
-			lbl.text = "%d. %s %s %s" % [
-				seat + 1,
-				str(e.get("name", "")),
-				"[房主]" if seat == host else "",
-				"✔ 已准备" if bool(e.get("ready", false)) else "… 未准备",
-			]
+		var card := LobbySeatCard.new()
+		card.name = "SeatCard%d" % seat
+		var player: Dictionary = taken.get(seat, {})
+		var can_kick := is_host and taken.has(seat) and seat != your_id
+		if _wide_active:
+			card.setup_row(seat, player, seat == host, seat == your_id, can_kick)
 		else:
-			lbl.text = "%d. 等待加入…" % [seat + 1]
-		row.add_child(lbl)
-		if is_host and taken.has(seat) and seat != host:
-			var kick: Button = main._button("踢出")
-			kick.pressed.connect(GameState.request_kick.bind(seat))
-			row.add_child(kick)
-		_slots_box.add_child(row)
+			card.setup(seat, player, seat == host, seat == your_id, can_kick)
+		card.kick_requested.connect(func(s: int): GameState.request_kick(s))
+		_slots_box.add_child(card)
+	_update_seat_columns()
 
 ## 非房主是否全部已准备（房主无需准备）。
 func _all_ready(lobby: Dictionary) -> bool:
@@ -366,7 +1332,7 @@ func _guess_lan_ip() -> String:
 func _on_copy_share() -> void:
 	var text := _share_field.text
 	DisplayServer.clipboard_set(text)
-	main._show_toast("已复制房间地址：%s" % text)
+	main._show_toast("已复制邀请信息：%s" % text)
 
 func _on_ready_pressed() -> void:
 	var my_ready := false
@@ -377,7 +1343,7 @@ func _on_ready_pressed() -> void:
 	GameState.request_set_ready(not my_ready)
 
 func _on_start_pressed() -> void:
-	GameState.request_start_match(int(_match_limit_spin.value))
+	GameState.request_start_match(int(_match_limit_value))
 
 ## 客户端主动退出房间：断开连接，回到初始大厅界面。
 ## 保留 token 与地址，便于之后重新"加入房间"时凭 token 重连回原座位（若房主对局仍在进行）。

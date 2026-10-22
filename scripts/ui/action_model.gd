@@ -43,8 +43,12 @@ static func conditional_actions(state: Dictionary, ctx: Dictionary = {}) -> Arra
 				and str(pending.get("rank", "")) == "JOKER" and str(pending.get("suit", "")) == "red":
 			out.append({"action": SIX_SWAP_POWER, "text": "使用能力：顺时针传递", "enabled": true})
 		if str(pending.get("rank", "")) == "JOKER":
-			var run: Dictionary = state.get("run", {})
-			if (run.get("relics", {}) as Dictionary).has(Relics.JOKER_TRANSFORM_ID):
+			var relics: Array = []
+			for p in state.get("players", []):
+				if int(p.get("id", -1)) == viewer:
+					relics = p.get("relics", [])
+					break
+			if Relics.JOKER_TRANSFORM_ID in relics:
 				out.append({"action": JOKER, "text": "变换 Joker", "enabled": true})
 		# J 交换：两张都已选才能「交换」（与 Q 的确认按钮一致，仅多了"选两张牌"步骤）
 		if JACK_MODES.has(str(ctx.get("action_mode", ""))):

@@ -17,9 +17,13 @@ var _data := {
 	"display": {
 		"theme": "dark",
 		"language": "zh",
+		"lobby_layout": "auto",   # auto / wide / compact
 	},
 	"gameplay": {
 		"nose_click": false,   # 彩蛋：Robot 鼻子点击（3D 悬停卡牌中键/D 伸鼻）
+	},
+	"profile": {
+		"nickname": "玩家",    # 大厅显示昵称（本地持久化；网络身份仍由 seat/token 决定）
 	},
 	"network": {
 		# 中心房间目录服务地址（P2）：默认指向已部署的 VPS，朋友开箱即用；可在设置里改。

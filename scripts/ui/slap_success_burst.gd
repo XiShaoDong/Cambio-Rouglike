@@ -18,8 +18,10 @@ const FADE_DUR := 0.35
 var _cards := CardFactory.new()
 
 ## 构建并播放。card 为展示的牌（含 rank/suit/label），player_name 为玩家名。
-## title_text 可复用为「贴牌成功」/「炸弹爆炸」/「6 效果触发」。
-func setup(card: Dictionary, player_name: String, title_text := TITLE_TEXT) -> void:
+## title_text 可复用为「贴牌成功」/「炸弹爆炸」/「6 效果触发」/道具卡名。
+## description 非空时在爆炸层下方显示小字说明框；card_control 可替换中间卡面（道具卡）。
+func setup(card: Dictionary, player_name: String, title_text := TITLE_TEXT,
+		description := "", card_control: Control = null) -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	# 横向：屏幕四等份，容器中线落在 3/4；纵向：垂直居中
 	anchor_left = CENTER_X_RATIO
@@ -68,11 +70,34 @@ func setup(card: Dictionary, player_name: String, title_text := TITLE_TEXT) -> v
 	var center := CenterContainer.new()
 	center.name = "CardCenter"
 	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var cv: Control = _cards.make_card(card, CARD_SIZE)
+	var cv: Control = card_control
+	if cv == null:
+		cv = _cards.make_card(card, CARD_SIZE)
 	cv.name = "Card"
 	cv.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	center.add_child(cv)
 	vb.add_child(center)
+	if not description.is_empty():
+		var desc_box := PanelContainer.new()
+		desc_box.name = "DescriptionBox"
+		desc_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		desc_box.position = Vector2(0, SIZE.y + 8.0)
+		desc_box.size = Vector2(SIZE.x, 64)
+		var ds := StyleBoxFlat.new()
+		ds.bg_color = Color(0.06, 0.07, 0.10, 0.92)
+		ds.set_corner_radius_all(10)
+		ds.set_content_margin_all(10)
+		ds.border_color = Color(1, 1, 1, 0.2)
+		ds.set_border_width_all(1)
+		desc_box.add_theme_stylebox_override("panel", ds)
+		var dl := Label.new()
+		dl.name = "Text"
+		dl.text = description
+		dl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		dl.add_theme_font_size_override("font_size", 14)
+		dl.add_theme_color_override("font_color", Color(0.92, 0.94, 1.0))
+		desc_box.add_child(dl)
+		add_child(desc_box)
 
 	# 弹出放大（回弹）→ 停留 → 淡出 → 自动释放
 	scale = Vector2(0.6, 0.6)
@@ -85,4 +110,8 @@ func setup(card: Dictionary, player_name: String, title_text := TITLE_TEXT) -> v
 ## 测试访问器。
 func title_text() -> String:
 	var l := get_node_or_null("VBox/Title")
+	return (l as Label).text if l != null else ""
+
+func description_text() -> String:
+	var l := get_node_or_null("DescriptionBox/Text")
 	return (l as Label).text if l != null else ""
