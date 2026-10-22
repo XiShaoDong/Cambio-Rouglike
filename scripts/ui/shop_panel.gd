@@ -21,6 +21,8 @@ var _on_lock: Callable = Callable()
 var _on_card_buy: Callable = Callable()
 var _on_card_refresh: Callable = Callable()
 var _on_card_lock: Callable = Callable()
+var _relic_refresh_btn: Button = null
+var _card_refresh_btn: Button = null
 
 func setup(state: Dictionary, on_buy: Callable, on_skip: Callable,
 		on_refresh: Callable, on_lock: Callable,
@@ -79,6 +81,14 @@ func _fill_cards() -> void:
 	for slot in CARD_SLOT_COUNT:
 		var offer: Dictionary = offers[slot] if slot < offers.size() else {}
 		row.add_child(_make_card_slot(slot, offer))
+	# 卡牌刷新按钮：与卡牌同一行末尾（更大更直观）
+	_card_refresh_btn = _make_button("⟳  刷新卡牌", bool(_shop().get("card_can_refresh", false)), true)
+	_card_refresh_btn.name = "CardRefresh"
+	_card_refresh_btn.custom_minimum_size = Vector2(190, 44)
+	_card_refresh_btn.add_theme_font_size_override("font_size", 15)
+	_card_refresh_btn.pressed.connect(_card_refresh)
+	row.add_child(_card_refresh_btn)
+	_refresh_bottom()
 
 func _fill_relics() -> void:
 	var row: HBoxContainer = get_node("Center/Panel/VBox/RelicsRow")
@@ -86,6 +96,14 @@ func _fill_relics() -> void:
 	for slot in SLOT_COUNT:
 		var offer: Dictionary = offers[slot] if slot < offers.size() else {}
 		row.add_child(_make_relic_slot(slot, offer))
+	# 遗物刷新按钮：与遗物同一行末尾
+	_relic_refresh_btn = _make_button("⟳  刷新遗物", bool(_shop().get("can_refresh", false)), true)
+	_relic_refresh_btn.name = "Refresh"
+	_relic_refresh_btn.custom_minimum_size = Vector2(190, 44)
+	_relic_refresh_btn.add_theme_font_size_override("font_size", 15)
+	_relic_refresh_btn.pressed.connect(_refresh)
+	row.add_child(_relic_refresh_btn)
+	_refresh_bottom()
 
 func _make_card_slot(slot: int, offer: Dictionary) -> Control:
 	var box := VBoxContainer.new()
@@ -279,16 +297,16 @@ func _refresh_bottom() -> void:
 	var cur_lbl: Label = get_node("Center/Panel/VBox/Bottom/Currency")
 	cur_lbl.text = "$ %d" % _currency
 	var shop := _shop()
-	var reload: Button = get_node("Center/Panel/VBox/Bottom/Refresh")
-	reload.text = "刷新遗物 $%d" % int(shop.get("refresh_cost", Relics.SHOP_REFRESH_COST))
-	reload.disabled = not bool(shop.get("can_refresh", false))
-	reload.tooltip_text = _refresh_tip("遗物", bool(shop.get("can_refresh", false)), _relic_count, 3)
-	var card_reload: Button = get_node("Center/Panel/VBox/Bottom/CardRefresh")
-	card_reload.text = "刷新卡牌 $%d" % int(shop.get("card_refresh_cost", ItemCards.REFRESH_COST))
-	card_reload.disabled = not bool(shop.get("card_can_refresh", false))
-	card_reload.tooltip_text = _refresh_tip("道具卡", bool(shop.get("card_can_refresh", false)), _card_count, ItemCards.SLOT_LIMIT)
+	if _relic_refresh_btn != null and is_instance_valid(_relic_refresh_btn):
+		_relic_refresh_btn.text = "⟳  刷新遗物 $%d" % int(shop.get("refresh_cost", Relics.SHOP_REFRESH_COST))
+		_relic_refresh_btn.disabled = not bool(shop.get("can_refresh", false))
+		_relic_refresh_btn.tooltip_text = _refresh_tip("遗物", bool(shop.get("can_refresh", false)), _relic_count, 3)
+	if _card_refresh_btn != null and is_instance_valid(_card_refresh_btn):
+		_card_refresh_btn.text = "⟳  刷新卡牌 $%d" % int(shop.get("card_refresh_cost", ItemCards.REFRESH_COST))
+		_card_refresh_btn.disabled = not bool(shop.get("card_can_refresh", false))
+		_card_refresh_btn.tooltip_text = _refresh_tip("道具卡", bool(shop.get("card_can_refresh", false)), _card_count, ItemCards.SLOT_LIMIT)
 	var leave: Button = get_node("Center/Panel/VBox/Bottom/Leave")
-	leave.text = "已结束商店" if _done else "结束商店"
+	leave.text = "⏩  已结束商店" if _done else "⏩  结束商店（跳过剩余）"
 	leave.disabled = _done
 
 func _refresh_tip(label: String, can: bool, count: int, limit: int) -> String:
@@ -336,9 +354,30 @@ func _ready() -> void:
 	style.border_color = UITheme.color("border")
 	style.set_border_width_all(1)
 	panel.add_theme_stylebox_override("panel", style)
-	get_node("Center/Panel/VBox/Bottom/Leave").pressed.connect(_leave)
-	get_node("Center/Panel/VBox/Bottom/Refresh").pressed.connect(_refresh)
-	get_node("Center/Panel/VBox/Bottom/CardRefresh").pressed.connect(_card_refresh)
+	# "结束商店" = 唯一主操作：放大靠右下角、accent 高亮
+	var leave: Button = get_node("Center/Panel/VBox/Bottom/Leave")
+	leave.custom_minimum_size = Vector2(240, 52)
+	leave.add_theme_font_size_override("font_size", 17)
+	leave.add_theme_stylebox_override("normal", _big_accent_style(1.0))
+	var leave_hover: StyleBoxFlat = _big_accent_style(1.18)
+	leave.add_theme_stylebox_override("hover", leave_hover)
+	leave.add_theme_stylebox_override("pressed", leave_hover)
+	var leave_disabled: StyleBoxFlat = _big_accent_style(0.45)
+	leave.add_theme_stylebox_override("disabled", leave_disabled)
+	leave.add_theme_color_override("font_color", UITheme.color("text_on_accent"))
+	leave.add_theme_color_override("font_disabled_color", UITheme.color("text_on_accent"))
+	leave.pressed.connect(_leave)
+
+## 结束商店大按钮的 accent 样式（alpha 控制正常/悬停/禁用）。
+func _big_accent_style(a: float) -> StyleBoxFlat:
+	var st := StyleBoxFlat.new()
+	st.bg_color = UITheme.color("accent")
+	st.bg_color.a = a
+	st.set_corner_radius_all(10)
+	st.set_content_margin_all(10)
+	st.border_color = UITheme.color("accent_hover")
+	st.set_border_width_all(1)
+	return st
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not visible:

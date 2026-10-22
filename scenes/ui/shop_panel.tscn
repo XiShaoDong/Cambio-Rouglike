@@ -73,14 +73,6 @@ theme_override_font_sizes/font_size = 18
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="CardRefresh" type="Button" parent="Center/Panel/VBox/Bottom"]
-layout_mode = 2
-text = "刷新卡牌 $10"
-
-[node name="Refresh" type="Button" parent="Center/Panel/VBox/Bottom"]
-layout_mode = 2
-text = "刷新遗物 $10"
-
 [node name="Leave" type="Button" parent="Center/Panel/VBox/Bottom"]
 layout_mode = 2
 text = "结束商店"
