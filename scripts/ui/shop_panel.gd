@@ -81,11 +81,11 @@ func _fill_cards() -> void:
 	for slot in CARD_SLOT_COUNT:
 		var offer: Dictionary = offers[slot] if slot < offers.size() else {}
 		row.add_child(_make_card_slot(slot, offer))
-	# 卡牌刷新按钮：与卡牌同一行末尾（更大更直观）
+	# 卡牌刷新按钮：与卡牌同一行末尾（常规尺寸，accent 边可点态）
 	_card_refresh_btn = _make_button("⟳  刷新卡牌", bool(_shop().get("card_can_refresh", false)), true)
 	_card_refresh_btn.name = "CardRefresh"
-	_card_refresh_btn.custom_minimum_size = Vector2(190, 44)
-	_card_refresh_btn.add_theme_font_size_override("font_size", 15)
+	_card_refresh_btn.custom_minimum_size = Vector2(150, 36)
+	_card_refresh_btn.add_theme_font_size_override("font_size", 13)
 	_card_refresh_btn.pressed.connect(_card_refresh)
 	row.add_child(_card_refresh_btn)
 	_refresh_bottom()
@@ -99,8 +99,8 @@ func _fill_relics() -> void:
 	# 遗物刷新按钮：与遗物同一行末尾
 	_relic_refresh_btn = _make_button("⟳  刷新遗物", bool(_shop().get("can_refresh", false)), true)
 	_relic_refresh_btn.name = "Refresh"
-	_relic_refresh_btn.custom_minimum_size = Vector2(190, 44)
-	_relic_refresh_btn.add_theme_font_size_override("font_size", 15)
+	_relic_refresh_btn.custom_minimum_size = Vector2(150, 36)
+	_relic_refresh_btn.add_theme_font_size_override("font_size", 13)
 	_relic_refresh_btn.pressed.connect(_refresh)
 	row.add_child(_relic_refresh_btn)
 	_refresh_bottom()
@@ -285,12 +285,19 @@ func _make_button(text: String, enabled: bool, active := false) -> Button:
 	style.set_border_width_all(1)
 	btn.add_theme_stylebox_override("normal", style)
 	var hover: StyleBoxFlat = style.duplicate()
+	hover.bg_color = UITheme.color("bg_surface_alt")
 	hover.border_color = UITheme.color("accent")
 	btn.add_theme_stylebox_override("hover", hover)
 	var down: StyleBoxFlat = style.duplicate()
 	down.bg_color.a = 1.0
 	down.border_color = UITheme.color("success")
 	btn.add_theme_stylebox_override("pressed", down)
+	# 禁用态：降透明度 + 灰字（不退回默认主题暗色，可读）
+	var off: StyleBoxFlat = style.duplicate()
+	off.bg_color.a = 0.4
+	btn.add_theme_stylebox_override("disabled", off)
+	btn.add_theme_color_override("font_color", UITheme.color("text_primary"))
+	btn.add_theme_color_override("font_disabled_color", UITheme.color("text_muted"))
 	return btn
 
 func _refresh_bottom() -> void:
@@ -306,7 +313,7 @@ func _refresh_bottom() -> void:
 		_card_refresh_btn.disabled = not bool(shop.get("card_can_refresh", false))
 		_card_refresh_btn.tooltip_text = _refresh_tip("道具卡", bool(shop.get("card_can_refresh", false)), _card_count, ItemCards.SLOT_LIMIT)
 	var leave: Button = get_node("Center/Panel/VBox/Bottom/Leave")
-	leave.text = "⏩  已结束商店" if _done else "⏩  结束商店（跳过剩余）"
+	leave.text = "已结束商店" if _done else "结束商店（跳过剩余）"
 	leave.disabled = _done
 
 func _refresh_tip(label: String, can: bool, count: int, limit: int) -> String:
@@ -358,21 +365,22 @@ func _ready() -> void:
 	var leave: Button = get_node("Center/Panel/VBox/Bottom/Leave")
 	leave.custom_minimum_size = Vector2(240, 52)
 	leave.add_theme_font_size_override("font_size", 17)
-	leave.add_theme_stylebox_override("normal", _big_accent_style(1.0))
-	var leave_hover: StyleBoxFlat = _big_accent_style(1.18)
+	leave.add_theme_stylebox_override("normal", _big_accent_style())
+	var leave_hover: StyleBoxFlat = _big_accent_style()
+	leave_hover.bg_color = UITheme.color("accent_hover")
 	leave.add_theme_stylebox_override("hover", leave_hover)
 	leave.add_theme_stylebox_override("pressed", leave_hover)
-	var leave_disabled: StyleBoxFlat = _big_accent_style(0.45)
+	var leave_disabled: StyleBoxFlat = _big_accent_style()
+	leave_disabled.bg_color.a = 0.4
 	leave.add_theme_stylebox_override("disabled", leave_disabled)
 	leave.add_theme_color_override("font_color", UITheme.color("text_on_accent"))
 	leave.add_theme_color_override("font_disabled_color", UITheme.color("text_on_accent"))
 	leave.pressed.connect(_leave)
 
 ## 结束商店大按钮的 accent 样式（alpha 控制正常/悬停/禁用）。
-func _big_accent_style(a: float) -> StyleBoxFlat:
+func _big_accent_style() -> StyleBoxFlat:
 	var st := StyleBoxFlat.new()
 	st.bg_color = UITheme.color("accent")
-	st.bg_color.a = a
 	st.set_corner_radius_all(10)
 	st.set_content_margin_all(10)
 	st.border_color = UITheme.color("accent_hover")
