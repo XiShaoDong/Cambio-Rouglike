@@ -1051,6 +1051,26 @@ func _build_room_wide() -> void:
 	_effect_dropdown.visible = false
 	_effect_dropdown.custom_minimum_size = Vector2(0, 32)
 	_effect_dropdown.add_theme_font_size_override("font_size", 13)
+	var dd_st := StyleBoxFlat.new()
+	dd_st.bg_color = UITheme.color("bg_elevated")
+	dd_st.set_corner_radius_all(8)
+	dd_st.content_margin_left = 14
+	dd_st.content_margin_right = 14
+	dd_st.content_margin_top = 6
+	dd_st.content_margin_bottom = 6
+	dd_st.border_color = UITheme.color("border")
+	dd_st.set_border_width_all(1)
+	_effect_dropdown.add_theme_stylebox_override("normal", dd_st)
+	var dd_disabled: StyleBoxFlat = dd_st.duplicate()
+	dd_disabled.bg_color.a *= 0.55
+	_effect_dropdown.add_theme_stylebox_override("disabled", dd_disabled)
+	var dd_focus: StyleBoxFlat = dd_st.duplicate()
+	dd_focus.border_color = UITheme.color("accent_focus")
+	_effect_dropdown.add_theme_stylebox_override("focus", dd_focus)
+	_effect_dropdown.add_theme_stylebox_override("hover", dd_focus)
+	_effect_dropdown.add_theme_color_override("font_color", UITheme.color("text_primary"))
+	_effect_dropdown.add_theme_color_override("font_disabled_color", UITheme.color("text_secondary"))
+	_effect_dropdown.add_theme_color_override("font_pressed_color", UITheme.color("text_primary"))
 	for fx in TurnEffect.all():
 		var fx_id := str(fx["id"])
 		if fx_id == "none":
@@ -1315,7 +1335,12 @@ func _apply_secondary_style(btn: Button) -> void:
 	var pressed: StyleBoxFlat = normal.duplicate()
 	pressed.bg_color = UITheme.color("bg_hover")
 	btn.add_theme_stylebox_override("pressed", pressed)
+	# 禁用态保持同一视觉（降透明度），保证非房主也能辨认当前选中项
+	var disabled: StyleBoxFlat = normal.duplicate()
+	disabled.bg_color.a *= 0.55
+	btn.add_theme_stylebox_override("disabled", disabled)
 	btn.add_theme_color_override("font_color", UITheme.color("text_primary"))
+	btn.add_theme_color_override("font_disabled_color", UITheme.color("text_secondary"))
 
 func _apply_danger_style(btn: Button) -> void:
 	var normal := StyleBoxFlat.new()
@@ -1351,7 +1376,12 @@ func _apply_primary_style(btn: Button) -> void:
 	var pressed: StyleBoxFlat = normal.duplicate()
 	pressed.bg_color = UITheme.color("accent_pressed")
 	btn.add_theme_stylebox_override("pressed", pressed)
+	# 禁用态保持选中高亮（降透明度），保证非房主也能辨认当前选中项
+	var disabled: StyleBoxFlat = normal.duplicate()
+	disabled.bg_color.a *= 0.55
+	btn.add_theme_stylebox_override("disabled", disabled)
 	btn.add_theme_color_override("font_color", UITheme.color("text_on_accent"))
+	btn.add_theme_color_override("font_disabled_color", UITheme.color("text_on_accent"))
 
 func _change_match_limit(delta: int) -> void:
 	if main.latest_lobby.is_empty():
