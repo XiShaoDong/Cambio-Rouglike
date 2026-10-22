@@ -1490,6 +1490,7 @@ func _on_room_reset() -> void:
 	_view_defaulted_3d = false  # 回到大厅 → 下一届系列赛重新默认 3D
 	_close_settlement()
 	_close_shop_panel()
+	_clear_settlement_board()
 	if _table3d_active:
 		_set_table3d(false)
 	if not latest_lobby.is_empty():
@@ -1741,6 +1742,9 @@ func _on_state_updated(state: Dictionary) -> void:
 	if interaction != null:
 		interaction.reset_for_phase(state)
 	if int(state.phase) != last_phase:
+		if last_phase == PHASE_GAME_OVER:
+			# 离开结算（新局/商店/回房间）：清 2D 动画残留 + 3D 逐张翻转状态
+			_clear_settlement_board()
 		last_phase = int(state.phase)
 	# 默认视图 = 3D：本局首次进入时自动切换到 3D（用户之后仍可用 F10/V 切回 2D）
 	if not _view_defaulted_3d and int(state.phase) != PHASE_LOBBY:
@@ -1781,6 +1785,12 @@ func _on_state_updated(state: Dictionary) -> void:
 	_sync_table3d_pointer()
 	# 发牌动画：每局新 match_id 播一次（3D 下）；同 match_id（重连）不重播。
 	_maybe_play_deal()
+
+## 离开结算（新局/商店/回房间）：清 2D 结算动画残留 + 3D 逐张翻转状态（翻回背面）。
+func _clear_settlement_board() -> void:
+	_clear_settlement_anim_state()
+	if table3d != null and is_instance_valid(table3d):
+		table3d.clear_settle_reveals()
 
 ## 清空上一局可能残留的动画/挂起状态（对局结束时在途的看牌/贴牌揭示）。
 func _clear_settlement_anim_state() -> void:
@@ -1891,6 +1901,8 @@ func _open_settlement() -> void:
 
 ## 结算联动：每轮翻牌时刻把对应棋盘卡牌从背面翻到正面（与结算页行内记分同步）。
 func _on_settlement_flip(seat: int, slot: int, card: Dictionary) -> void:
+	if _table3d_active and table3d != null and is_instance_valid(table3d):
+		table3d.reveal_slot_settle(seat, slot, card)
 	if not _card_slots.has(seat) or not _card_slots[seat].has(slot):
 		return
 	var card_node: Control = _card_slots[seat][slot]

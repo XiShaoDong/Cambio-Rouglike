@@ -286,6 +286,8 @@ func render(state: Dictionary, actionable := Callable()) -> void:
 	_viewer = viewer
 	_last_state = state
 	_last_actionable = actionable
+	# GAME_OVER：手牌全部保持背面，由结算算分动画逐张翻面（reveal_slot_settle）
+	var face_all := int(state.get("phase", 0)) != 7
 	_seat_node_by_id.clear()
 	_hand_node_by_id.clear()
 	_relic_baskets_by_seat.clear()
@@ -312,7 +314,7 @@ func render(state: Dictionary, actionable := Callable()) -> void:
 		node.visible = true
 		node.position = _seat_world(a)
 		node.rotation_degrees = Vector3(0.0, a + 180.0, 0.0)
-		_render_seat(node, p)
+		_render_seat(node, p, face_all)
 		_ensure_relic_baskets(node, seat)
 		_update_relic_baskets(seat, p)
 		_apply_avatar(node, p, viewer, state)
@@ -506,7 +508,7 @@ func _ensure_item_target_ring() -> void:
 	add_child(_item_target_ring)
 
 ## 重建单个座位的方块与标签。
-func _render_seat(node: Node3D, p: Dictionary) -> void:
+func _render_seat(node: Node3D, p: Dictionary, face_all := true) -> void:
 	var hand: Node3D = node.get_node("HandAnchor")
 	for child in hand.get_children():
 		hand.remove_child(child)
@@ -526,7 +528,11 @@ func _render_seat(node: Node3D, p: Dictionary) -> void:
 		# 卡牌平铺桌面（对齐 2D 观感）：见 _slot_local。
 		block.position = _slot_local(i).origin
 		hand.add_child(block)
-		block.setup(slot)
+		# GAME_OVER：不渲染牌面（保持背面），由结算页 reveal_slot_settle 逐张翻开
+		var display: Dictionary = slot.duplicate()
+		if not face_all:
+			display.erase("card")
+		block.setup(display)
 		block.set_pick({"kind": "slot", "seat": int(p.id), "slot": i})
 		block.hover_anim_enabled = int(p.id) == _viewer
 		if not _card_blocks.has(int(p.id)):
@@ -891,6 +897,28 @@ func reveal_slot_held(seat_id: int, slot: int, card: Dictionary, color := Color(
 func has_held_reveal(seat_id: int, slot: int) -> bool:
 	var key := "%d_%d" % [seat_id, slot]
 	return _reveals.has(key) and bool(_reveals[key].get("hold", false))
+
+## 结算联动翻面：把背面槽位翻到 card 正面并**保持**（跨 render 重放；标记 settle）。
+## 持续到下一局开始 / 房间重置时由 clear_settle_reveals() 显式清理。
+func reveal_slot_settle(seat_id: int, slot: int, card: Dictionary) -> void:
+	var key := "%d_%d" % [seat_id, slot]
+	if _reveals.has(key) and bool(_reveals[key].get("settle", false)):
+		return  # 已翻过（同一局多次 render 不会重播翻面）
+	_reveal_seq += 1
+	_reveals[key] = {"card": card, "color": Color(0, 0, 0, 0), "token": _reveal_seq,
+		"start_ms": Time.get_ticks_msec(), "hold": true, "settle": true}
+	_apply_reveal(seat_id, slot)
+
+## 清除结算翻转（下一局开始/房间重置时调用）：直接翻回背面（不播动画）。
+func clear_settle_reveals() -> void:
+	for key in _reveals.keys():
+		if bool(_reveals[key].get("settle", false)):
+			_reveals.erase(key)
+	for seat in _card_blocks.keys():
+		for slot in _card_blocks[seat].keys():
+			var b = _card_blocks[seat][slot]
+			if b != null and is_instance_valid(b):
+				(b as CardBlock).restore()
 
 ## 取走某槽位的 hold 揭示（不翻回，供交换飞牌从正面起飞），返回揭示牌面（无则 {}）。
 func take_held_reveal(seat_id: int, slot: int) -> Dictionary:
