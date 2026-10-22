@@ -17,14 +17,14 @@ const ROUND_H_PAD := 18.0
 
 ## 仅 dark mode 应用新配色；light/其他沿用旧的半透明灰底黑字。
 static func chip_bg() -> Color:
-	if UITheme.current == "dark":
+	if UITheme.current in ["dark", "dark-1"]:
 		var c := CORNER_BG
 		c.a = CORNER_BG_ALPHA
 		return c
 	return Color(0.42, 0.44, 0.48, 0.45)
 
 static func chip_text_color() -> Color:
-	return CORNER_TEXT if UITheme.current == "dark" else Color(0.05, 0.06, 0.08)
+	return CORNER_TEXT if UITheme.current in ["dark", "dark-1"] else Color(0.05, 0.06, 0.08)
 
 ## 通用按键/徽标 chip（说明/回合徽标共用同一套样式）。
 ## h_pad >= 0 时覆盖左右内边距（如回合徽标要更宽的左右边框）。

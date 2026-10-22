@@ -13,6 +13,7 @@ var _mute_check: CheckButton
 var _nose_check: CheckButton
 var _directory_edit: LineEdit
 var _theme_option: OptionButton
+var _lobby_layout_option: OptionButton
 var _lang_option: OptionButton
 
 func _ready() -> void:
@@ -98,9 +99,21 @@ func _build_ui() -> void:
 	_theme_option = OptionButton.new()
 	_theme_option.add_item("", 0)
 	_theme_option.add_item("", 1)
-	_theme_option.select(0 if UITheme.current == "dark" else 1)
+	_theme_option.add_item("", 2)
+	_theme_option.select(0 if UITheme.current == "dark" else (1 if UITheme.current == "dark-1" else 2))
 	_theme_option.item_selected.connect(_on_theme_selected)
 	vbox.add_child(_theme_option)
+
+	# 房间布局（宽屏 / 紧凑 / 自动）
+	vbox.add_child(_row_label("lobby_layout"))
+	_lobby_layout_option = OptionButton.new()
+	_lobby_layout_option.add_item("", 0)
+	_lobby_layout_option.add_item("", 1)
+	_lobby_layout_option.add_item("", 2)
+	var layout_mode := str(Settings.get_setting("display", "lobby_layout", "auto"))
+	_lobby_layout_option.select(0 if layout_mode == "auto" else (1 if layout_mode == "wide" else 2))
+	_lobby_layout_option.item_selected.connect(_on_lobby_layout_selected)
+	vbox.add_child(_lobby_layout_option)
 
 	# 语言（选项用母语显示）
 	vbox.add_child(_row_label("language"))
@@ -169,13 +182,20 @@ func _apply_directory() -> void:
 		main_node.set_directory_url(url)
 
 func _on_theme_selected(index: int) -> void:
-	var theme_name := "dark" if index == 0 else "light"
+	var theme_name := "dark" if index == 0 else ("dark-1" if index == 1 else "light")
 	Settings.set_setting("display", "theme", theme_name)
 	UITheme.switch_theme(theme_name)
 	_panel.add_theme_stylebox_override("panel", _panel_style())
 	var main_node := get_tree().current_scene
 	if main_node != null and main_node.has_method("apply_theme"):
 		main_node.apply_theme()
+
+func _on_lobby_layout_selected(index: int) -> void:
+	var mode := "auto" if index == 0 else ("wide" if index == 1 else "compact")
+	Settings.set_setting("display", "lobby_layout", mode)
+	var main_node := get_tree().current_scene
+	if main_node != null and main_node.has_method("refresh_lobby_layout"):
+		main_node.refresh_lobby_layout()
 
 func _on_language_selected(index: int) -> void:
 	Loc.set_language("zh" if index == 0 else "en")
@@ -186,7 +206,12 @@ func _refresh_texts(_language := "") -> void:
 		_recurse_texts(child)
 	if _theme_option != null:
 		_theme_option.set_item_text(0, Loc.t("theme_dark"))
-		_theme_option.set_item_text(1, Loc.t("theme_light"))
+		_theme_option.set_item_text(1, Loc.t("theme_dark_1"))
+		_theme_option.set_item_text(2, Loc.t("theme_light"))
+	if _lobby_layout_option != null:
+		_lobby_layout_option.set_item_text(0, Loc.t("lobby_layout_auto"))
+		_lobby_layout_option.set_item_text(1, Loc.t("lobby_layout_wide"))
+		_lobby_layout_option.set_item_text(2, Loc.t("lobby_layout_compact"))
 
 func _recurse_texts(node: Node) -> void:
 	if node is Control and node.has_meta("text_key"):

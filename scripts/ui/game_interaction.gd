@@ -60,6 +60,12 @@ func on_card_pressed(player_id: int, slot: int) -> void:
 			if player_id != viewer:
 				_play_select()
 				GameState.request_use_ability({"target": player_id, "target_slot": slot}, main._next_action_id())
+		"peek_any":
+			_play_select()
+			if player_id == viewer:
+				GameState.request_use_ability({"slot": slot}, main._next_action_id())
+			else:
+				GameState.request_use_ability({"target": player_id, "target_slot": slot}, main._next_action_id())
 		"queen_target":
 			if player_id != viewer:
 				_play_select()
@@ -95,13 +101,29 @@ func on_card_pressed(player_id: int, slot: int) -> void:
 
 ## 根据抽到的能力牌设置交互模式。
 func begin_ability() -> void:
-	var pending: Dictionary = main.latest_state.get("pending", {})
-	match str(pending.get("rank", "")):
-		"7", "8": action_mode = "peek_own"
-		"9", "10": action_mode = "peek_other"
-		"J": action_mode = "jack_target"
-		"Q": action_mode = "queen_target"
+	var state: Dictionary = main.latest_state
+	var pending: Dictionary = state.get("pending", {})
+	var viewer := int(state.get("viewer_id", -1))
+	var flex := _has_relic(state, viewer, Relics.PEEK_FLEX_ID)
+	var granted := str(pending.get("granted_ability", ""))
+	if granted == "peek_own":
+		action_mode = "peek_any" if flex else "peek_own"
+	elif granted == "peek_other":
+		action_mode = "peek_any" if flex else "peek_other"
+	else:
+		match str(pending.get("rank", "")):
+			"7", "8": action_mode = "peek_any" if flex else "peek_own"
+			"9", "10": action_mode = "peek_any" if flex else "peek_other"
+			"J": action_mode = "jack_target"
+			"Q": action_mode = "queen_target"
 	main._render_game()
+
+## 某座位是否持有某遗物（读快照 players[].relics）。
+func _has_relic(state: Dictionary, seat: int, relic_id: String) -> bool:
+	for p in state.get("players", []):
+		if int(p.get("id", -1)) == seat:
+			return relic_id in (p.get("relics", []) as Array)
+	return false
 
 ## 该卡牌当前是否可操作（决定高亮）。
 func card_actionable(player_id: int, _slot: int) -> bool:
@@ -125,6 +147,8 @@ func card_actionable(player_id: int, _slot: int) -> bool:
 			return player_id == viewer
 		"peek_other", "queen_target":
 			return player_id != viewer
+		"peek_any":
+			return true
 		"jack_target":
 			return player_id != viewer
 		"jack_own":
@@ -164,6 +188,7 @@ func mode_instruction(fallback: String) -> String:
 		"replace": return "请选择自己要被替换的手牌。"
 		"peek_own": return "7 / 8：请选择自己要查看的手牌。"
 		"peek_other": return "9 / 10：请选择其他玩家的一张牌。"
+		"peek_any": return "视野互换：请选择自己或其他玩家的一张牌查看。"
 		"queen_target": return "Q：请选择其他玩家的一张牌查看。"
 		"q_view_own": return "Q：请选择自己的一张牌查看，再决定是否交换。"
 		"jack_target": return "J：请选择要交换的对方牌。"

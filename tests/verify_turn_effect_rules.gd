@@ -359,6 +359,11 @@ func _test_dev_test_mode() -> void:
 			if str(GameState.cards[str(cid)].rank) != "A":
 				all_aces = false
 	_check("测试模式 +1：所有开局手牌为 A", all_aces)
+	var items_ok := true
+	for seat in GameState.turn_order:
+		if (GameState.run_state.get("item_inventories", {}).get(int(seat), []) as Array).size() != 3:
+			items_ok = false
+	_check("测试模式：所有玩家开局 3 张道具卡", items_ok)
 	# 6：抽牌堆全 6（保留 Joker）。
 	GameState.dev_test_effect = "six_swap"
 	_open_peek()
@@ -384,6 +389,13 @@ func _test_dev_test_mode() -> void:
 	GameState.cards[first_cid].rank = "K"
 	GameState._apply_test_mode_setup()
 	_check("关闭测试模式：不改手牌", str(GameState.cards[first_cid].rank) == "K")
+	GameState.dev_test_mode = false
+	_open_peek()
+	var no_items := true
+	for seat in GameState.turn_order:
+		if not (GameState.run_state.get("item_inventories", {}).get(int(seat), []) as Array).is_empty():
+			no_items = false
+	_check("关闭测试模式：不再发道具卡", no_items)
 	GameState.dev_test_effect = ""
 	GameState.dev_test_mode = false
 

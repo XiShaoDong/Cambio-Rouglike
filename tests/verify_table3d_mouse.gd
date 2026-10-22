@@ -81,3 +81,28 @@ func _run() -> void:
 	await get_tree().create_timer(0.05).timeout
 	view.camera.reset_zoom()
 	_check("reset_zoom 立即复位 FOV", absf(view.camera.camera_node().fov - base_fov) < 0.001)
+	# ⑥ 道具卡目标锁定：绕过 ±90° yaw、FOV 58、锁定期间忽略 look、恢复原视角
+	view.camera.frame_for_seat(0.0)
+	var saved_yaw: float = view.camera.yaw
+	var saved_pitch: float = view.camera.pitch
+	view.camera.lock_aim_at(Vector3(0.0, 1.5, 8.0))
+	await get_tree().create_timer(0.4).timeout
+	_check("目标锁定保持 locked", bool(view.camera.locked))
+	_check("目标锁定可转向身后（绕过 ±90°）", absf(absf(view.camera.yaw - view.camera.base_yaw) - 180.0) < 8.0)
+	_check("目标锁定 FOV=58", absf(view.camera.camera_node().fov - Table3dCamera.LOCK_FOV) < 0.8)
+	var yaw_locked: float = view.camera.yaw
+	view.camera.look(Vector2(100.0, 0.0))
+	_check("锁定期间鼠标环视被忽略", is_equal_approx(view.camera.yaw, yaw_locked))
+	view.camera.restore_view()
+	await get_tree().create_timer(0.4).timeout
+	_check("恢复原视角", absf(view.camera.yaw - saved_yaw) < 1.0 and absf(view.camera.pitch - saved_pitch) < 1.0)
+	_check("恢复后解锁且 FOV 回来", not bool(view.camera.locked) and absf(view.camera.camera_node().fov - base_fov) < 0.8)
+	# ⑦ Table3dView 目标环 + 相机锁定
+	view.begin_item_target(1)
+	await get_tree().create_timer(0.4).timeout
+	_check("目标环显示", view._item_target_ring != null and view._item_target_ring.visible)
+	_check("目标锁定相机 locked", bool(view.camera.locked))
+	view.end_item_target()
+	await get_tree().create_timer(0.4).timeout
+	_check("目标环隐藏", view._item_target_ring != null and not view._item_target_ring.visible)
+	_check("结束目标解锁", not bool(view.camera.locked))

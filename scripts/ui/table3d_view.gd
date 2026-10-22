@@ -58,6 +58,7 @@ var _discard_block = null  # CardBlock（场景 Center/DiscardTop）
 var _pending_block = null  # CardBlock（场景 Center/Pending）
 var _hud = null  # Table3dHud（场景 Hud）
 var _restart_button: Node3D = null  # 房主重开按钮（牌桌右后角，准星可点）
+var _item_target_ring: MeshInstance3D = null  # 道具卡选目标时的金色目标环
 var _card_blocks := {}  # {seat: {slot: CardBlock}}
 var _viewer := 0
 var _sel_active := false           # 当前是否有"选择"上下文（决定 hover 边框红/绿/白）
@@ -88,6 +89,7 @@ var _pending_node: Node3D = null
 var _seat_node_by_id := {}     # seat -> Node3D（render 登记）
 var _hand_node_by_id := {}     # seat -> HandAnchor Node3D（render 登记；未渲染槽的槽位变换基准）
 var _slot_cards := {}          # {seat: {slot: card}}（render 登记，供 slap_gift 自身视角取牌面）
+var _relic_baskets_by_seat := {}  # seat -> Node3D（3 个 RelicBasket）
 var _anim_slots := {}          # "seat_slot" -> true（在途动画槽位，render 跳过）
 var _flyers: Array = []        # 在途 CardFly
 var _discard_hold := false     # 飞向弃牌堆期间隐藏弃牌顶
@@ -286,6 +288,7 @@ func render(state: Dictionary, actionable := Callable()) -> void:
 	_last_actionable = actionable
 	_seat_node_by_id.clear()
 	_hand_node_by_id.clear()
+	_relic_baskets_by_seat.clear()
 	_slot_cards.clear()
 	# 固定座位角度（按 seat_id，与观看者无关）→ 所有客户端共享同一世界坐标，
 	# 这样同步来的世界注视方向才能被一致解释（否则各客户端座位相对位置不同 → 镜像）。
@@ -310,6 +313,8 @@ func render(state: Dictionary, actionable := Callable()) -> void:
 		node.position = _seat_world(a)
 		node.rotation_degrees = Vector3(0.0, a + 180.0, 0.0)
 		_render_seat(node, p)
+		_ensure_relic_baskets(node, seat)
+		_update_relic_baskets(seat, p)
 		_apply_avatar(node, p, viewer, state)
 		if slot_i < _seat_panels.size():
 			_seat_panels[slot_i].set_data(str(p.get("name", "")), int(p.get("health", 0)), int(p.get("currency", 0)), int(p.get("count", 0)))
@@ -425,6 +430,73 @@ func _seat_world(angle_deg: float) -> Vector3:
 	var a := deg_to_rad(angle_deg)
 	return Vector3(sin(a), 0.0, cos(a)) * Table3dLayout.SEAT_RADIUS
 
+## 开局发牌动画是否进行中（空格优先给 2× 速）。
+func is_dealing() -> bool:
+	return _dealing
+
+## 道具卡目标模式：相机锁定到目标角色 + 金色目标环。
+func begin_item_target(seat: int) -> void:
+	_bind()
+	_ensure_item_target_ring()
+	_place_item_target_ring(seat)
+	if camera != null:
+		camera.lock_aim_at(_item_target_focus(seat))
+
+func update_item_target(seat: int) -> void:
+	_bind()
+	if _item_target_ring == null or not is_instance_valid(_item_target_ring):
+		return
+	_place_item_target_ring(seat)
+	if camera != null:
+		camera.lock_aim_at(_item_target_focus(seat))
+
+func end_item_target() -> void:
+	if _item_target_ring != null and is_instance_valid(_item_target_ring):
+		_item_target_ring.visible = false
+	if camera != null:
+		camera.restore_view()
+
+func _item_target_focus(seat: int) -> Vector3:
+	var node: Node3D = _seat_node_by_id.get(seat)
+	if node == null or not is_instance_valid(node):
+		return Vector3.ZERO
+	var avatar = node.get_node_or_null("Avatar")
+	if avatar is Node3D and (avatar as Node3D).visible:
+		return (avatar as Node3D).global_position + Vector3(0.0, 0.1, 0.0)
+	return node.global_position + Vector3(0.0, 1.5, 0.0)
+
+func _place_item_target_ring(seat: int) -> void:
+	if _item_target_ring == null or not is_instance_valid(_item_target_ring):
+		return
+	var node: Node3D = _seat_node_by_id.get(seat)
+	if node == null or not is_instance_valid(node):
+		_item_target_ring.visible = false
+		return
+	_item_target_ring.global_position = node.global_position + Vector3(0.0, Table3dLayout.TABLE_HEIGHT + 0.06, 0.0)
+	_item_target_ring.visible = true
+
+func _ensure_item_target_ring() -> void:
+	if _item_target_ring != null and is_instance_valid(_item_target_ring):
+		return
+	_item_target_ring = MeshInstance3D.new()
+	_item_target_ring.name = "ItemTargetRing"
+	var torus := TorusMesh.new()
+	torus.inner_radius = 0.62
+	torus.outer_radius = 0.70
+	torus.rings = 32
+	torus.ring_segments = 12
+	_item_target_ring.mesh = torus
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = Color(0.95, 0.82, 0.35, 0.9)
+	mat.emission_enabled = true
+	mat.emission = Color(0.95, 0.82, 0.35)
+	mat.emission_energy_multiplier = 2.0
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_item_target_ring.material_override = mat
+	_item_target_ring.visible = false
+	add_child(_item_target_ring)
+
 ## 重建单个座位的方块与标签。
 func _render_seat(node: Node3D, p: Dictionary) -> void:
 	var hand: Node3D = node.get_node("HandAnchor")
@@ -452,6 +524,73 @@ func _render_seat(node: Node3D, p: Dictionary) -> void:
 		if not _card_blocks.has(int(p.id)):
 			_card_blocks[int(p.id)] = {}
 		_card_blocks[int(p.id)][i] = block
+
+## 每席 3 个饰品篮：放在该玩家视角的左手边（本地 +X），沿 Z 排开。
+const RELIC_BASKET_X := 1.15
+const RELIC_BASKET_Z := [-0.55, 0.0, 0.55]
+
+func _ensure_relic_baskets(seat_node: Node3D, seat: int) -> Node3D:
+	var root: Node3D = seat_node.get_node_or_null("RelicBaskets")
+	if root == null:
+		root = Node3D.new()
+		root.name = "RelicBaskets"
+		seat_node.add_child(root)
+		for i in 3:
+			var basket := RelicBasket.new()
+			basket.name = "Basket%d" % i
+			basket.position = Vector3(RELIC_BASKET_X, Table3dLayout.TABLE_HEIGHT + 0.04, float(RELIC_BASKET_Z[i]))
+			root.add_child(basket)
+			basket.setup(i, "")
+			var pick := basket.get_node_or_null("PickArea")
+			if pick != null:
+				pick.set_meta("pick", {"kind": "relic", "seat": seat, "slot": i})
+	_relic_baskets_by_seat[seat] = root
+	return root
+
+func _update_relic_baskets(seat: int, p: Dictionary) -> void:
+	var root: Node3D = _relic_baskets_by_seat.get(seat)
+	if root == null or not is_instance_valid(root):
+		return
+	var relics: Array = p.get("relics", [])
+	for i in 3:
+		var basket := root.get_node_or_null("Basket%d" % i) as RelicBasket
+		if basket == null:
+			continue
+		basket.setup(i, str(relics[i]) if i < relics.size() else "")
+		var pick := basket.get_node_or_null("PickArea")
+		if pick != null:
+			pick.set_meta("pick", {"kind": "relic", "seat": seat, "slot": i})
+
+## 供测试/工具查询某席的 3 个篮子。
+func relic_baskets(seat: int) -> Array:
+	var root: Node3D = _relic_baskets_by_seat.get(seat)
+	if root == null or not is_instance_valid(root):
+		return []
+	var out: Array = []
+	for i in 3:
+		out.append(root.get_node_or_null("Basket%d" % i))
+	return out
+
+## 当前悬停的饰品篮（{} = 未悬停饰品）。
+func hovered_relic() -> Dictionary:
+	var meta := hovered_pick()
+	if str(meta.get("kind", "")) != "relic":
+		return {}
+	var basket = _hover_collider.get_parent() if _hover_collider != null and is_instance_valid(_hover_collider) else null
+	if basket is RelicBasket:
+		return {"seat": int(meta.get("seat", -1)), "slot": int(meta.get("slot", -1)),
+			"id": (basket as RelicBasket).relic()}
+	return {}
+
+## 悬停饰品篮的屏幕矩形（用于说明气泡）。
+func hovered_relic_screen_rect(cam: Camera3D) -> Rect2:
+	if cam == null or _hover_collider == null or not is_instance_valid(_hover_collider):
+		return Rect2()
+	var parent = _hover_collider.get_parent()
+	if parent is Node3D:
+		var center := cam.unproject_position((parent as Node3D).global_position)
+		return Rect2(center - Vector2(24, 24), Vector2(48, 48))
+	return Rect2()
 
 ## 角色（Robot 模型）：放到「眼睛」位置（径向外移 CAMERA_BACK、头心抬到
 ## EYE_HEIGHT，相机即在头心）；隐藏自己那席；出局/离线变暗、当前回合金色高亮。

@@ -88,6 +88,13 @@ static func next_rank_in_cycle(rank: String) -> String:
 static func has_ability(rank: String) -> bool:
 	return rank in SPECIAL_RANKS
 
+## 奇数/偶数点数（Joker 不参与；用于「奇数/偶数视野」饰品）。
+static func is_odd_rank(rank: String) -> bool:
+	return rank in ["A", "3", "5", "7", "9", "J", "K"]
+
+static func is_even_rank(rank: String) -> bool:
+	return rank in ["2", "4", "6", "8", "10", "Q"]
+
 static func display_name(card: Dictionary) -> String:
 	if card.rank == "JOKER":
 		return "大王" if card.suit == "red" else "小王"
@@ -98,9 +105,13 @@ static func new_default_run() -> Dictionary:
 	# serializable run state, rather than in match-flow conditionals.
 	return {
 		"health": START_HEALTH,
-		"relic_slots": 2,
+		"relic_slots": 3,
 		"relics": {},
-		"relic_owners": {},
+		"relic_inventories": {},
+		"shop_locks": {},
+		"item_slots": ItemCards.SLOT_LIMIT,
+		"item_inventories": {},
+		"item_locks": {},
 		"mutator_ids": [],
 		"enable_relics": false,
 		"match_limit": DEFAULT_MATCH_LIMIT,

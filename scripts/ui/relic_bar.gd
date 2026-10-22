@@ -1,14 +1,14 @@
 class_name RelicBar
 extends Control
-## 遗物物品栏：3 槽 + n/3 计数，程序化图标，Hover Tooltip（名称+描述+状态）。
-## 纯展示：数据全部来自快照公开字段（run.relics / run.relic_owners / players[].protected_slot）。
+## 遗物物品栏：固定 3 槽 + n/3 计数，占位字符图标，Hover Tooltip（名称+描述+状态）。
+## 纯展示：数据来自快照公开字段 players[].relics / players[].protected_slot。
 
 const SLOT_COUNT := 3
 const SLOT_SIZE := 32
 const SLOT_GAP := 4
 const COUNT_H := 16
 
-## 填充本玩家（seat）的遗物栏。护盾按生效中（protected_slot>=0）显示，Joker 按持有显示。
+## 填充本玩家（seat）的遗物栏。
 func setup(state: Dictionary, seat: int) -> void:
 	for child in get_children():
 		child.queue_free()
@@ -22,8 +22,15 @@ func setup(state: Dictionary, seat: int) -> void:
 		icon.mouse_filter = Control.MOUSE_FILTER_STOP
 		if i < items.size():
 			var it: Dictionary = items[i]
-			icon.setup(int(it.kind), it.color)
-			icon.tooltip_text = "%s\n%s\n%s" % [it.name, it.desc, it.status]
+			var relic_id := str(it.get("id", ""))
+			var color: Color = UITheme.color(str(it.get("color_key", "accent")))
+			if relic_id == Relics.GUARD_SHIELD_ID:
+				icon.setup(RelicIcon.Kind.SHIELD, color)
+			elif relic_id == Relics.JOKER_TRANSFORM_ID:
+				icon.setup(RelicIcon.Kind.JOKER, color)
+			else:
+				icon.setup_glyph(str(it.get("glyph", "?")), color)
+			icon.tooltip_text = "%s\n%s\n%s" % [it.get("name", ""), it.get("desc", ""), it.get("status", "")]
 		else:
 			icon.setup(RelicIcon.Kind.EMPTY, UITheme.color("border_strong"))
 			icon.tooltip_text = "空遗物栏位"
@@ -40,25 +47,37 @@ func setup(state: Dictionary, seat: int) -> void:
 	custom_minimum_size = Vector2(SLOT_SIZE, y + COUNT_H)
 	size = custom_minimum_size
 
-## 收集该玩家当前应显示的遗物（Joker 持有一件；护盾生效一件；未来遗物依序追加）。
+## 收集该玩家当前应显示的遗物：快照 players[].relics 的 3 格，外加生效中的护盾状态。
 func _collect_items(state: Dictionary, seat: int) -> Array:
-	var run: Dictionary = state.get("run", {})
-	var relics: Dictionary = run.get("relics", {})
-	var owners: Dictionary = run.get("relic_owners", {})
-	var items: Array = []
-	if str(owners.get(Relics.JOKER_TRANSFORM_ID, -1)) == str(seat) and relics.has(Relics.JOKER_TRANSFORM_ID):
-		var def: Dictionary = relics[Relics.JOKER_TRANSFORM_ID]
-		items.append({"kind": RelicIcon.Kind.JOKER, "color": UITheme.color("accent"),
-			"name": str(def.get("name", "Joker 变换")), "desc": str(def.get("desc", "")),
-			"status": "状态：本局可用"})
-	var shield_slot := -1
+	var ids: Array = []
+	var protected_slot := -1
 	for p in state.get("players", []):
-		if int(p.id) == seat:
-			shield_slot = int(p.get("protected_slot", -1))
+		if int(p.get("id", -1)) == seat:
+			ids = (p.get("relics", []) as Array).duplicate()
+			protected_slot = int(p.get("protected_slot", -1))
 			break
-	if shield_slot >= 0:
-		var def: Dictionary = Relics.def_by_id(Relics.GUARD_SHIELD_ID)
-		items.append({"kind": RelicIcon.Kind.SHIELD, "color": UITheme.color("relic_shield"),
-			"name": str(def.get("name", "防守护盾")), "desc": str(def.get("desc", "")),
-			"status": "状态：本局保护第 %d 格" % shield_slot})
+	var items: Array = []
+	for id in ids:
+		var relic_id := str(id)
+		if relic_id.is_empty():
+			continue
+		var def := Relics.def_by_id(relic_id)
+		if def.is_empty():
+			continue
+		var status := "状态：已持有"
+		if relic_id == Relics.JOKER_TRANSFORM_ID:
+			status = "状态：本局可用"
+		items.append({"id": relic_id, "name": str(def.get("name", "")), "desc": str(def.get("desc", "")),
+			"glyph": str(def.get("glyph", "?")), "color_key": str(def.get("color", "accent")), "status": status})
+	if protected_slot >= 0 and items.size() < SLOT_COUNT:
+		var has_shield := false
+		for it in items:
+			if str(it.get("id", "")) == Relics.GUARD_SHIELD_ID:
+				has_shield = true
+				break
+		if not has_shield:
+			var def := Relics.def_by_id(Relics.GUARD_SHIELD_ID)
+			items.append({"id": Relics.GUARD_SHIELD_ID, "name": str(def.get("name", "防守护盾")),
+				"desc": str(def.get("desc", "")), "glyph": str(def.get("glyph", "◇")),
+				"color_key": "relic_shield", "status": "状态：本局保护第 %d 格" % protected_slot})
 	return items

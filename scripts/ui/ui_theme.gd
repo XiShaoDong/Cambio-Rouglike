@@ -2,7 +2,7 @@ extends Node
 
 ## Central design-token store, CSS-style: scripts read colors/sizes via
 ## UITheme.color("...") instead of hard-coding them. Switch themes at runtime
-## with UITheme.switch_theme("dark" | "light").
+## with UITheme.switch_theme("dark" | "dark-1" | "light").
 
 var current := "dark"
 
@@ -26,6 +26,10 @@ const TOKENS := {
 		"accent": Color("f6d77a"),
 		"accent_soft": Color("f6d77a", 0.35),
 		"accent_hover": Color("e6c45e"),
+		"accent_pressed": Color("d4b552"),
+		"accent_focus": Color("f6d77a"),
+		"text_on_accent": Color("10151f"),
+		"bg_hover": Color("2a3140"),
 		"highlight_glow": Color("f6d77a"),
 		# 语义色
 		"success": Color("87d9a1"),
@@ -48,6 +52,45 @@ const TOKENS := {
 		"card_shadow": Color(0, 0, 0, 0.35),
 		"relic_shield": Color("b07be0"),
 	},
+	"dark-1": {
+		# Dark Slate + Royal Indigo（KONG LAN 房间/大厅视觉）
+		"bg_table": Color("151821"),
+		"bg_surface": Color("1E2330"),
+		"bg_surface_alt": Color("343B4F"),
+		"bg_elevated": Color("292F40"),
+		"bg_hover": Color("343B4F"),
+		"text_primary": Color("F1F3F9"),
+		"text_secondary": Color("A3ADC0"),
+		"text_muted": Color("707B90"),
+		"text_inverse": Color("151821"),
+		"text_on_card": Color("151821"),
+		"text_on_accent": Color("FFFFFF"),
+		"border": Color("353C4D"),
+		"border_strong": Color("4A5368"),
+		"accent": Color("526BDE"),
+		"accent_soft": Color("252F52"),
+		"accent_hover": Color("657EF0"),
+		"accent_pressed": Color("4056BD"),
+		"accent_focus": Color("8294FF"),
+		"highlight_glow": Color("8294FF"),
+		"success": Color("53C99A"),
+		"danger": Color("C94F61"),
+		"warning": Color("E8B86D"),
+		"info": Color("8294FF"),
+		"player_self_bg": Color("252F52"),
+		"player_other_bg": Color("1E2330"),
+		"player_self_text": Color("F1F3F9"),
+		"player_other_text": Color("A3ADC0"),
+		"card_face_bg": Color("F1F3F9"),
+		"card_back_bg": Color("1E2330"),
+		"card_back_border": Color("8294FF"),
+		"card_border": Color("353C4D"),
+		"card_rank_red": Color("F07882"),
+		"card_rank_black": Color("151821"),
+		"card_value": Color("A3ADC0"),
+		"card_shadow": Color(0, 0, 0, 0.35),
+		"relic_shield": Color("8294FF"),
+	},
 	"light": {
 		# 背景层级（来自 docs/light_theme.css）
 		"bg_table": Color("#ECF0F1"),
@@ -67,6 +110,10 @@ const TOKENS := {
 		"accent": Color("D9714F"),
 		"accent_soft": Color("FBE3D8"),
 		"accent_hover": Color("C4623F"),
+		"accent_pressed": Color("B05434"),
+		"accent_focus": Color("D9714F"),
+		"text_on_accent": Color("FFFDF8"),
+		"bg_hover": Color("F7F1E4"),
 		"highlight_glow": Color("D9714F"),
 		# 语义色
 		"success": Color("7A9B6E"),

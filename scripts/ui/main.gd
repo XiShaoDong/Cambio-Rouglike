@@ -323,6 +323,32 @@ func _maybe_new_turn_effect() -> bool:
 	_turn_effect_panel.reveal(_current_effect, size * 0.5, Vector2(size.x - m, m))
 	return true
 
+## 悬停 3D 饰品篮 → 名称 + 完整说明；返回是否已显示（与卡牌气泡互斥）。
+func _update_relic_tooltip() -> bool:
+	if table3d == null or not is_instance_valid(table3d):
+		return false
+	var relic: Dictionary = table3d.hovered_relic()
+	if relic.is_empty():
+		return false
+	_ensure_card_tooltip()
+	var id := str(relic.get("id", ""))
+	var text := "空遗物位"
+	if not id.is_empty():
+		var def := Relics.def_by_id(id)
+		text = "%s\n%s" % [str(def.get("name", id)), str(def.get("desc", ""))]
+	var cam: Camera3D = table3d.camera.camera_node()
+	if cam == null:
+		_hide_card_tooltip()
+		return true
+	var vp := get_viewport().get_visible_rect().size
+	var rect: Rect2 = table3d.hovered_relic_screen_rect(cam)
+	if vp.x > 0.0 and vp.y > 0.0:
+		var sx := size.x / vp.x
+		var sy := size.y / vp.y
+		rect = Rect2(Vector2(rect.position.x * sx, rect.position.y * sy), Vector2(rect.size.x * sx, rect.size.y * sy))
+	_card_tooltip.show_line(text, rect)
+	return true
+
 ## 悬停在"牌面已知"的牌上（自己手牌/大牌/弃牌顶/已揭示）→ 在牌旁弹信息气泡。
 func _update_card_tooltip() -> void:
 	if _card_tooltip == null or not is_instance_valid(_card_tooltip):
@@ -339,6 +365,9 @@ func _update_card_tooltip() -> void:
 	if str((table3d.hovered_pick() as Dictionary).get("kind", "")) == "pending":
 		source = str((latest_state.get("pending", {}) as Dictionary).get("source", "draw"))
 	var text := CardAbilityText.text(rank, source)
+	var granted := str((latest_state.get("pending", {}) as Dictionary).get("granted_ability", ""))
+	if not granted.is_empty():
+		text += "\n饰品赋予：可查看一张牌"
 	var cam: Camera3D = table3d.camera.camera_node()
 	if cam == null:
 		_hide_card_tooltip()
@@ -451,7 +480,8 @@ func _show_effect_trigger(data: Dictionary) -> void:
 	_show_card_burst(card, actor, "6 效果触发")
 
 ## 右侧成功弹层（复用贴牌成功 UI）：可配置标题，card 为要展示的牌。
-func _show_card_burst(card: Dictionary, actor: int, title: String) -> void:
+func _show_card_burst(card: Dictionary, actor: int, title: String,
+		description := "", card_control: Control = null) -> void:
 	if card.is_empty():
 		return
 	if _slap_burst != null and is_instance_valid(_slap_burst):
@@ -467,7 +497,7 @@ func _show_card_burst(card: Dictionary, actor: int, title: String) -> void:
 	burst.z_index = 90
 	add_child(burst)
 	_slap_burst = burst
-	burst.setup(card, player_name, title)
+	burst.setup(card, player_name, title, description, card_control)
 
 func _show_bomb_burst(seat: int, slot: int) -> void:
 	var base := _slot_screen_center(seat, slot)
@@ -764,6 +794,8 @@ func _update_board_hover() -> bool:
 func _set_table3d(on: bool) -> void:
 	if on and (latest_state.is_empty() or int(latest_state.get("phase", PHASE_LOBBY)) == PHASE_LOBBY):
 		return
+	if _item_hand != null and is_instance_valid(_item_hand) and _item_hand.is_open():
+		_close_item_hand(false)
 	_table3d_active = on
 	if _wheel_open:
 		_wheel_open = false
@@ -858,6 +890,9 @@ func _set_table3d(on: bool) -> void:
 ## 3D 预览的输入走 _input（早于 GUI 路由，保证鼠标移动/退出键必定到达，
 ## 不受任何 Control 的 mouse_filter 影响）。
 func _input(event: InputEvent) -> void:
+	if _item_hand_handle_input(event):
+		get_viewport().set_input_as_handled()
+		return
 	if not _table3d_active:
 		return
 	# 设置菜单打开时：不消费 3D 输入（鼠标已释放给菜单；ESC 交给 _unhandled_input 关闭）。
@@ -988,7 +1023,8 @@ func _process(delta: float) -> void:
 			_crosshair.set_active(true)
 		return
 	var on_target: bool = table3d.update_hover(interaction.action_mode != "")
-	_update_card_tooltip()
+	if not _update_relic_tooltip():
+		_update_card_tooltip()
 	if _crosshair != null and is_instance_valid(_crosshair):
 		_crosshair.set_active(on_target)
 
@@ -1094,6 +1130,9 @@ var _restart_confirm := false
 
 var status_label: Label
 var lobby_status_label: Label
+var lobby_root: Control
+var lobby_bg: TextureRect
+var lobby_bg_dim: ColorRect
 var lobby_panel: VBoxContainer
 var game_panel: VBoxContainer
 var name_input: LineEdit
@@ -1175,6 +1214,8 @@ var _peek_glow_slots: Dictionary = {}
 var _slap_reveal_lock := false
 var _duel_panel: Control = null
 var _slap_burst: Control = null
+var _item_hand: ItemHandOverlay = null
+var _item_target_seat := -1
 var _board_aim_key := ""
 var settings_menu: Control = null
 var _my_token := ""
@@ -1285,6 +1326,7 @@ func _ready() -> void:
 		else:
 			animator.handle_exchange(data))
 	GameState.peek_highlighted.connect(_on_peek_highlight)
+	GameState.item_card_used.connect(_on_item_card_used)
 	GameState.toast_received.connect(_show_toast)
 	GameState.command_rejected.connect(_on_command_rejected)
 	GameState.match_aborted.connect(_on_match_aborted)
@@ -1538,23 +1580,32 @@ func _on_joined_server_for_reconnect() -> void:
 
 ## 在初始大厅显示"重连上次对局"入口（断线后持有 token 时）。
 func _render_rejoin_entry() -> void:
-	_remove_rejoin_entry()
-	var btn: Button = _button("重连上次对局")
-	btn.name = "RejoinEntry"
-	btn.pressed.connect(_do_reconnect)
-	lobby_panel.add_child(btn)
+	if lobby != null:
+		lobby.show_rejoin(true)
 
 func _remove_rejoin_entry() -> void:
-	for child in lobby_panel.get_children():
-		if child.name == "RejoinEntry":
-			child.queue_free()
-			break
+	if lobby != null:
+		lobby.show_rejoin(false)
 
 func _build_interface() -> void:
 	background = ColorRect.new()
 	background.color = UITheme.color("bg_table")
 	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(background)
+	lobby_bg = TextureRect.new()
+	lobby_bg.name = "LobbyBackground"
+	lobby_bg.texture = load("res://assets/background/card-bg.jpg")
+	lobby_bg.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	lobby_bg.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	lobby_bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	lobby_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(lobby_bg)
+	lobby_bg_dim = ColorRect.new()
+	lobby_bg_dim.name = "LobbyBackgroundDim"
+	lobby_bg_dim.color = Color(0.02, 0.03, 0.06, 0.42)
+	lobby_bg_dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	lobby_bg_dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(lobby_bg_dim)
 	overlay = Control.new()
 	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -1571,9 +1622,30 @@ func _build_interface() -> void:
 	page.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	page.add_theme_constant_override("separation", 16)
 	margin.add_child(page)
+	lobby_root = Control.new()
+	lobby_root.name = "LobbyRoot"
+	lobby_root.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	page.add_child(lobby_root)
+	var lobby_center := CenterContainer.new()
+	lobby_center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	lobby_center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	lobby_root.add_child(lobby_center)
+	var lobby_frame := PanelContainer.new()
+	lobby_frame.name = "LobbyFrame"
+	lobby_frame.custom_minimum_size = Vector2(480, 700)
+	var frame_style := StyleBoxFlat.new()
+	frame_style.bg_color = UITheme.color("bg_elevated")
+	frame_style.bg_color.a = 0.96
+	frame_style.set_corner_radius_all(16)
+	frame_style.set_content_margin_all(22)
+	frame_style.border_color = UITheme.color("border")
+	frame_style.set_border_width_all(1)
+	lobby_frame.add_theme_stylebox_override("panel", frame_style)
+	lobby_center.add_child(lobby_frame)
 	lobby_panel = VBoxContainer.new()
+	lobby_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	lobby_panel.add_theme_constant_override("separation", 12)
-	page.add_child(lobby_panel)
+	lobby_frame.add_child(lobby_panel)
 	_build_lobby()
 	game_panel = VBoxContainer.new()
 	game_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1647,6 +1719,16 @@ func is_room_host() -> bool:
 
 func _on_state_updated(state: Dictionary) -> void:
 	latest_state = state
+	if _item_hand != null and is_instance_valid(_item_hand) and _item_hand.is_open():
+		var ph := int(state.get("phase", PHASE_LOBBY))
+		var vw := int(state.get("viewer_id", -1))
+		if ph in [PHASE_LOBBY, PHASE_INITIAL_PEEK, PHASE_SHOP, PHASE_GAME_OVER, PHASE_SLAP_DUEL]:
+			_close_item_hand(false)
+		elif _item_hand.is_target_mode() and (ph != PHASE_TURN_DRAW and ph != PHASE_TURN_DECISION \
+				or vw != int(state.get("current_player", -1)) or bool(state.get("item_card_used", false))):
+			_cancel_item_target()
+		elif not _item_hand.is_target_mode():
+			_item_hand.setup(state, vw)
 	# 非 LOBBY 阶段视为对局中（用于断线后判断是否提示重连）
 	_was_in_match = int(state.phase) != 0
 	if interaction != null:
@@ -1658,6 +1740,12 @@ func _on_state_updated(state: Dictionary) -> void:
 		_view_defaulted_3d = true
 		_set_table3d(true)
 	lobby_panel.visible = false
+	if lobby_root != null:
+		lobby_root.visible = false
+	if lobby_bg != null:
+		lobby_bg.visible = false
+	if lobby_bg_dim != null:
+		lobby_bg_dim.visible = false
 	game_panel.visible = not _table3d_active
 	# 兜底：离开 Q_DECISION 时翻回 hold 的看牌（请求被拒/异常流转），避免牌永久正面。
 	if _q_hold_active and int(state.phase) != PHASE_Q_DECISION:
@@ -1813,13 +1901,13 @@ func _close_settlement() -> void:
 ## SHOP 阶段打开/刷新商店面板（已存在则刷新内容，反映购买/售出/完成状态）。
 func _open_shop_panel() -> void:
 	if shop_panel != null and is_instance_valid(shop_panel):
-		shop_panel.setup(latest_state, _on_shop_buy, _on_shop_skip, not _table3d_active)
+		shop_panel.setup(latest_state, _on_shop_buy, _on_shop_skip, _on_shop_refresh, _on_shop_lock, _on_shop_card_buy, _on_shop_card_refresh, _on_shop_card_lock, not _table3d_active)
 		return
 	var panel := ShopPanelScript.instantiate()
 	panel.name = "ShopPanel"
 	panel.z_index = 90
 	_mount_modal(panel)
-	panel.setup(latest_state, _on_shop_buy, _on_shop_skip, not _table3d_active)
+	panel.setup(latest_state, _on_shop_buy, _on_shop_skip, _on_shop_refresh, _on_shop_lock, _on_shop_card_buy, _on_shop_card_refresh, _on_shop_card_lock, not _table3d_active)
 	shop_panel = panel
 
 func _close_shop_panel() -> void:
@@ -1833,6 +1921,172 @@ func _on_shop_buy(offer: int) -> void:
 
 func _on_shop_skip() -> void:
 	GameState.request_shop_skip(_next_action_id())
+
+func _on_shop_refresh() -> void:
+	GameState.request_shop_refresh(_next_action_id())
+
+func _on_shop_lock(offer: int, locked: bool) -> void:
+	GameState.request_shop_lock(offer, locked, _next_action_id())
+
+func _on_shop_card_buy(slot: int) -> void:
+	GameState.request_shop_buy_card(slot, _next_action_id())
+
+func _on_shop_card_refresh() -> void:
+	GameState.request_shop_card_refresh(_next_action_id())
+
+func _on_shop_card_lock(slot: int, locked: bool) -> void:
+	GameState.request_shop_card_lock(slot, locked, _next_action_id())
+
+## ===== 道具卡手牌 / 目标选择 =====
+func _ensure_item_hand() -> void:
+	if _item_hand != null and is_instance_valid(_item_hand):
+		return
+	_item_hand = ItemHandOverlay.new()
+	_item_hand.name = "ItemHand"
+	_item_hand.z_index = 96
+	add_child(_item_hand)
+
+func _can_open_item_hand() -> bool:
+	if latest_state.is_empty() or _settings_open() or _board_has_panel():
+		return false
+	if manual_panel != null and is_instance_valid(manual_panel):
+		return false
+	var phase := int(latest_state.get("phase", PHASE_LOBBY))
+	if phase in [PHASE_LOBBY, PHASE_SHOP, PHASE_GAME_OVER]:
+		return false
+	if _duel_panel != null and is_instance_valid(_duel_panel):
+		return false
+	if _table3d_active and table3d != null and is_instance_valid(table3d) and table3d.is_dealing():
+		return false
+	return not (latest_state.get("item_cards", []) as Array).is_empty()
+
+func _open_item_hand() -> void:
+	if not _can_open_item_hand():
+		if (latest_state.get("item_cards", []) as Array).is_empty():
+			_show_toast("没有道具卡")
+		return
+	_ensure_item_hand()
+	_item_hand.setup(latest_state, int(latest_state.get("viewer_id", -1)))
+	_item_hand.open()
+
+func _close_item_hand(render := true) -> void:
+	if _item_hand != null and is_instance_valid(_item_hand) and _item_hand.is_open():
+		if _item_hand.is_target_mode():
+			_item_hand.cancel_target()
+		_item_hand.close()
+	_item_target_seat = -1
+	if _table3d_active and table3d != null and is_instance_valid(table3d):
+		table3d.end_item_target()
+	if render and not latest_state.is_empty():
+		game_view.render(latest_state)
+
+## 空格/Q/E/Enter/Esc 的道具手牌路由；返回 true 表示已消费。
+func _item_hand_handle_input(event: InputEvent) -> bool:
+	if _item_hand != null and is_instance_valid(_item_hand) and _item_hand.is_open():
+		if event is InputEventMouseButton and event.pressed:
+			return true  # 手牌打开时禁止误点牌桌
+		if not (event is InputEventKey) or not event.pressed or event.echo:
+			return false
+		if _item_hand.is_target_mode():
+			match event.keycode:
+				KEY_Q:
+					_item_hand.cycle_target(-1)
+					_update_item_target_view()
+					return true
+				KEY_E:
+					_item_hand.cycle_target(1)
+					_update_item_target_view()
+					return true
+				KEY_ENTER, KEY_KP_ENTER:
+					_confirm_item_target()
+					return true
+				KEY_ESCAPE, KEY_SPACE:
+					_cancel_item_target()
+					return true
+			return true
+		match event.keycode:
+			KEY_Q:
+				_item_hand.select_next(-1)
+				return true
+			KEY_E:
+				_item_hand.select_next(1)
+				return true
+			KEY_ENTER, KEY_KP_ENTER:
+				_use_selected_item()
+				return true
+			KEY_SPACE, KEY_ESCAPE:
+				_close_item_hand()
+				return true
+		return true
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_SPACE:
+		if _can_open_item_hand():
+			_open_item_hand()
+			return true
+	return false
+
+func _use_selected_item() -> void:
+	if _item_hand == null or not is_instance_valid(_item_hand) or _item_hand.is_target_mode():
+		return
+	var phase := int(latest_state.get("phase", PHASE_LOBBY))
+	var viewer := int(latest_state.get("viewer_id", -1))
+	if phase != PHASE_TURN_DRAW and phase != PHASE_TURN_DECISION:
+		_show_toast("只能在自己回合的抽牌/决策阶段使用道具卡")
+		return
+	if viewer != int(latest_state.get("current_player", -1)):
+		_show_toast("只能在自己回合使用道具卡")
+		return
+	if bool(latest_state.get("item_card_used", false)):
+		_show_toast("本回合已经使用过道具卡")
+		return
+	var def := _item_hand.selected_def()
+	if def.is_empty():
+		return
+	if str(def.get("target_mode", ItemCards.TARGET_NONE)) == ItemCards.TARGET_OPPONENT:
+		var targets := ItemHandMath.target_order(latest_state.get("players", []), viewer)
+		if targets.is_empty():
+			_show_toast("没有可选的对手")
+			return
+		_item_hand.begin_target(targets)
+		_update_item_target_view()
+		return
+	var target := viewer if str(def.get("target_mode", "")) == ItemCards.TARGET_SELF else -1
+	GameState.request_use_item_card(_item_hand.selected_index(), target, _next_action_id())
+	_close_item_hand()
+
+func _update_item_target_view() -> void:
+	if _item_hand == null or not is_instance_valid(_item_hand):
+		return
+	var seat := _item_hand.target_seat()
+	_item_target_seat = seat
+	_item_hand.set_target_name(_player_name_by_seat(seat))
+	if _table3d_active and table3d != null and is_instance_valid(table3d):
+		table3d.begin_item_target(seat)
+	else:
+		game_view.render(latest_state)
+
+func _confirm_item_target() -> void:
+	if _item_hand == null or not is_instance_valid(_item_hand) or not _item_hand.is_target_mode():
+		return
+	var target := _item_hand.target_seat()
+	if target < 0:
+		return
+	GameState.request_use_item_card(_item_hand.selected_index(), target, _next_action_id())
+	_close_item_hand()
+
+func _cancel_item_target() -> void:
+	if _item_hand == null or not is_instance_valid(_item_hand) or not _item_hand.is_target_mode():
+		return
+	_item_target_seat = -1
+	if _table3d_active and table3d != null and is_instance_valid(table3d):
+		table3d.end_item_target()
+	_item_hand.cancel_target()
+	game_view.render(latest_state)
+
+func _player_name_by_seat(seat: int) -> String:
+	for p in latest_state.get("players", []):
+		if int(p.get("id", -1)) == seat:
+			return str(p.get("name", ""))
+	return "玩家 %d" % seat
 
 ## Joker 变换面板：打开（幂等，场景实体，选点数/花色/确认/取消）。
 func _open_joker_transform_panel() -> void:
@@ -1949,11 +2203,19 @@ func _settings_open() -> bool:
 	return settings_menu != null and is_instance_valid(settings_menu) and settings_menu.visible
 
 ## 设置菜单切换主题后调用：重刷背景与对局渲染（与 T 键切换同保真度）。
+func refresh_lobby_layout() -> void:
+	if not latest_state.is_empty() and int(latest_state.get("phase", PHASE_LOBBY)) != PHASE_LOBBY:
+		return
+	if lobby != null:
+		lobby.refresh_layout()
+
 func apply_theme() -> void:
 	background.color = UITheme.color("bg_table")
 	if not latest_state.is_empty():
 		_render_game_if_active()
 	else:
+		if lobby != null:
+			lobby.apply_theme()
 		_set_status("主题已切换：%s" % UITheme.current)
 
 func _flush_pending_flips() -> void:
@@ -1974,10 +2236,11 @@ func _on_pending_action() -> void:
 	var actor := int(latest_state.get("viewer_id", 0))
 	var big_data: Dictionary = pending.duplicate()
 	big_data.erase("source")
+	big_data.erase("granted_ability")
 	# 隐藏棋盘大牌，播副本动画飞向弃牌堆（落位后弃牌堆显示，大牌不重建）；3D 下无 2D fly
 	if not _table3d_active:
 		animator._animate_discard_pending(big_data, actor)
-	if KongRules.has_ability(str(pending.get("rank", ""))):
+	if KongRules.has_ability(str(pending.get("rank", ""))) or not str(pending.get("granted_ability", "")).is_empty():
 		_pending_hidden_for_ability = true
 		# 能力牌弃牌：本地立即在弃牌堆顶部显示该牌，避免被旧状态覆盖，直到服务器确认
 		_discard_local_display = big_data
@@ -2070,6 +2333,22 @@ func _show_private_reveal(title: String, revealed_cards: Array, target: Dictiona
 ## 贴牌成功爆炸弹层（仅 3D）：屏幕空间齿状爆炸 + 卡面 + 「贴牌成功」 + 贴中者名字。
 func _show_slap_success(data: Dictionary) -> void:
 	_show_card_burst(data.get("card", {}), int(data.get("actor", -1)), SlapSuccessBurst.TITLE_TEXT)
+
+## 道具卡使用提示：复用贴牌成功弹层；标题=卡名，中间=道具卡正面，下方=说明+目标。
+func _on_item_card_used(data: Dictionary) -> void:
+	var def: Dictionary = data.get("card", {})
+	if def.is_empty():
+		return
+	var actor := int(data.get("actor", -1))
+	var target := int(data.get("target", -1))
+	var desc := str(def.get("desc", ""))
+	if target >= 0:
+		desc += "\n目标：%s" % _player_name_by_seat(target)
+	var view := ItemCardView.new()
+	view.custom_minimum_size = Vector2(120, 168)
+	view.size = view.custom_minimum_size
+	view.setup(def)
+	_show_card_burst(def, actor, str(def.get("name", "道具卡")), desc, view)
 
 func _on_peek_highlight(data: Dictionary) -> void:
 	if _table3d_active and table3d != null and is_instance_valid(table3d):

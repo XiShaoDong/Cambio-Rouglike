@@ -2,7 +2,7 @@
 
 > **本文档职责**：主题令牌（dark/light）规范，**给开发者**。对应实现 `scripts/ui/ui_theme.gd`。Agent 需改 UI 配色时参考。
 
-状态：v1（dark/light 双主题已接入）  
+状态：v1（dark / dark-1 / light 三主题已接入）
 关联：[light_theme.css](light_theme.css)（浅色配色来源）、`scripts/ui/ui_theme.gd`
 
 ## 架构原则（CSS 风格）
@@ -13,10 +13,12 @@ UI 代码**不得硬编码颜色**。所有颜色、样式通过 autoload 单例
 main.gd（HTML 角色：节点/布局）  →  UITheme.color("token")（CSS 角色：样式）
 ```
 
-- 切主题：`UITheme.switch_theme("dark" | "light")`（运行时生效）
+- 切主题：`UITheme.switch_theme("dark" | "dark-1" | "light")`（运行时生效）
 - 读颜色：`UITheme.color("bg_table")`
 - 当前主题：`UITheme.current`
 - 所有主题定义在 `scripts/ui/ui_theme.gd` 的 `TOKENS` 字典
+
+> **dark-1（2026-10-20）**：深板岩 + 皇家靛蓝（`#151821` / `#1E2330` / `#292F40` / `#526BDE`），仅新增主题，不覆盖现有 dark/light；设置菜单主题第 2 项。新增 `accent_pressed`、`accent_focus`、`text_on_accent`、`bg_hover` 令牌（三主题均有）。
 
 ## 令牌清单
 

@@ -213,6 +213,8 @@ func exchange(sender: int, own_slot: int, action_id := "") -> void:
 	if not game._valid_slot(target, target_slot):
 		return
 	var gift: String = game.players[sender].cards[own_slot]
+	if not gift.is_empty() and game._use_relic_once(sender, Relics.SLAP_BONUS_ID):
+		game.cards[gift]["value"] = int(game.cards[gift]["value"]) + 3
 	game.players[sender].cards[own_slot] = ""
 	game.players[target].cards[target_slot] = gift
 	game._broadcast_exchange({"kind": "slap_gift", "actor": sender, "own_slot": own_slot, "target": target, "target_slot": target_slot})

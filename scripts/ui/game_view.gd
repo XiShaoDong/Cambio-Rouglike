@@ -284,7 +284,7 @@ func _apply_pending_setup(pending: Dictionary, is_current: bool = true) -> void:
 	if from_discard:
 		return
 	main.pending_action_button.visible = true
-	if KongRules.has_ability(str(pending.get("rank", ""))):
+	if KongRules.has_ability(str(pending.get("rank", ""))) or not str(pending.get("granted_ability", "")).is_empty():
 		main.pending_action_button.text = "Use Power"
 		main.pending_action_button.add_theme_color_override("font_color", UITheme.color("accent"))
 	else:
@@ -398,6 +398,23 @@ func _render_player_section(area: Control, player: Dictionary, viewer: int, is_t
 	var exported: Variant = area.get("card_size")
 	var card_size: Vector2 = exported if exported != null and exported != Vector2.ZERO else CARD_SELF_SIZE
 	area.visible = true
+	# 道具卡目标模式：给目标玩家区域加金色边框（不拦截点击）。
+	var old_target := area.get_node_or_null("ItemTargetBorder")
+	if old_target != null:
+		area.remove_child(old_target)
+		old_target.queue_free()
+	if int(player.id) == int(main._item_target_seat):
+		var border := Panel.new()
+		border.name = "ItemTargetBorder"
+		border.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		border.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var bs := StyleBoxFlat.new()
+		bs.bg_color = Color(0, 0, 0, 0)
+		bs.set_corner_radius_all(10)
+		bs.border_color = UITheme.color("accent")
+		bs.set_border_width_all(4)
+		border.add_theme_stylebox_override("panel", bs)
+		area.add_child(border)
 	# 主网格列数固定按 HAND_SIZE（罚牌/第 5+ 张不改变列数，避免整手重排位移）
 	var hand: GridContainer = area.get_node("VBox/HandCenter/HandGrid")
 	hand.columns = maxi(2, ceili(min(player.slots.size(), KongRules.HAND_SIZE) / 2.0))

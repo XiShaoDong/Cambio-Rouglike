@@ -242,9 +242,9 @@ func _test_modals_dim() -> void:
 	add_child(shop)
 	await get_tree().process_frame
 	var shop_state := {"viewer_id": 0, "players": [{"id": 0, "currency": 100}], "shop": {"offers": [], "done": []}}
-	shop.setup(shop_state, Callable(), Callable(), true)
+	shop.setup(shop_state, Callable(), Callable(), Callable(), Callable(), Callable(), Callable(), Callable(), true)
 	_check("shop dim=true → Dim 可见", (shop.get_node("Dim") as CanvasItem).visible)
-	shop.setup(shop_state, Callable(), Callable(), false)
+	shop.setup(shop_state, Callable(), Callable(), Callable(), Callable(), Callable(), Callable(), Callable(), false)
 	_check("shop dim=false → Dim 隐藏", not (shop.get_node("Dim") as CanvasItem).visible)
 	shop.queue_free()
 

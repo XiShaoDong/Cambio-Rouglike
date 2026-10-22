@@ -68,6 +68,9 @@ func _run() -> void:
 	add_child(main_node)
 	await get_tree().process_frame
 	await get_tree().process_frame
+	# 本测试断言 dark 主题的纯白角标；强制 dark，避免用户设置 dark-1/light 干扰。
+	UITheme.switch_theme("dark")
+	main_node.apply_theme()
 	main_node.latest_state = _state()
 	main_node._set_table3d(true)
 	await get_tree().process_frame
