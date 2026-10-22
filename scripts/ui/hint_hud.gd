@@ -28,7 +28,7 @@ const ACTIVE_PHASES := [2, 3, 4, 6, 8, 12]
 const SLAP_HIDDEN := 0
 const SLAP_OPEN := 1
 const SLAP_CLOSE := 2
-const SLAP_BAR_SECONDS := 5.0
+const SLAP_BAR_SECONDS := 3.0   # 默认与结算贴牌窗口一致；实际值由 main 喂入（长度=窗口时长）
 const SLAP_BAR_W := 260.0
 const SLAP_BAR_H := 8.0
 const SLAP_FONT := 16
@@ -54,6 +54,7 @@ var _slap_label: Label
 var _slap_bar: ProgressBar
 var _slap_state := SLAP_HIDDEN
 var _slap_left := 0.0
+var _slap_bar_seconds := SLAP_BAR_SECONDS  # 当前条总时长（= slap open 窗口长度）
 var _start_delay := 0.0     # 新回合倒计时启动前的等待（随机效果展示）
 var _slap_exhausted := false
 var _slap_base_y := 0.0
@@ -80,7 +81,7 @@ func _process(delta: float) -> void:
 			_update_slap_visuals()
 			_layout()
 		elif _slap_bar != null and _slap_bar.visible:
-			_slap_bar.value = clampf(_slap_left / SLAP_BAR_SECONDS, 0.0, 1.0)
+			_slap_bar.value = clampf(_slap_left / _slap_bar_seconds, 0.0, 1.0)
 
 func _build() -> void:
 	if _pill != null:
@@ -329,13 +330,18 @@ func _slap_row_visible() -> bool:
 	return _slap_state == SLAP_OPEN and not _slap_exhausted
 
 ## 由 main 喂入状态；HIDDEN/CLOSE → OPEN 视为"新窗口"，重置装饰条。
-func set_slap_state(state: int) -> void:
+func set_slap_state(state: int, window := 0.0) -> void:
 	if state == _slap_state:
 		return
 	var entering_open := state == SLAP_OPEN and _slap_state != SLAP_OPEN
+	if entering_open:
+		if window > 0.0:
+			_slap_bar_seconds = window  # 条总时长同步到真实窗口
+	elif window > 0.0:
+		_slap_bar_seconds = window
 	_slap_state = state
 	if entering_open:
-		_slap_left = SLAP_BAR_SECONDS
+		_slap_left = _slap_bar_seconds
 		_slap_exhausted = false
 	_update_slap_visuals()
 	_layout()
@@ -354,7 +360,7 @@ func _update_slap_visuals() -> void:
 	else:
 		_slap_label.text = SLAP_TEXT_OPEN
 		_slap_label.add_theme_color_override("font_color", SLAP_OPEN_COLOR)
-		_slap_bar.value = clampf(_slap_left / SLAP_BAR_SECONDS, 0.0, 1.0)
+		_slap_bar.value = clampf(_slap_left / _slap_bar_seconds, 0.0, 1.0)
 
 ## 测试/调试访问器。
 func pill() -> PanelContainer:

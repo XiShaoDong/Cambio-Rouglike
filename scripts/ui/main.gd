@@ -391,7 +391,9 @@ func _update_hint_hud(phase: int, viewer: int, current: int) -> void:
 		slap_state = HintHud.SLAP_CLOSE
 	elif bool(latest_state.get("slap_open", false)):
 		slap_state = HintHud.SLAP_OPEN
-	_hint_hud.set_slap_state(slap_state)
+	# slap open bar 总长 = 结算贴牌窗口真实时长（长度正确同步）
+	_hint_hud.set_slap_state(slap_state,
+		KongRules.SLAP_SETTLE_SECONDS if slap_state == HintHud.SLAP_OPEN else 0.0)
 	# 游戏开始的第一环节：全员 Ready 后展示本局特效（服务器 EFFECT_REVEAL 阶段 5s）。
 	if phase == PHASE_EFFECT_REVEAL:
 		_maybe_new_turn_effect()

@@ -148,7 +148,7 @@ func _test_slap_row() -> void:
 	_check("OPEN：绿 SLAP OPEN", hud.slap_label().text == "SLAP OPEN" and hud.slap_label().get_theme_color("font_color") == HintHud.SLAP_OPEN_COLOR)
 	_check("OPEN：条可见 value≈1", hud.slap_bar().visible and is_equal_approx(hud.slap_bar().value, 1.0))
 	_check("状态行水平居中", hud.slap_label().horizontal_alignment == HORIZONTAL_ALIGNMENT_CENTER)
-	hud._process(3.0)
+	hud._process(1.0)
 	var v_mid: float = hud.slap_bar().value
 	hud.set_slap_state(HintHud.SLAP_OPEN)
 	_check("同状态重发不重置条", is_equal_approx(hud.slap_bar().value, v_mid) and v_mid < 1.0)
