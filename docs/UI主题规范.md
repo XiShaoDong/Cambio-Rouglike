@@ -19,6 +19,8 @@ main.gd（HTML 角色：节点/布局）  →  UITheme.color("token")（CSS 角�
 - 所有主题定义在 `scripts/ui/ui_theme.gd` 的 `TOKENS` 字典
 
 > **dark-1（2026-10-20）**：深板岩 + 皇家靛蓝（`#151821` / `#1E2330` / `#292F40` / `#526BDE`），仅新增主题，不覆盖现有 dark/light；设置菜单主题第 2 项。新增 `accent_pressed`、`accent_focus`、`text_on_accent`、`bg_hover` 令牌（三主题均有）。
+>
+> **默认主题变更（2026-10-21）**：默认主题由 `dark` 改为 **`dark-1`**（`Settings.display.theme` 默认值 + `main.gd` 兜底读取同步）。注意 `user://settings.cfg` 已保存过 `theme` 的用户值仍会覆盖默认。当前大厅/房间/弹窗演示均以 dark-1 为基准（danger 按钮 = 红字红边半透明红底 outline；LineEdit = 半透明深蓝底 + 1px 边框 + 聚焦 `accent_focus` 边框）。
 
 ## 令牌清单
 
