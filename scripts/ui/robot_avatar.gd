@@ -23,9 +23,10 @@ const HEAD_YAW_MAX_DEG := 30.0                  # Head Tracking 水平上限（�
 const HEAD_PITCH_MAX_DEG := 20.0                # Head Tracking 垂直上限
 const BLINK_PERIOD := 4.2                       # 自动眨眼周期（秒）
 const BLINK_DURATION := 0.14                    # 单次眨眼时长（秒）
-const LOOK_SQUINT_GAIN := 0.45                  # 看左/右：对侧同向眼眯眼增益（0.45=半闭眼白显小）
-const LOOK_WIDE_GAIN := 0.30                    # 看左/右：对侧反向眼睁大增益（眼白显大）
-const ZOOM_BLINK := 0.30                        # cmd/alt 放大：双眼半眯（眼白显小）
+const LOOK_SQUINT_GAIN := 0.55                  # 看左/右：同向眼眯眼增益（眼皮压下 → 眼白显小）
+const LOOK_WIDE_GAIN := 0.35                    # 看左/右：镜像眼睁大增益（eyeWide → 眼白显大）
+const ZOOM_BLINK := 0.30                        # cmd/alt 放大：双眼半眯（叠加上面强变化）
+const EYE_ZOOM_SCALE := 0.8                     # zoom 时 Eyes mesh 整体缩放（虹膜+眼白一起小）
 
 # 机体外观（覆盖模型自带 Body 材质）
 const BODY_COLOR := Color("496AFE")             # 深蓝
@@ -177,9 +178,13 @@ func set_body_color(color: Color) -> void:
 
 ## 放大时眼睛采用「小眼睛」（Tiny_Eyes 形状键）；松开归零。
 ## zoom 同时驱动双眼半眯（_process 每帧套 ZOOM_BLINK）→ 眼白也显小。
+## 另：直接**缩放 Eyes mesh**（虹膜+眼白同面缩放，模型形状键不驱动白面顶点，
+## blend 对眼白无效）→ zoom 时整个眼睛（含眼白）可靠变小。
 func set_eye_zoom(on: bool) -> void:
 	_build()
 	_zoom_on = on
+	if _eyes != null:
+		_eyes.scale = Vector3.ONE * (EYE_ZOOM_SCALE if on else 1.0)
 	if _eye_zoom == on:
 		return
 	_eye_zoom = on

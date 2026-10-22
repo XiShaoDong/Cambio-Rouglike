@@ -320,10 +320,12 @@ func _test_eye_whites() -> void:
 	robot._process(1.0)
 	_check("zoom：双眼半眯", robot.blend_value("eyeBlinkLeft") >= 0.24 and robot.blend_value("eyeBlinkRight") >= 0.24)
 	_check("zoom：Tiny_Eyes 开", robot.blend_value("Tiny_Eyes") > 0.9)
+	_check("zoom：Eyes mesh 缩放", robot._eyes.scale.x < 1.0)
 	robot.set_eye_zoom(false)
 	robot._blink_t = 0.0
 	robot._process(1.0)
 	_check("zoom 关：半眯解除", robot.blend_value("eyeBlinkLeft") <= 0.05 and robot.blend_value("eyeBlinkRight") <= 0.05)
+	_check("zoom 关：Eyes mesh 复原", is_equal_approx(robot._eyes.scale.x, 1.0))
 	robot.queue_free()
 
 ## 光环（离线/出局）+ 视线冻结（头眼回正）。
