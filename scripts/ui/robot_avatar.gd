@@ -52,8 +52,8 @@ var _halo_t := 0.0
 var _halo_a := 0.0
 var _halo_target_a := 0.0
 
-# 光环（离线/出局头顶 😇 式金环）
-const HALO_Y_MODEL := 2.55     # 头顶上方（模型空间，脚=原点）
+# 光环（离线/出局头顶 😇 式金环）：大小/位置在“状态面板（♥$卡）之下、头上一点”
+const HALO_Y_MODEL := 2.32     # 头顶(2.2) 上一点，低于头顶状态面板
 const HALO_COLOR := Color("FFE9A8")
 
 func _ready() -> void:
@@ -71,7 +71,7 @@ func _process(delta: float) -> void:
 		(_halo.material_override as StandardMaterial3D).albedo_color.a = _halo_a
 		if _halo_a <= 0.0 and _halo_target_a <= 0.0:
 			_halo.visible = false
-		var bob := sin(_halo_t * 1.6) * 0.045
+		var bob := sin(_halo_t * 1.6) * 0.02
 		_halo.position = Vector3(0.0, HALO_Y_MODEL + bob, 0.0)
 		_halo.rotation.y += delta * 0.7
 	if _eyes == null:
@@ -304,8 +304,8 @@ func set_halo(on: bool) -> void:
 	_build()
 	if _halo == null:
 		var torus := TorusMesh.new()
-		torus.inner_radius = 0.62
-		torus.outer_radius = 0.78
+		torus.inner_radius = 0.33
+		torus.outer_radius = 0.375
 		_halo = MeshInstance3D.new()
 		_halo.name = "Halo"
 		_halo.mesh = torus
