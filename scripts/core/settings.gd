@@ -15,7 +15,7 @@ var _data := {
 		"muted": false,
 	},
 	"display": {
-		"theme": "dark",
+		"theme": "dark-1",
 		"language": "zh",
 		"lobby_layout": "auto",   # auto / wide / compact
 	},

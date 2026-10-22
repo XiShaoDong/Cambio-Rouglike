@@ -92,6 +92,7 @@ func _build_ui() -> void:
 	_directory_edit.text = str(Settings.get_setting("network", "directory_url", ""))
 	_directory_edit.text_submitted.connect(func(_t: String): _apply_directory())
 	_directory_edit.focus_exited.connect(_apply_directory)
+	_style_input(_directory_edit)
 	vbox.add_child(_directory_edit)
 
 	# 主题
@@ -127,7 +128,9 @@ func _build_ui() -> void:
 	# 关闭
 	var close := Button.new()
 	close.set_meta("text_key", "close")
+	close.custom_minimum_size = Vector2(0, 44)
 	close.pressed.connect(func(): visible = false)
+	_style_button(close)
 	vbox.add_child(close)
 
 	# ESC 提示
@@ -141,11 +144,46 @@ func _build_ui() -> void:
 func _panel_style() -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
 	style.bg_color = UITheme.color("bg_elevated")
-	style.set_corner_radius_all(12)
+	style.bg_color.a = 0.98
+	style.set_corner_radius_all(14)
 	style.set_content_margin_all(24)
 	style.border_color = UITheme.color("border")
 	style.set_border_width_all(1)
 	return style
+
+## 与大厅输入框同款样式（半透明深蓝底 + 1px 边框 + 圆角，聚焦 accent 边框）。
+func _style_input(edit: LineEdit) -> void:
+	var st := StyleBoxFlat.new()
+	st.bg_color = UITheme.color("bg_elevated")
+	st.set_corner_radius_all(10)
+	st.content_margin_left = 16
+	st.content_margin_right = 16
+	st.content_margin_top = 10
+	st.content_margin_bottom = 10
+	st.border_color = UITheme.color("border")
+	st.set_border_width_all(1)
+	edit.add_theme_stylebox_override("normal", st)
+	var focus: StyleBoxFlat = st.duplicate()
+	focus.border_color = UITheme.color("accent_focus")
+	edit.add_theme_stylebox_override("focus", focus)
+
+## 与大厅次级按钮同款样式。
+func _style_button(btn: Button) -> void:
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = UITheme.color("bg_elevated")
+	normal.bg_color.a = 0.92
+	normal.set_corner_radius_all(8)
+	normal.set_content_margin_all(10)
+	normal.border_color = UITheme.color("border")
+	normal.set_border_width_all(1)
+	btn.add_theme_stylebox_override("normal", normal)
+	var hover: StyleBoxFlat = normal.duplicate()
+	hover.bg_color = UITheme.color("bg_surface_alt")
+	btn.add_theme_stylebox_override("hover", hover)
+	var pressed: StyleBoxFlat = normal.duplicate()
+	pressed.bg_color = UITheme.color("bg_hover")
+	btn.add_theme_stylebox_override("pressed", pressed)
+	btn.add_theme_color_override("font_color", UITheme.color("text_primary"))
 
 func _row_label(key: String) -> Label:
 	var label := Label.new()

@@ -1132,7 +1132,6 @@ var status_label: Label
 var lobby_status_label: Label
 var lobby_root: Control
 var lobby_bg: TextureRect
-var lobby_bg_dim: ColorRect
 var lobby_panel: VBoxContainer
 var game_panel: VBoxContainer
 var name_input: LineEdit
@@ -1295,7 +1294,7 @@ func _ready() -> void:
 	# 拦截窗口关闭：在房间/对局中时先回初始大厅而非直接退出
 	get_tree().set_auto_accept_quit(false)
 	# 启动即应用持久化主题，保证 UI 用正确 token 构建
-	UITheme.switch_theme(str(Settings.get_setting("display", "theme", "dark")))
+	UITheme.switch_theme(str(Settings.get_setting("display", "theme", "dark-1")))
 	keybinds.load()
 	interaction = GameInteraction.new(self)
 	lobby = LobbyView.new(self)
@@ -1600,12 +1599,6 @@ func _build_interface() -> void:
 	lobby_bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	lobby_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(lobby_bg)
-	lobby_bg_dim = ColorRect.new()
-	lobby_bg_dim.name = "LobbyBackgroundDim"
-	lobby_bg_dim.color = Color(0.02, 0.03, 0.06, 0.42)
-	lobby_bg_dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	lobby_bg_dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(lobby_bg_dim)
 	overlay = Control.new()
 	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -1744,8 +1737,6 @@ func _on_state_updated(state: Dictionary) -> void:
 		lobby_root.visible = false
 	if lobby_bg != null:
 		lobby_bg.visible = false
-	if lobby_bg_dim != null:
-		lobby_bg_dim.visible = false
 	game_panel.visible = not _table3d_active
 	# 兜底：离开 Q_DECISION 时翻回 hold 的看牌（请求被拒/异常流转），避免牌永久正面。
 	if _q_hold_active and int(state.phase) != PHASE_Q_DECISION:

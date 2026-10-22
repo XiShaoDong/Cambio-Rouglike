@@ -21,21 +21,14 @@ func setup(p_seat: int, player: Dictionary, is_host: bool, is_me: bool, can_kick
 	size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var style := StyleBoxFlat.new()
 	style.set_corner_radius_all(10)
-	style.set_content_margin_all(7)
+	style.set_content_margin_all(0)
 	style.bg_color = UITheme.color("bg_surface")
 	if _empty:
 		style.bg_color = UITheme.color("bg_table")
 		style.bg_color.a = 0.55
-		style.border_color = UITheme.color("border")
-		style.border_color.a = 0.7
-		style.set_border_width_all(1)
-	elif is_host:
-		style.bg_color = UITheme.color("bg_surface")
-		style.border_color = UITheme.color("accent")
-		style.set_border_width_all(2)
 	else:
-		style.border_color = UITheme.color("border")
-		style.set_border_width_all(1)
+		style.border_color = UITheme.color("accent") if is_host else UITheme.color("border")
+		style.set_border_width_all(2 if is_host else 1)
 	add_theme_stylebox_override("panel", style)
 	for child in get_children():
 		remove_child(child)
@@ -47,11 +40,15 @@ func setup(p_seat: int, player: Dictionary, is_host: bool, is_me: bool, can_kick
 		_dashed.color = UITheme.color("text_muted")
 		_dashed.color.a = 0.45
 		add_child(_dashed)
+	var pad := MarginContainer.new()
+	for m in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
+		pad.add_theme_constant_override(m, 7)
+	add_child(pad)
 
 	var vb := VBoxContainer.new()
 	vb.name = "VBox"
 	vb.add_theme_constant_override("separation", 3)
-	add_child(vb)
+	pad.add_child(vb)
 	var header := HBoxContainer.new()
 	header.name = "Header"
 	header.add_theme_constant_override("separation", 6)
@@ -153,30 +150,25 @@ func setup(p_seat: int, player: Dictionary, is_host: bool, is_me: bool, can_kick
 func is_empty_seat() -> bool:
 	return _empty
 
-## 宽屏房间左侧：横向紧凑席位行。
+## 宽屏房间左侧：横向紧凑席位行（小方块头像 + 名称/状态；无席位编号）。
 func setup_row(p_seat: int, player: Dictionary, is_host: bool, is_me: bool, can_kick: bool) -> void:
 	seat = p_seat
 	_empty = player.is_empty()
 	_has_host_badge = not _empty and is_host
 	_has_kick = not _empty and can_kick
-	custom_minimum_size = Vector2(0, 64)
+	custom_minimum_size = Vector2(0, 56)
 	size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var style := StyleBoxFlat.new()
-	style.set_corner_radius_all(8)
-	style.set_content_margin_all(8)
+	style.set_corner_radius_all(10)
+	style.set_content_margin_all(0)
 	style.bg_color = UITheme.color("bg_surface")
 	if _empty:
 		style.bg_color = UITheme.color("bg_table")
 		style.bg_color.a = 0.55
-		style.border_color = UITheme.color("border")
-		style.border_color.a = 0.7
-		style.set_border_width_all(1)
-	elif is_host:
-		style.border_color = UITheme.color("accent")
-		style.set_border_width_all(2)
+		# 空席：无边框由虚线控件充当卡片边框
 	else:
-		style.border_color = UITheme.color("border")
-		style.set_border_width_all(1)
+		style.border_color = UITheme.color("accent") if is_host else UITheme.color("border")
+		style.set_border_width_all(2 if is_host else 1)
 	add_theme_stylebox_override("panel", style)
 	for child in get_children():
 		remove_child(child)
@@ -186,79 +178,87 @@ func setup_row(p_seat: int, player: Dictionary, is_host: bool, is_me: bool, can_
 		dashed.color = UITheme.color("text_muted")
 		dashed.color.a = 0.45
 		add_child(dashed)
+	var pad := MarginContainer.new()
+	for m in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
+		pad.add_theme_constant_override(m, 10)
+	add_child(pad)
 	var row := HBoxContainer.new()
 	row.name = "Row"
-	row.add_theme_constant_override("separation", 8)
-	add_child(row)
-	var num := Label.new()
-	num.text = "%02d" % (p_seat + 1)
-	num.custom_minimum_size = Vector2(24, 0)
-	num.add_theme_font_size_override("font_size", 11)
-	num.add_theme_color_override("font_color", UITheme.color("text_muted"))
-	row.add_child(num)
+	row.add_theme_constant_override("separation", 10)
+	pad.add_child(row)
 	var avatar := PanelContainer.new()
-	avatar.custom_minimum_size = Vector2(30, 30)
-	avatar.size = Vector2(30, 30)
+	avatar.custom_minimum_size = Vector2(28, 28)
+	avatar.size = Vector2(28, 28)
+	avatar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var av := StyleBoxFlat.new()
-	av.bg_color = UITheme.color("accent_soft") if not _empty else UITheme.color("bg_elevated")
-	av.set_corner_radius_all(15)
-	avatar.add_theme_stylebox_override("panel", av)
+	av.set_corner_radius_all(8)
+	av.set_content_margin_all(0)
+	if _empty:
+		av.bg_color = UITheme.color("bg_elevated")
+		avatar.add_theme_stylebox_override("panel", av)
+		var av_dash := LobbyDashedBorder.new()
+		av_dash.color = UITheme.color("text_muted")
+		av_dash.color.a = 0.5
+		av_dash.corner_radius = 8.0
+		avatar.add_child(av_dash)
+	else:
+		av.bg_color = UITheme.color("bg_surface_alt")
+		av.border_color = UITheme.color("border")
+		av.set_border_width_all(1)
+		avatar.add_theme_stylebox_override("panel", av)
 	row.add_child(avatar)
 	var initial := Label.new()
 	initial.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	initial.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	initial.add_theme_font_size_override("font_size", 13)
 	if _empty:
-		initial.text = "+"
+		initial.text = "♟"
 		initial.add_theme_color_override("font_color", UITheme.color("text_muted"))
 	else:
 		var n := str(player.get("name", "玩家"))
 		initial.text = n.left(1)
-		initial.add_theme_color_override("font_color", UITheme.color("accent"))
+		initial.add_theme_color_override("font_color", UITheme.color("text_primary"))
 	avatar.add_child(initial)
 	var info := VBoxContainer.new()
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	info.add_theme_constant_override("separation", 0)
+	info.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	info.add_theme_constant_override("separation", 1)
 	row.add_child(info)
 	_name_label = Label.new()
 	_name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	_name_label.clip_text = true
 	_name_label.max_lines_visible = 1
 	_name_label.add_theme_font_size_override("font_size", 14)
-	if _empty:
-		_name_label.text = "等待加入"
-		_name_label.add_theme_color_override("font_color", UITheme.color("text_muted"))
-	else:
-		var nm := str(player.get("name", "玩家"))
-		_name_label.text = nm + ("（你）" if is_me else "")
-		_name_label.add_theme_color_override("font_color", UITheme.color("text_primary"))
-	info.add_child(_name_label)
 	_status_label = Label.new()
-	_status_label.add_theme_font_size_override("font_size", 10)
+	_status_label.add_theme_font_size_override("font_size", 11)
 	if _empty:
+		_name_label.text = "席位 %d" % (p_seat + 1)
+		_name_label.add_theme_color_override("font_color", UITheme.color("text_muted"))
 		_status_label.text = "等待加入"
 		_status_label.add_theme_color_override("font_color", UITheme.color("text_muted"))
-	elif is_host:
-		_status_label.text = "房主 · 已连接"
-		_status_label.add_theme_color_override("font_color", UITheme.color("accent"))
-	elif bool(player.get("ready", false)):
-		_status_label.text = "● 已准备"
-		_status_label.add_theme_color_override("font_color", UITheme.color("success"))
 	else:
-		_status_label.text = "● 未准备"
-		_status_label.add_theme_color_override("font_color", UITheme.color("warning"))
+		var nm := str(player.get("name", "玩家"))
+		_name_label.text = nm
+		_name_label.add_theme_color_override("font_color", UITheme.color("text_primary"))
+		if is_host:
+			_status_label.text = "房主 · 已连接"
+			_status_label.add_theme_color_override("font_color", UITheme.color("accent"))
+		elif bool(player.get("ready", false)):
+			_status_label.text = "已准备"
+			_status_label.add_theme_color_override("font_color", UITheme.color("success"))
+		else:
+			_status_label.text = "未准备"
+			_status_label.add_theme_color_override("font_color", UITheme.color("warning"))
+	info.add_child(_name_label)
 	info.add_child(_status_label)
-	if not _empty and is_host:
-		var badge := Label.new()
-		badge.text = "房主"
-		badge.add_theme_font_size_override("font_size", 10)
-		badge.add_theme_color_override("font_color", UITheme.color("accent"))
-		row.add_child(badge)
 	if not _empty and can_kick:
 		var kick := Button.new()
-		kick.text = "踢出"
+		kick.text = "✕"
 		kick.flat = true
-		kick.add_theme_font_size_override("font_size", 10)
+		kick.custom_minimum_size = Vector2(28, 28)
+		kick.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		kick.tooltip_text = "踢出该玩家"
+		kick.add_theme_font_size_override("font_size", 13)
 		kick.add_theme_color_override("font_color", UITheme.color("danger"))
 		kick.pressed.connect(func(): kick_requested.emit(p_seat))
 		row.add_child(kick)

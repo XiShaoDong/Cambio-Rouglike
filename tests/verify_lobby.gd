@@ -199,7 +199,7 @@ func _test_lobby_ui() -> void:
 	_check("宽屏：面板变宽", scene.lobby._panel.custom_minimum_size.x > 700.0)
 	_check("宽屏：席位纵向列表", scene.lobby._slots_box is VBoxContainer and scene.lobby._slots_box.get_child_count() == 4)
 	_check("宽屏：中央舞台存在", scene.lobby._center_art != null and scene.lobby._center_art.get_child_count() == 3)
-	_check("宽屏：顶部房间码/状态", scene.lobby._header_room_code != null and scene.lobby._header_room_code.text.contains("Room:"))
+	_check("宽屏：中央房间码卡", not scene.lobby._share_field.text.is_empty())
 	_check("宽屏：右侧主按钮", scene.lobby._start_button != null and scene.lobby._invite_button != null)
 	scene.queue_free()
 	await get_tree().process_frame
