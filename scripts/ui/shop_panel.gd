@@ -305,25 +305,27 @@ func _refresh_bottom() -> void:
 	cur_lbl.text = "$ %d" % _currency
 	var shop := _shop()
 	if _relic_refresh_btn != null and is_instance_valid(_relic_refresh_btn):
-		_relic_refresh_btn.text = "⟳  刷新遗物 $%d" % int(shop.get("refresh_cost", Relics.SHOP_REFRESH_COST))
+		var relic_cost := int(shop.get("refresh_cost", Relics.SHOP_REFRESH_COST))
+		_relic_refresh_btn.text = "⟳  刷新遗物 $%d" % relic_cost
 		_relic_refresh_btn.disabled = not bool(shop.get("can_refresh", false))
-		_relic_refresh_btn.tooltip_text = _refresh_tip("遗物", bool(shop.get("can_refresh", false)), _relic_count, 3)
+		_relic_refresh_btn.tooltip_text = _refresh_tip("遗物", bool(shop.get("can_refresh", false)), _relic_count, 3, relic_cost)
 	if _card_refresh_btn != null and is_instance_valid(_card_refresh_btn):
-		_card_refresh_btn.text = "⟳  刷新卡牌 $%d" % int(shop.get("card_refresh_cost", ItemCards.REFRESH_COST))
+		var card_cost := int(shop.get("card_refresh_cost", ItemCards.REFRESH_COST))
+		_card_refresh_btn.text = "⟳  刷新卡牌 $%d" % card_cost
 		_card_refresh_btn.disabled = not bool(shop.get("card_can_refresh", false))
-		_card_refresh_btn.tooltip_text = _refresh_tip("道具卡", bool(shop.get("card_can_refresh", false)), _card_count, ItemCards.SLOT_LIMIT)
+		_card_refresh_btn.tooltip_text = _refresh_tip("道具卡", bool(shop.get("card_can_refresh", false)), _card_count, ItemCards.SLOT_LIMIT, card_cost)
 	var leave: Button = get_node("Center/Panel/VBox/Bottom/Leave")
 	leave.text = "已结束商店" if _done else "结束商店（跳过剩余）"
 	leave.disabled = _done
 
-func _refresh_tip(label: String, can: bool, count: int, limit: int) -> String:
+func _refresh_tip(label: String, can: bool, count: int, limit: int, cost: int) -> String:
 	if can:
-		return "花 %d 刷新未锁定的%s货位；已锁货位保持不变。" % [ItemCards.REFRESH_COST, label]
+		return "花 %d 刷新未锁定的%s货位；已锁货位保持不变。" % [cost, label]
 	if _done:
 		return "商店已结束。"
 	if count >= limit:
 		return "%s栏已满，无法刷新。" % label
-	if _currency < ItemCards.REFRESH_COST:
+	if _currency < cost:
 		return "货币不足，无法刷新。"
 	return "没有可刷新的%s货位（可能都已锁定）。" % label
 

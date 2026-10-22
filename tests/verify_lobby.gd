@@ -19,6 +19,8 @@ func _ready() -> void:
 	_test_effect_phase_flow()
 	_test_shop_enabled_gate()
 	_test_back_to_lobby()
+	_test_match_options()
+	_test_refresh_price_curve()
 	_test_dark1_theme()
 	await _test_lobby_ui()
 	print("=== LOBBY RESULT: %d/%d passed%s ===" % [checks - failures, checks, " (FAILURES!)" if failures else ""])
@@ -245,6 +247,55 @@ func _test_back_to_lobby() -> void:
 	# 回大厅后可立即开新一届系列赛
 	GameState._server_start_match(0, 1)
 	_check("回大厅后可以重新开局", GameState.phase == GameState.Phase.INITIAL_PEEK)
+
+## 对局详情：房主 set_match_options + 快照 + 新一届开局按设置重置经济。
+func _test_match_options() -> void:
+	_setup_two()
+	last_lobby = {}
+	GameState._server_set_match_options(1, 5, 300, 80, "mo1")
+	_check("非房主改详情被拒", int(GameState.run_state["start_health"]) == KongRules.START_HEALTH)
+	GameState._server_set_match_options(0, 5, 300, 80, "mo2")
+	_check("房主改详情同步", int(GameState.run_state["start_health"]) == 5 \
+		and int(GameState.run_state["start_currency"]) == 300 \
+		and int(GameState.run_state["shop_price"]) == 80 and not last_lobby.is_empty())
+	var snap: Dictionary = GameState._lobby_snapshot(0)
+	_check("lobby 快照含详情字段", int(snap.get("start_health", 0)) == 5 \
+		and int(snap.get("start_currency", 0)) == 300 and int(snap.get("shop_price", 0)) == 80)
+	GameState._server_set_match_options(0, 99, -3, -50, "mo3")
+	_check("详情数值 clamp", int(GameState.run_state["start_health"]) == 10 \
+		and int(GameState.run_state["start_currency"]) == 0 \
+		and int(GameState.run_state["shop_price"]) == 5)
+	# 新一届开局：currency/health 按设置重置
+	GameState._server_set_match_options(0, 3, 200, 50, "mo4")
+	GameState._server_start_match(0, 2)
+	_check("开局按详情重置经济", int(GameState.players[0].health) == 3 \
+		and int(GameState.players[0].currency) == 200 \
+		and int(GameState.players[1].currency) == 200)
+	# 商店物价用 run_state.shop_price
+	GameState._reset_match()
+	GameState.run_state["shop_price"] = 70
+	var def := Relics.joker_transform()
+	var offer: Dictionary = GameState._offer_from_relic(0, def, false)
+	_check("遗物货架价=设置价格", int(offer["price"]) == 70)
+	var icard: Dictionary = ItemCards.pool()[0]
+	var card_offer: Dictionary = GameState._offer_from_item_card(0, icard, false)
+	_check("卡牌货架价=设置价格", int(card_offer["price"]) == 70)
+
+## 刷新价格曲线：10 → 15 → 25 → 40 → 60（5 的倍数、增额递增）；逐店计数生效。
+func _test_refresh_price_curve() -> void:
+	_setup_two()
+	GameState.phase = GameState.Phase.SHOP
+	GameState.shop = {"seats": {}, "done": {}, "refresh_counts": {}, "card_refresh_counts": {}}
+	_check("曲线 10/15/25/40/60", GameState._refresh_price_curve(0) == 10 \
+		and GameState._refresh_price_curve(1) == 15 \
+		and GameState._refresh_price_curve(2) == 25 \
+		and GameState._refresh_price_curve(3) == 40 \
+		and GameState._refresh_price_curve(4) == 60)
+	GameState.shop["refresh_counts"][0] = 2
+	_check("按玩家已刷次数计价", GameState._shop_refresh_cost(0) == 25)
+	_check("他人计数独立", GameState._shop_refresh_cost(1) == 10)
+	GameState.shop["card_refresh_counts"][1] = 4
+	_check("卡牌计数独立", GameState._shop_card_refresh_cost(1) == 60)
 
 func _test_dark1_theme() -> void:
 	var before := UITheme.current

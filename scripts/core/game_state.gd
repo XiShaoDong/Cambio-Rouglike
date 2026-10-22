@@ -342,9 +342,9 @@ func _add_player(peer_id: int, display_name: String, account_id := "") -> void:
 		"cards": [],
 		"has_acted": false,
 		"offline": false,
-		"health": int(run_state.get("health", KongRules.START_HEALTH)),
+		"health": int(run_state.get("start_health", KongRules.START_HEALTH)),
 		"eliminated_match": -1,
-		"currency": KongRules.START_CURRENCY,
+		"currency": int(run_state.get("start_currency", KongRules.START_CURRENCY)),
 		"wins": 0,
 		"protected_slot": -1,
 		"ready": false,
@@ -608,6 +608,13 @@ func _server_start_match(sender: int, match_limit := 0) -> void:
 		return
 	var limit: int = match_limit if match_limit >= KongRules.MIN_MATCH_LIMIT else KongRules.DEFAULT_MATCH_LIMIT
 	run_state["match_limit"] = clampi(limit, KongRules.MIN_MATCH_LIMIT, KongRules.MAX_MATCH_LIMIT)
+	if match_number <= 1:
+		# 新一届系列赛开局：按「对局详情」设置重置经济/生命（房主开局前可改）；
+		# 不复活已淘汰者（health<=0 保持观战）。
+		for seat in players:
+			if int(players[seat].get("health", 0)) > 0:
+				players[seat].health = int(run_state.get("start_health", KongRules.START_HEALTH))
+				players[seat].currency = int(run_state.get("start_currency", KongRules.START_CURRENCY))
 	_deal_new_match()
 
 func _deal_new_match() -> void:
@@ -1432,6 +1439,9 @@ func _rebuild_to_lobby() -> void:
 	var keep_mode := str(run_state.get("effect_mode", "normal"))
 	var keep_fx := str(run_state.get("fixed_effect", ""))
 	var keep_shop := bool(run_state.get("shop_enabled", true))
+	var keep_health := int(run_state.get("start_health", KongRules.START_HEALTH))
+	var keep_currency := int(run_state.get("start_currency", KongRules.START_CURRENCY))
+	var keep_shop_price := int(run_state.get("shop_price", Relics.RELIC_PRICE))
 	var keep_host := host_seat
 	_reset_match()
 	host_seat = keep_host
@@ -1439,6 +1449,9 @@ func _rebuild_to_lobby() -> void:
 	run_state["effect_mode"] = keep_mode
 	run_state["fixed_effect"] = keep_fx
 	run_state["shop_enabled"] = keep_shop
+	run_state["start_health"] = keep_health
+	run_state["start_currency"] = keep_currency
+	run_state["shop_price"] = keep_shop_price
 	var used_colors: Array = []
 	for entry in roster:
 		var seat := int(entry["seat"])
@@ -1459,9 +1472,9 @@ func _rebuild_to_lobby() -> void:
 			"cards": [],
 			"has_acted": false,
 			"offline": false,
-			"health": KongRules.START_HEALTH,
+			"health": keep_health,
 			"eliminated_match": -1,
-			"currency": KongRules.START_CURRENCY,
+			"currency": keep_currency,
 			"wins": 0,
 			"protected_slot": -1,
 			"ready": false,
@@ -2065,7 +2078,7 @@ func _start_shop() -> void:
 			"offers": _build_shop_offers(s), "relic_bought": false,
 			"card_offers": _build_shop_card_offers(s), "card_bought": false,
 		}
-	shop = {"seats": seats, "done": {}}
+	shop = {"seats": seats, "done": {}, "refresh_counts": {}, "card_refresh_counts": {}}
 	shop_result = {}
 	phase = Phase.SHOP
 	_add_log("进入商店：遗物 2 件、道具卡 3 张；刷新 %d / %d。" % [Relics.SHOP_REFRESH_COST, ItemCards.REFRESH_COST])
@@ -2114,13 +2127,14 @@ func _item_set_lock(seat: int, slot: int, card_id: String, locked: bool) -> void
 
 func _offer_from_relic(slot: int, relic: Dictionary, locked: bool) -> Dictionary:
 	return {"index": slot, "relic_id": str(relic.get("id", "")),
-		"name": str(relic.get("name", "")), "price": int(relic.get("price", Relics.RELIC_PRICE)),
+		"name": str(relic.get("name", "")),
+		"price": int(run_state.get("shop_price", relic.get("price", Relics.RELIC_PRICE))),
 		"locked": locked}
 
 func _offer_from_item_card(slot: int, card: Dictionary, locked: bool) -> Dictionary:
 	return {"index": slot, "item_id": str(card.get("id", "")),
 		"name": str(card.get("name", "")), "desc": str(card.get("desc", "")),
-		"price": int(card.get("price", ItemCards.PRICE)),
+		"price": int(run_state.get("shop_price", card.get("price", ItemCards.PRICE))),
 		"target_mode": str(card.get("target_mode", ItemCards.TARGET_NONE)),
 		"locked": locked}
 
@@ -2242,12 +2256,26 @@ func _shop_offers_for(seat: int) -> Array:
 func _shop_card_offers_for(seat: int) -> Array:
 	return _shop_seat(seat).get("card_offers", [])
 
+## 刷新价格曲线（R-17）：随本店已刷次数递增，增额线性增长（增 5*n）→
+## 10 → 15 → 25 → 40 → 60 → 85…（恒为 5 的倍数；n 为已刷新次数）。
+func _refresh_price_curve(n: int) -> int:
+	var k := clampi(n, 0, 99)
+	return 5 * (k * (k + 1) / 2 + 2)
+
+## 本店下一次遗物刷新价格（含该玩家已刷次数）。
+func _shop_refresh_cost(seat: int) -> int:
+	return _refresh_price_curve(int(shop.get("refresh_counts", {}).get(seat, 0)))
+
+## 本店下一次道具卡刷新价格。
+func _shop_card_refresh_cost(seat: int) -> int:
+	return _refresh_price_curve(int(shop.get("card_refresh_counts", {}).get(seat, 0)))
+
 func _shop_can_refresh(seat: int) -> bool:
 	if phase != Phase.SHOP or not players.has(seat) or _shop_submitted(seat):
 		return false
 	if _relic_inventory(seat).size() >= int(run_state.get("relic_slots", 3)):
 		return false
-	if int(players[seat].currency) < Relics.SHOP_REFRESH_COST:
+	if int(players[seat].currency) < _shop_refresh_cost(seat):
 		return false
 	for offer in _shop_offers_for(seat):
 		if not bool((offer as Dictionary).get("locked", false)):
@@ -2259,7 +2287,7 @@ func _shop_card_can_refresh(seat: int) -> bool:
 		return false
 	if _item_inventory(seat).size() >= int(run_state.get("item_slots", ItemCards.SLOT_LIMIT)):
 		return false
-	if int(players[seat].currency) < ItemCards.REFRESH_COST:
+	if int(players[seat].currency) < _shop_card_refresh_cost(seat):
 		return false
 	for offer in _shop_card_offers_for(seat):
 		if not bool((offer as Dictionary).get("locked", false)):
@@ -2397,7 +2425,8 @@ func _server_shop_refresh(sender: int, action_id := "") -> void:
 	if _relic_inventory(sender).size() >= int(run_state.get("relic_slots", 3)):
 		_reject(sender, RejectCode.SHOP_REFRESH_UNAVAILABLE, action_id)
 		return
-	if int(players[sender].currency) < Relics.SHOP_REFRESH_COST:
+	var cost := _shop_refresh_cost(sender)
+	if int(players[sender].currency) < cost:
 		_reject(sender, RejectCode.INVALID_AMOUNT, action_id)
 		return
 	var has_unlocked := false
@@ -2408,9 +2437,12 @@ func _server_shop_refresh(sender: int, action_id := "") -> void:
 	if not has_unlocked:
 		_reject(sender, RejectCode.SHOP_REFRESH_UNAVAILABLE, action_id)
 		return
-	players[sender].currency = int(players[sender].currency) - Relics.SHOP_REFRESH_COST
+	players[sender].currency = int(players[sender].currency) - cost
+	var counts: Dictionary = shop.get("refresh_counts", {})
+	counts[sender] = int(counts.get(sender, 0)) + 1
+	shop["refresh_counts"] = counts
 	_reroll_unlocked_offers(sender)
-	_add_log("%s 花 %d 刷新了遗物。" % [players[sender].name, Relics.SHOP_REFRESH_COST])
+	_add_log("%s 花 %d 刷新了遗物（本店第 %d 次）。" % [players[sender].name, cost, int(counts[sender])])
 	_broadcast_state()
 
 ## 只替换未锁货位；排除已持有、另一格与已锁饰品。
@@ -2458,7 +2490,8 @@ func _server_shop_card_refresh(sender: int, action_id := "") -> void:
 	if _item_inventory(sender).size() >= int(run_state.get("item_slots", ItemCards.SLOT_LIMIT)):
 		_reject(sender, RejectCode.SHOP_REFRESH_UNAVAILABLE, action_id)
 		return
-	if int(players[sender].currency) < ItemCards.REFRESH_COST:
+	var card_cost := _shop_card_refresh_cost(sender)
+	if int(players[sender].currency) < card_cost:
 		_reject(sender, RejectCode.INVALID_AMOUNT, action_id)
 		return
 	var has_unlocked := false
@@ -2469,9 +2502,12 @@ func _server_shop_card_refresh(sender: int, action_id := "") -> void:
 	if not has_unlocked:
 		_reject(sender, RejectCode.SHOP_REFRESH_UNAVAILABLE, action_id)
 		return
-	players[sender].currency = int(players[sender].currency) - ItemCards.REFRESH_COST
+	players[sender].currency = int(players[sender].currency) - card_cost
+	var card_counts: Dictionary = shop.get("card_refresh_counts", {})
+	card_counts[sender] = int(card_counts.get(sender, 0)) + 1
+	shop["card_refresh_counts"] = card_counts
 	_reroll_unlocked_card_offers(sender)
-	_add_log("%s 花 %d 刷新了道具卡。" % [players[sender].name, ItemCards.REFRESH_COST])
+	_add_log("%s 花 %d 刷新了道具卡（本店第 %d 次）。" % [players[sender].name, card_cost, int(card_counts[sender])])
 	_broadcast_state()
 
 func _reroll_unlocked_card_offers(seat: int) -> void:
@@ -2789,6 +2825,9 @@ func _lobby_snapshot(viewer_seat := -1) -> Dictionary:
 		"effect_mode": str(run_state.get("effect_mode", "normal")),
 		"fixed_effect": str(run_state.get("fixed_effect", "")),
 		"shop_enabled": bool(run_state.get("shop_enabled", true)),
+		"start_health": int(run_state.get("start_health", KongRules.START_HEALTH)),
+		"start_currency": int(run_state.get("start_currency", KongRules.START_CURRENCY)),
+		"shop_price": int(run_state.get("shop_price", Relics.RELIC_PRICE)),
 	}
 
 ## 逐 peer 下发大厅快照（含各自 your_id）；离线（peer<=0）跳过。
@@ -2905,6 +2944,32 @@ func _server_set_shop_enabled(sender: int, on: bool, action_id := "") -> void:
 		_reject(sender, RejectCode.DUPLICATE_OR_EXPIRED_ACTION, action_id)
 		return
 	run_state["shop_enabled"] = bool(on)
+	_broadcast_lobby()
+
+## 房主修改对局详情（系列赛级）：初始生命/初始金钱/商店基础物价。
+func request_set_match_options(start_health: int, start_currency: int, shop_price: int, action_id := "") -> void:
+	if multiplayer.is_server():
+		_server_set_match_options(_peer_to_seat(1), start_health, start_currency, shop_price, action_id)
+	else:
+		server_set_match_options.rpc_id(1, start_health, start_currency, shop_price, action_id)
+
+@rpc("any_peer", "reliable")
+func server_set_match_options(start_health: int, start_currency: int, shop_price: int, action_id: String) -> void:
+	if multiplayer.is_server():
+		_server_set_match_options(_peer_to_seat(multiplayer.get_remote_sender_id()), start_health, start_currency, shop_price, action_id)
+
+func _server_set_match_options(sender: int, start_health: int, start_currency: int, shop_price: int, action_id := "") -> void:
+	if phase != Phase.LOBBY or not players.has(sender):
+		return
+	if sender != host_seat:
+		_reject(sender, RejectCode.NOT_HOST, action_id)
+		return
+	if not _check_action_id(sender, action_id):
+		_reject(sender, RejectCode.DUPLICATE_OR_EXPIRED_ACTION, action_id)
+		return
+	run_state["start_health"] = clampi(start_health, 1, 10)
+	run_state["start_currency"] = clampi(start_currency, 0, 9999)
+	run_state["shop_price"] = clampi(shop_price, 5, 500)
 	_broadcast_lobby()
 
 func _broadcast_state() -> void:

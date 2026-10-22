@@ -37,6 +37,10 @@ var _match_limit_value := KongRules.DEFAULT_MATCH_LIMIT
 var _disband_dialog: Control
 var _disband_ok: Button
 var _disband_close: Callable
+var _detail_dialog: Control
+var _detail_close: Callable
+var _detail_labels := {}   # key -> Label（数值）
+var _detail_values := {}   # key -> int（来自 lobby 快照）
 var _ready_button: Button
 var _start_button: Button
 var _disband_button: Button
@@ -1236,6 +1240,14 @@ func _build_room_wide() -> void:
 	shop_hint.add_theme_font_size_override("font_size", 11)
 	shop_hint.add_theme_color_override("font_color", UITheme.color("text_muted"))
 	shop_vb.add_child(shop_hint)
+	# 对局详情：血量/初始金钱/商店价格设置弹窗（仅房主可改）
+	var detail_btn: Button = main._button("对局详情")
+	detail_btn.name = "DetailButton"
+	detail_btn.custom_minimum_size = Vector2(0, 40)
+	detail_btn.tooltip_text = "设置玩家血量、初始金钱与商店物品价格"
+	detail_btn.pressed.connect(_open_detail_dialog)
+	_apply_secondary_style(detail_btn)
+	right.add_child(detail_btn)
 	var gap := Control.new()
 	gap.name = "Spacer"
 	gap.custom_minimum_size = Vector2(0, 14)
@@ -1273,6 +1285,7 @@ func _build_room_wide() -> void:
 	_apply_secondary_style(_leave_button)
 	right.add_child(_leave_button)
 	_ensure_disband_dialog()
+	_ensure_detail_dialog()
 
 func _layout_center_art() -> void:
 	if _center_art == null or _center_cards.is_empty():
@@ -1465,6 +1478,107 @@ func _apply_center_card_tint() -> void:
 			tint = Color(1.0, 0.92, 0.66)
 	for card in _center_cards:
 		card.self_modulate = tint
+
+## ===== 对局详情弹窗：血量 / 初始金钱 / 商店价格（系列赛级，仅房主可改） =====
+const DETAIL_ROWS := [
+	["start_health", "玩家血量", 1, 10, 1],
+	["start_currency", "初始金钱", 0, 9999, 10],
+	["shop_price", "商店价格", 5, 500, 5],
+]
+
+func _ensure_detail_dialog() -> void:
+	if _detail_dialog != null and is_instance_valid(_detail_dialog):
+		return
+	var modal := _make_modal("对局详情")
+	_detail_dialog = modal.root
+	_detail_close = modal.close
+	var hint := Label.new()
+	hint.text = "新一届系列赛开局生效 · 仅房主可修改"
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.add_theme_font_size_override("font_size", 12)
+	hint.add_theme_color_override("font_color", UITheme.color("text_muted"))
+	modal.vbox.add_child(hint)
+	for row in DETAIL_ROWS:
+		var key: String = str(row[0])
+		var title: String = str(row[1])
+		var step: int = int(row[4])
+		var line := HBoxContainer.new()
+		line.add_theme_constant_override("separation", 10)
+		modal.vbox.add_child(line)
+		var lbl := Label.new()
+		lbl.text = title
+		lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		lbl.add_theme_font_size_override("font_size", 14)
+		lbl.add_theme_color_override("font_color", UITheme.color("text_primary"))
+		line.add_child(lbl)
+		var minus: Button = main._button("−")
+		minus.custom_minimum_size = Vector2(40, 40)
+		minus.add_theme_font_size_override("font_size", 16)
+		minus.pressed.connect(_change_detail.bind(key, -step))
+		_apply_secondary_style(minus)
+		line.add_child(minus)
+		var value := Label.new()
+		value.custom_minimum_size = Vector2(64, 0)
+		value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		value.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		value.add_theme_font_size_override("font_size", 18)
+		value.add_theme_color_override("font_color", UITheme.color("text_primary"))
+		line.add_child(value)
+		_detail_labels[key] = value
+		var plus: Button = main._button("+")
+		plus.custom_minimum_size = Vector2(40, 40)
+		plus.add_theme_font_size_override("font_size", 16)
+		plus.pressed.connect(_change_detail.bind(key, step))
+		_apply_secondary_style(plus)
+		line.add_child(plus)
+	main.add_child(_detail_dialog)
+
+func _open_detail_dialog() -> void:
+	if _detail_dialog == null or not is_instance_valid(_detail_dialog):
+		return
+	_refresh_detail_controls()
+	_detail_dialog.visible = true
+
+## 依据 lobby 快照刷新弹窗数值与可用态。
+func _refresh_detail_controls() -> void:
+	_detail_values["start_health"] = int(main.latest_lobby.get("start_health", KongRules.START_HEALTH))
+	_detail_values["start_currency"] = int(main.latest_lobby.get("start_currency", KongRules.START_CURRENCY))
+	_detail_values["shop_price"] = int(main.latest_lobby.get("shop_price", Relics.RELIC_PRICE))
+	for key in _detail_labels:
+		var value_lbl: Label = _detail_labels[key]
+		if is_instance_valid(value_lbl):
+			value_lbl.text = str(int(_detail_values.get(key, 0)))
+	_modify_detail_steppers(_detail_dialog, _is_room_host)
+
+## 递归把弹窗中的 ± 按钮 disabled = 只读
+func _modify_detail_steppers(node: Node, host: bool) -> void:
+	for child in node.get_children():
+		if child is Button and (child.text == "−" or child.text == "+"):
+			child.disabled = not host
+			child.tooltip_text = "" if host else "仅房主可修改"
+		_modify_detail_steppers(child, host)
+
+## ± 步进：本地乐观更新 + 服务器请求（非法值服务器 clamp 后以广播为准）。
+func _change_detail(key: String, delta: int) -> void:
+	if not _is_room_host:
+		return
+	var bounds := [1, 10]
+	for row in DETAIL_ROWS:
+		if str(row[0]) == key:
+			bounds = [int(row[2]), int(row[3])]
+			break
+	var v := clampi(int(_detail_values.get(key, 0)) + delta, int(bounds[0]), int(bounds[1]))
+	if v == int(_detail_values.get(key, 0)):
+		return
+	_detail_values[key] = v
+	if _detail_labels.has(key) and is_instance_valid(_detail_labels[key]):
+		(_detail_labels[key] as Label).text = str(v)
+	GameState.request_set_match_options(
+		int(_detail_values.get("start_health", KongRules.START_HEALTH)),
+		int(_detail_values.get("start_currency", KongRules.START_CURRENCY)),
+		int(_detail_values.get("shop_price", Relics.RELIC_PRICE)),
+		main._next_action_id())
 
 func _open_disband_dialog() -> void:
 	if _disband_dialog != null:
@@ -1663,6 +1777,8 @@ func update_lobby(lobby: Dictionary) -> void:
 	_fixed_effect = str(lobby.get("fixed_effect", ""))
 	_shop_enabled = bool(lobby.get("shop_enabled", true))
 	_refresh_gameplay_controls()
+	if _detail_dialog != null and is_instance_valid(_detail_dialog):
+		_refresh_detail_controls()
 
 	var my_ready := false
 	for e in entries:

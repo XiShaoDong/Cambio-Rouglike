@@ -207,8 +207,8 @@ static func _shop_snapshot(state: Node, viewer_id: int) -> Dictionary:
 	for seat in state.shop.get("done", {}):
 		done.append(int(seat))
 	return {"offers": offers, "card_offers": card_offers, "done": done,
-		"refresh_cost": Relics.SHOP_REFRESH_COST,
-		"card_refresh_cost": ItemCards.REFRESH_COST,
+		"refresh_cost": state._shop_refresh_cost(viewer_id),
+		"card_refresh_cost": state._shop_card_refresh_cost(viewer_id),
 		"can_refresh": state._shop_can_refresh(viewer_id),
 		"card_can_refresh": state._shop_card_can_refresh(viewer_id),
 		"relic_bought": bool(seat_data.get("relic_bought", false)),

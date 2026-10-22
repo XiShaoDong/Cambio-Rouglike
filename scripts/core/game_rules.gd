@@ -119,4 +119,8 @@ static func new_default_run() -> Dictionary:
 		"effect_mode": "normal",   # normal=无特效 / random=每局随机 / fixed=整系列固定特效
 		"fixed_effect": "",        # fixed 模式下的特效 id（six_swap/plus_one/bomb）
 		"shop_enabled": true,      # 关闭后系列赛非把末结算直接开下一局
+		# 对局详情（系列赛级，房主在 LOBBY「对局详情」弹窗修改）：
+		"start_health": START_HEALTH,   # 玩家初始生命（新一届系列赛开局生效）
+		"start_currency": START_CURRENCY,  # 玩家初始金钱
+		"shop_price": Relics.RELIC_PRICE,      # 商店物品基础价（遗物/道具卡同价，价格系一并生效）
 	}
