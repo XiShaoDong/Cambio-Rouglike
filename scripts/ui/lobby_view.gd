@@ -24,6 +24,14 @@ var _slots_box: Container
 var _match_minus: Button
 var _match_value: Label
 var _stage_title: Label
+var _effect_mode := "normal"
+var _fixed_effect := ""
+var _shop_enabled := true
+var _is_room_host := false
+var _mode_buttons: Array = []
+var _effect_dropdown: OptionButton
+var _shop_on_btn: Button
+var _shop_off_btn: Button
 var _match_plus: Button
 var _match_limit_value := KongRules.DEFAULT_MATCH_LIMIT
 var _disband_dialog: Control
@@ -1022,6 +1030,40 @@ func _build_room_wide() -> void:
 	_stage_title.add_theme_font_size_override("font_size", 24)
 	_stage_title.add_theme_color_override("font_color", UITheme.color("text_primary"))
 	cv.add_child(_stage_title)
+	# 玩法选择：模式分段 slider（普通/随机/指定）+ 指定特效下拉（仅房主可改）
+	var mode_seg := HBoxContainer.new()
+	mode_seg.name = "ModeSegmented"
+	mode_seg.alignment = BoxContainer.ALIGNMENT_CENTER
+	mode_seg.add_theme_constant_override("separation", 4)
+	cv.add_child(mode_seg)
+	_mode_buttons.clear()
+	for entry in [["normal", "普通"], ["random", "随机"], ["fixed", "指定"]]:
+		var mode_btn: Button = main._button(str(entry[1]))
+		mode_btn.name = "Mode_" + str(entry[0])
+		mode_btn.custom_minimum_size = Vector2(66, 30)
+		mode_btn.add_theme_font_size_override("font_size", 13)
+		mode_btn.toggle_mode = true
+		mode_btn.pressed.connect(_change_effect_mode.bind(str(entry[0])))
+		mode_seg.add_child(mode_btn)
+		_mode_buttons.append([str(entry[0]), mode_btn])
+	_effect_dropdown = OptionButton.new()
+	_effect_dropdown.name = "EffectDropdown"
+	_effect_dropdown.visible = false
+	_effect_dropdown.custom_minimum_size = Vector2(0, 32)
+	_effect_dropdown.add_theme_font_size_override("font_size", 13)
+	for fx in TurnEffect.all():
+		var fx_id := str(fx["id"])
+		if fx_id == "none":
+			continue  # 无特效 == 普通模式，不作下拉选项
+		_effect_dropdown.add_item(str(fx["name"]))
+		_effect_dropdown.set_item_metadata(_effect_dropdown.item_count - 1, fx_id)
+	_effect_dropdown.item_selected.connect(func(idx: int):
+		if _is_room_host and _effect_mode == "fixed":
+			GameState.request_set_effect_mode("fixed", str(_effect_dropdown.get_item_metadata(idx)), main._next_action_id()))
+	cv.add_child(_effect_dropdown)
+	var stage_gap := Control.new()
+	stage_gap.custom_minimum_size = Vector2(0, 2)
+	cv.add_child(stage_gap)
 	_center_art = Control.new()
 	_center_art.name = "CenterArt"
 	_center_art.custom_minimum_size = Vector2(0, 170)
@@ -1137,6 +1179,43 @@ func _build_room_wide() -> void:
 	series_hint.add_theme_font_size_override("font_size", 11)
 	series_hint.add_theme_color_override("font_color", UITheme.color("text_muted"))
 	series_vb.add_child(series_hint)
+	# 商店开关卡：仅开/关；关闭后非把末结算直接开下一局（仅房主可改）
+	var shop_card := PanelContainer.new()
+	shop_card.name = "ShopCard"
+	shop_card.add_theme_stylebox_override("panel", _card_style())
+	right.add_child(shop_card)
+	var shop_vb := VBoxContainer.new()
+	shop_vb.add_theme_constant_override("separation", 8)
+	shop_card.add_child(shop_vb)
+	var shop_lbl := Label.new()
+	shop_lbl.text = "商店"
+	shop_lbl.add_theme_font_size_override("font_size", 13)
+	shop_lbl.add_theme_color_override("font_color", UITheme.color("text_primary"))
+	shop_vb.add_child(shop_lbl)
+	var shop_toggle := HBoxContainer.new()
+	shop_toggle.add_theme_constant_override("separation", 6)
+	shop_toggle.alignment = BoxContainer.ALIGNMENT_CENTER
+	shop_vb.add_child(shop_toggle)
+	_shop_on_btn = main._button("开")
+	_shop_on_btn.name = "ShopOn"
+	_shop_on_btn.custom_minimum_size = Vector2(64, 30)
+	_shop_on_btn.toggle_mode = true
+	_shop_on_btn.add_theme_font_size_override("font_size", 13)
+	_shop_on_btn.pressed.connect(func(): _change_shop_enabled(true))
+	shop_toggle.add_child(_shop_on_btn)
+	_shop_off_btn = main._button("关")
+	_shop_off_btn.name = "ShopOff"
+	_shop_off_btn.custom_minimum_size = Vector2(64, 30)
+	_shop_off_btn.toggle_mode = true
+	_shop_off_btn.add_theme_font_size_override("font_size", 13)
+	_shop_off_btn.pressed.connect(func(): _change_shop_enabled(false))
+	shop_toggle.add_child(_shop_off_btn)
+	var shop_hint := Label.new()
+	shop_hint.name = "ShopHint"
+	shop_hint.text = "关闭后结算直接进入下一局"
+	shop_hint.add_theme_font_size_override("font_size", 11)
+	shop_hint.add_theme_color_override("font_color", UITheme.color("text_muted"))
+	shop_vb.add_child(shop_hint)
 	var gap := Control.new()
 	gap.name = "Spacer"
 	gap.custom_minimum_size = Vector2(0, 14)
@@ -1286,6 +1365,76 @@ func _change_match_limit(delta: int) -> void:
 	_match_limit_value = v
 	_match_value.text = str(v)
 	GameState.request_set_match_limit(v, main._next_action_id())
+
+## 房主切换效果模式（局部乐观更新；服务器胁迫以广播为准）。
+func _change_effect_mode(mode: String) -> void:
+	if not _is_room_host or mode == _effect_mode:
+		return
+	_effect_mode = mode
+	_refresh_gameplay_controls()
+	GameState.request_set_effect_mode(mode, _fixed_effect, main._next_action_id())
+
+## 房主切换指定特效。
+func _change_fixed_effect(effect_id: String) -> void:
+	if not _is_room_host or effect_id == _fixed_effect:
+		return
+	_fixed_effect = effect_id
+	_refresh_gameplay_controls()
+	GameState.request_set_effect_mode("fixed", effect_id, main._next_action_id())
+
+## 房主开关商店。
+func _change_shop_enabled(on: bool) -> void:
+	if not _is_room_host or on == _shop_enabled:
+		return
+	_shop_enabled = on
+	_refresh_gameplay_controls()
+	GameState.request_set_shop_enabled(on, main._next_action_id())
+
+func _select_button_look(btn: Button, selected: bool) -> void:
+	if selected:
+		_apply_primary_style(btn)
+	else:
+		_apply_secondary_style(btn)
+
+## 按当前设置刷新模式分段/特效下拉/商店开关/中央卡牌着色（数据来自本地乐观值）。
+func _refresh_gameplay_controls() -> void:
+	for m in _mode_buttons:
+		var key: String = str(m[0])
+		var btn: Button = m[1]
+		var selected := key == _effect_mode
+		_select_button_look(btn, selected)
+		btn.button_pressed = selected
+		btn.disabled = not _is_room_host
+	if _effect_dropdown != null:
+		_effect_dropdown.visible = _effect_mode == "fixed"
+		_effect_dropdown.disabled = not _is_room_host
+		var idx := 0
+		for i in _effect_dropdown.item_count:
+			if str(_effect_dropdown.get_item_metadata(i)) == _fixed_effect:
+				idx = i
+				break
+		_effect_dropdown.select(idx)
+	if _shop_on_btn != null and _shop_off_btn != null:
+		_select_button_look(_shop_on_btn, _shop_enabled)
+		_select_button_look(_shop_off_btn, not _shop_enabled)
+		_shop_on_btn.button_pressed = _shop_enabled
+		_shop_off_btn.button_pressed = not _shop_enabled
+		_shop_on_btn.disabled = not _is_room_host
+		_shop_off_btn.disabled = not _is_room_host
+	_apply_center_card_tint()
+
+## 中央三张卡背按模式着色：普通=原色 / 随机=淡绿 / 指定=淡金。
+func _apply_center_card_tint() -> void:
+	if _center_cards.is_empty():
+		return
+	var tint := Color(1, 1, 1)
+	match _effect_mode:
+		"random":
+			tint = Color(0.72, 1.0, 0.86)
+		"fixed":
+			tint = Color(1.0, 0.92, 0.66)
+	for card in _center_cards:
+		card.self_modulate = tint
 
 func _open_disband_dialog() -> void:
 	if _disband_dialog != null:
@@ -1478,6 +1627,12 @@ func update_lobby(lobby: Dictionary) -> void:
 	_match_value.text = str(_match_limit_value)
 	_match_minus.disabled = not is_host or _match_limit_value <= KongRules.MIN_MATCH_LIMIT
 	_match_plus.disabled = not is_host or _match_limit_value >= KongRules.MAX_MATCH_LIMIT
+	# 玩法设置（系列赛级，快照下发）
+	_is_room_host = is_host
+	_effect_mode = str(lobby.get("effect_mode", "normal"))
+	_fixed_effect = str(lobby.get("fixed_effect", ""))
+	_shop_enabled = bool(lobby.get("shop_enabled", true))
+	_refresh_gameplay_controls()
 
 	var my_ready := false
 	for e in entries:
