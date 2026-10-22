@@ -58,9 +58,18 @@ static func conditional_actions(state: Dictionary, ctx: Dictionary = {}) -> Arra
 			out.append({"action": J_EXCHANGE, "text": "J：交换", "enabled": both_selected})
 	return out
 
-## 抽牌堆可抽：TURN_DRAW 且 viewer 为当前玩家（2D 抽牌堆高亮 / 3D 抽牌堆光晕同源）。
+## 结算贴牌窗口进行中（把末最终轮 / R-07 超限）：快照 settle_deadline_server_ms > 0。
+## 窗口内仅允许贴牌，抽牌堆/弃牌堆/铃铛全部锁死（服务器 _guard_final_settle 同步拒绝）。
+static func settle_pending(state: Dictionary) -> bool:
+	if state.is_empty():
+		return false
+	return int(state.get("settle_deadline_server_ms", 0)) > 0
+
+## 抽牌堆可抽：TURN_DRAW 且 viewer 为当前玩家（2D 抽牌堆高亮 / 3D 抽牌堆光晕同源）；结算贴牌窗口内锁死。
 static func draw_available(state: Dictionary) -> bool:
 	if state.is_empty():
+		return false
+	if settle_pending(state):
 		return false
 	return int(state.get("phase", 0)) == PHASE_TURN_DRAW \
 		and int(state.get("viewer_id", 0)) == int(state.get("current_player", -1))
@@ -69,13 +78,15 @@ static func draw_available(state: Dictionary) -> bool:
 static func kongbaya_available(state: Dictionary) -> bool:
 	return draw_available(state)
 
-## 弃牌堆可直接点「取弃牌顶」：TURN_DRAW 且当前玩家且弃牌堆非空。
+## 弃牌堆可直接点「取弃牌顶」：TURN_DRAW 且当前玩家且弃牌堆非空；结算贴牌窗口内锁死。
 static func discard_take_available(state: Dictionary) -> bool:
 	if state.is_empty():
 		return false
 	if int(state.get("phase", 0)) != PHASE_TURN_DRAW:
 		return false
 	if int(state.get("viewer_id", 0)) != int(state.get("current_player", -1)):
+		return false
+	if settle_pending(state):
 		return false
 	return not (state.get("discard", {}) as Dictionary).is_empty()
 

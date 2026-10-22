@@ -69,6 +69,8 @@ var _border_mesh: MeshInstance3D
 var _border_mat: StandardMaterial3D
 var _show_border := false
 var _border_color := BORDER_WHITE
+const BORDER_LOCKED := Color(1.0, 0.42, 0.47, 0.95)  # 结算贴牌窗口锁死：红色虚线框
+var _locked_dash := false
 var _border_offset_y := 0.0     # 边框相对卡面的额外高度（如抽牌堆要压到牌堆底部）
 var _glow_t := 0.0
 var _glow_on := false
@@ -283,6 +285,13 @@ func set_hover(on: bool, color := BORDER_WHITE) -> void:
 ## 该卡当前是否可操作（供 table3d_view 决定 hover 边框红/绿）。
 func is_actionable() -> bool:
 	return _actionable
+
+## 结算贴牌窗口锁锁死态：常驻红色虚线框（不受 hover 影响；settle 结束时恢复）。
+func set_locked_dash(on: bool) -> void:
+	_build()
+	_locked_dash = on
+	_border_color = BORDER_LOCKED if on else BORDER_WHITE
+	_apply_border()
 
 ## 当前"对该 viewer 已知"的牌面（槽位公开牌 或 临时揭示牌）；未知返回 {}。
 func known_card() -> Dictionary:
@@ -631,7 +640,7 @@ func _emit_segment_quad(im: ImmediateMesh, p: Vector2, q: Vector2, half_t: float
 func _apply_border() -> void:
 	if _border_mesh == null:
 		return
-	var on := _show_border and _border_color.a > 0.0
+	var on := (_show_border or _locked_dash) and _border_color.a > 0.0
 	_border_mesh.visible = on
 	if on:
 		_border_mat.albedo_color = _border_color

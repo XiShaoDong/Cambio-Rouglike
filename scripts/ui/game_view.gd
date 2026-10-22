@@ -169,19 +169,38 @@ func render(state: Dictionary) -> void:
 	main.bell_button.tooltip_text = "轮到你抽牌时，按下铃铛宣布 KONGBAYA！其他人各有一次最后行动。"
 	_update_pending_card(phase, is_current)
 	main._clear(main.controls_box)
-	var can_take := phase == PHASE_TURN_DRAW and is_current
+	var can_take := phase == PHASE_TURN_DRAW and is_current and not ActionModel.settle_pending(state)
 	main.deck_button.disabled = not can_take
-	main._highlight(main.deck_button, can_take)
+	if phase == PHASE_TURN_DRAW:
+		main._highlight(main.deck_button, can_take)
 	var discard: Dictionary = state.discard
 	var discard_available := can_take and not discard.is_empty()
 	_update_discard_button(discard, discard_available)
+	# 结算贴牌窗口（把末超限/最终轮）：两堆锁死并画红色虚线框（等待 slap close）
+	var locked_dash := ActionModel.settle_pending(state) and phase == PHASE_TURN_DRAW
+	_set_locked_dash(main.deck_button, locked_dash)
+	_set_locked_dash(main.discard_button, locked_dash)
 	_render_controls(phase, is_current)
 	_render_players(viewer)
 	_render_log()
 	main._flush_pending_flips()
 
-func _update_discard_button(discard: Dictionary, available: bool) -> void:
-	# 弃牌堆动画中：延迟显示（落位后才更新）
+## 结算贴牌窗口的锁死提示：牌堆按钮外圈红色虚线框（等待 slap close，不可抽/不可取）。
+func _set_locked_dash(node: Control, on: bool) -> void:
+	var dash := node.get_node_or_null("RedDash") as LobbyDashedBorder
+	if on and dash == null:
+		dash = LobbyDashedBorder.new()
+		dash.name = "RedDash"
+		dash.color = Color(0.95, 0.42, 0.47, 0.9)
+		dash.corner_radius = 7.0
+		dash.dash = 3.0
+		dash.gap = 2.6
+		node.add_child(dash)
+	elif not on and dash != null:
+		node.remove_child(dash)
+		dash.queue_free()
+
+func _update_discard_button(discard: Dictionary, available: bool) -> void:	# 弃牌堆动画中：延迟显示（落位后才更新）
 	if main._discard_anim_lock:
 		return
 	# 能力弃牌本地显示：立即在弃牌堆顶部显示弃掉的牌，服务器确认后清除并改由服务器状态

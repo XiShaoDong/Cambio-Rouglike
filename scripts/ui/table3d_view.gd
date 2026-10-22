@@ -345,7 +345,8 @@ func render(state: Dictionary, actionable := Callable()) -> void:
 		# 抽牌堆：hover 虚线圈压到牌堆底部（贴桌面），而不是浮在顶牌上
 		if _deck_node.has_method("set_border_offset"):
 			_deck_node.set_border_offset(-_deck_node.position.y)
-	# 抽牌堆：轮到自己抽牌（TURN_DRAW）时金色光晕
+	# 抽牌堆：轮到自己抽牌（TURN_DRAW）时金色光晕；结算贴牌窗口锁死（红色虚线框见 _set_locked_dash）
+	var locked_dash := ActionModel.settle_pending(state)
 	if _deck_block != null and is_instance_valid(_deck_block):
 		_deck_block.set_actionable(ActionModel.draw_available(state))
 	var discard: Dictionary = state.get("discard", {})
@@ -374,6 +375,7 @@ func render(state: Dictionary, actionable := Callable()) -> void:
 		_discard_block.set_pick_enabled(discard_actionable)
 		_discard_block.set_actionable_color(USE_POWER_COLOR if use_power else Table3dLayout.ACTIONABLE_COLOR)
 		_discard_block.set_actionable(discard_actionable)
+	_set_locked_dash(locked_dash)
 	var pending: Dictionary = state.get("pending", {})
 	_detect_draw(pending, discard)
 	_prev_pending = pending.duplicate()
@@ -420,6 +422,12 @@ func _leave_hover_slot() -> void:
 	_hover_slot = {}
 
 ## 铃铛可用性：可用时加金色辉光（金属底色不变）。
+## 结算贴牌窗口锁死：抽/弃两堆常驻红色虚线框（等待 slap close；两堆均为假时不画）。
+func _set_locked_dash(on: bool) -> void:
+	for block in [_deck_block, _discard_block]:
+		if block != null and is_instance_valid(block):
+			block.set_locked_dash(on)
+
 func _update_bell(state: Dictionary) -> void:
 	if _bell_model == null:
 		return
