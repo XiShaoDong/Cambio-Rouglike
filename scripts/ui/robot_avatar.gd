@@ -46,6 +46,15 @@ var _body_mat: StandardMaterial3D = null
 var _talking := false
 var _talk_t := 0.0
 var _blink_t := 0.0
+var _gaze_frozen := false     # 离线/出局：头与眼回正，不再跟随注视目标
+var _halo: MeshInstance3D = null
+var _halo_t := 0.0
+var _halo_a := 0.0
+var _halo_target_a := 0.0
+
+# 光环（离线/出局头顶 😇 式金环）
+const HALO_Y_MODEL := 2.55     # 头顶上方（模型空间，脚=原点）
+const HALO_COLOR := Color("FFE9A8")
 
 func _ready() -> void:
 	_build()
@@ -55,6 +64,16 @@ func _process(delta: float) -> void:
 	if _talking:
 		_talk_t += delta
 		_set_jaw(RobotAvatarMath.talk_jaw(_talk_t))
+	if _halo != null and _halo.visible:
+		_halo_t += delta
+		# 淡入 + 悬浮呼吸 + 缓慢旋转
+		_halo_a = move_toward(_halo_a, _halo_target_a, delta * 1.6)
+		(_halo.material_override as StandardMaterial3D).albedo_color.a = _halo_a
+		if _halo_a <= 0.0 and _halo_target_a <= 0.0:
+			_halo.visible = false
+		var bob := sin(_halo_t * 1.6) * 0.045
+		_halo.position = Vector3(0.0, HALO_Y_MODEL + bob, 0.0)
+		_halo.rotation.y += delta * 0.7
 	if _eyes == null:
 		return
 	_blink_t = fmod(_blink_t + delta, BLINK_PERIOD)
@@ -268,6 +287,50 @@ func reset_eyes() -> void:
 	if _skeleton != null and _head_idx >= 0:
 		var rest: Transform3D = _skeleton.get_bone_global_rest(_head_idx)
 		_skeleton.set_bone_global_pose_override(_head_idx, rest, 1.0, true)
+
+## 离线/出局：头眼回正冻结（正前方），by table3d 不再喂注视目标。
+func set_gaze_frozen(on: bool) -> void:
+	if _gaze_frozen == on:
+		return
+	_gaze_frozen = on
+	if on:
+		reset_eyes()
+
+func gaze_frozen() -> bool:
+	return _gaze_frozen
+
+## 头顶光环（离线/出局 😇 式金环）：淡入、悬浮呼吸、缓慢旋转。
+func set_halo(on: bool) -> void:
+	_build()
+	if _halo == null:
+		var torus := TorusMesh.new()
+		torus.inner_radius = 0.62
+		torus.outer_radius = 0.78
+		_halo = MeshInstance3D.new()
+		_halo.name = "Halo"
+		_halo.mesh = torus
+		var mat := StandardMaterial3D.new()
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.albedo_color = Color(HALO_COLOR, 0.0)
+		mat.emission_enabled = true
+		mat.emission = HALO_COLOR
+		mat.emission_energy_multiplier = 1.6
+		_halo.material_override = mat
+		_halo.position = Vector3(0.0, HALO_Y_MODEL, 0.0)
+		add_child(_halo)
+	_halo_target_a = 0.85 if on else 0.0
+	if on:
+		_halo.visible = true  # 由 _process 淡入到目标透明度
+	else:
+		# 淡出后隐藏（目标 alpha=0，此帧起继续衰减）
+		_halo.visible = _halo_a > 0.0
+
+func halo_visible() -> bool:
+	return _halo != null and _halo.visible
+
+func halo_enabled() -> bool:
+	return _halo_target_a > 0.0
 
 ## ===== 鼻子（中键 / D 键指针）=====
 ## 目标为**世界坐标点**（hover 卡牌中心）；Vector3.ZERO 表示未伸出。

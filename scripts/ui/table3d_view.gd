@@ -87,6 +87,7 @@ var _discard_pile = null  # DeckPile（弃牌堆视觉：下方叠的卡边薄�
 var _discard_shown := {}  # 弃牌顶变换动画期间的"上一张"（保留显示，避免下方为空）
 var _pending_node: Node3D = null
 var _seat_node_by_id := {}     # seat -> Node3D（render 登记）
+var _avatar_meta := {}         # seat -> {"ghost": bool}（离线/出局：光环 + 视线冻结）
 var _hand_node_by_id := {}     # seat -> HandAnchor Node3D（render 登记；未渲染槽的槽位变换基准）
 var _slot_cards := {}          # {seat: {slot: card}}（render 登记，供 slap_gift 自身视角取牌面）
 var _relic_baskets_by_seat := {}  # seat -> Node3D（3 个 RelicBasket）
@@ -292,6 +293,7 @@ func render(state: Dictionary, actionable := Callable()) -> void:
 	_hand_node_by_id.clear()
 	_relic_baskets_by_seat.clear()
 	_slot_cards.clear()
+	_avatar_meta.clear()
 	# 固定座位角度（按 seat_id，与观看者无关）→ 所有客户端共享同一世界坐标，
 	# 这样同步来的世界注视方向才能被一致解释（否则各客户端座位相对位置不同 → 镜像）。
 	# 相机取景
@@ -632,13 +634,17 @@ func _apply_avatar(seat_node: Node3D, p: Dictionary, viewer: int, state: Diction
 		robot.position.y = -eye
 	var overlay: StandardMaterial3D = null
 	var offline: Array = state.get("offline_players", [])
-	if bool(p.get("eliminated", false)) or offline.has(seat):
+	var ghost := bool(p.get("eliminated", false)) or offline.has(seat)
+	if ghost:
 		overlay = _avatar_dim()
 	if robot != null:
 		var col := str(p.get("color", ""))
 		if not col.is_empty() and Color.html_is_valid(col):
 			robot.set_body_color(Color.html(col))
 		robot.set_overlay(overlay)
+		# 离线/出局：头顶光环（😇 式金环），table3d 不再向其喂注视目标（视线冻结在正前）
+		robot.set_halo(ghost)
+		_avatar_meta[seat] = {"ghost": ghost}
 	# 头顶状态面板与回合标识随机器人高度定位（占位 Head/Body 已在 _attach_robot 隐藏）。
 	var sprite := avatar.get_node_or_null("StatPanel")
 	if sprite != null:
@@ -681,7 +687,15 @@ func update_avatars(cam: Camera3D, remote_looks := {}, remote_zoom := {}, local_
 		var robot = avatar.get_node_or_null("RobotAvatar")
 		if robot == null:
 			continue
+		var meta: Dictionary = _avatar_meta.get(seat, {})
+		if bool(meta.get("ghost", false)):
+			# 离线/出局：视线冻结在正前（光环已在 scene 装配时挂好）
+			if robot.has_method("set_gaze_frozen"):
+				robot.set_gaze_frozen(true)
+			continue
 		if remote_looks.has(seat) and remote_looks[seat] is Vector3:
+			if robot.has_method("set_gaze_frozen") and robot.gaze_frozen():
+				robot.set_gaze_frozen(false)  # 回到在线可看：解除冻结
 			robot.set_gaze_target_world(remote_looks[seat])
 			robot.set_eye_zoom(bool(remote_zoom.get(seat, false)))
 			robot.set_talking(bool(remote_talk.get(seat, false)))

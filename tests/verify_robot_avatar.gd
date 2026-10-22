@@ -22,6 +22,7 @@ func _run() -> void:
 	await _test_robot_avatar()
 	await _test_integration()
 	await _test_shared_world()
+	await _test_halo_frozen()
 	_test_look_sync()
 
 ## 座位世界坐标必须与观看者无关（共享世界）——否则同步的世界注视方向会被镜像。
@@ -289,6 +290,36 @@ func _eye_snapshot(robot) -> Array:
 	for k in RobotAvatarMath.LOOK_NAMES:
 		out.append(round(robot.blend_value(k) * 1000.0))
 	return out
+
+## 光环（离线/出局）+ 视线冻结（头眼回正）。
+func _test_halo_frozen() -> void:
+	var robot := RobotAvatar.new()
+	add_child(robot)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check("光环默认关", not robot.halo_enabled())
+	# 看向侧方 → 冻结 → 头/眼回正
+	robot.set_gaze_target_world(Vector3(5, 0, 1))
+	await get_tree().process_frame
+	var eye_before: Array = _eye_snapshot(robot)
+	robot.set_gaze_frozen(true)
+	_check("冻结后头/眼回正", _eye_snapshot(robot) != eye_before and robot.gaze_frozen())
+	var head: Transform3D = robot._skeleton.get_bone_global_pose(robot._head_idx)
+	var rest: Transform3D = robot._skeleton.get_bone_global_rest(robot._head_idx)
+	_check("冻结后头=rest（正前）", head.basis.is_equal_approx(rest.basis))
+	robot.set_gaze_frozen(false)
+	_check("解冻标志", not robot.gaze_frozen())
+	robot.set_halo(true)
+	_check("光环开启", robot.halo_enabled())
+	await get_tree().process_frame
+	_check("光环节点可见", robot.halo_visible())
+	robot.set_halo(false)
+	_check("光环关闭目标 alpha=0", not robot.halo_enabled())
+	await get_tree().process_frame
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check("光环淡出后隐藏", not robot.halo_visible())
+	robot.queue_free()
 
 func _robot_has_overlay(robot) -> bool:
 	var meshes: Array = []
