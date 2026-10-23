@@ -673,6 +673,14 @@ func _attach_robot(avatar) -> void:
 ##  - 有该席玩家同步来的注视方向（remote_looks[seat]）+ 放大状态（remote_zoom[seat]）→ 跟随其主人；
 ##  - 无同步（离线 / 2D 玩家 / 旧客户端）→ 稳定看向本机相机 + 用本机放大状态。
 ## 注意：环视只改相机朝向、位置基本不动，故本地目标不能直接用相机位置。
+## 飞行相机（辅助工具）：on=true 时暂停 render 自动取景保持手动位姿；off 恢复本机座位基准位。
+func set_fly_mode(on: bool) -> void:
+	if camera == null:
+		return
+	camera.framing_enabled = not on
+	if not on:
+		camera.frame_for_seat(Table3dLayout.seat_angle(_viewer), Table3dLayout.TABLE_HEIGHT)
+
 func update_avatars(cam: Camera3D, remote_looks := {}, remote_zoom := {}, local_zoom := false, remote_talk := {}, local_talk := false) -> void:
 	_bind()
 	if not _bound or cam == null:

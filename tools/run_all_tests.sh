@@ -90,6 +90,7 @@ run_single "protocol"   res://tests/verify_protocol.tscn
 run_single "swap"       res://tests/verify_swap.tscn
 run_single "duel"       res://tests/verify_duel.tscn
 run_single "reconnect"  res://tests/verify_reconnect.tscn
+run_single "camera_fly" res://tests/verify_camera_fly.tscn
 run_single "lobby"      res://tests/verify_lobby.tscn
 run_single "dedicated"  res://tests/verify_dedicated.tscn -- --port 17081
 run_single "directory_client" res://tests/verify_directory_client.tscn

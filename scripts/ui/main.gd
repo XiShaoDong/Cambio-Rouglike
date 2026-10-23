@@ -798,6 +798,11 @@ func _set_table3d(on: bool) -> void:
 		return
 	if _item_hand != null and is_instance_valid(_item_hand) and _item_hand.is_open():
 		_close_item_hand(false)
+	# 退出 3D 时若飞行相机开着 → 关闭并恢复座位取景
+	if not on and _fly_tool.active:
+		_fly_tool.stop()
+		if table3d != null and is_instance_valid(table3d):
+			table3d.set_fly_mode(false)
 	_table3d_active = on
 	if _wheel_open:
 		_wheel_open = false
@@ -896,6 +901,23 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		return
 	if not _table3d_active:
+		return
+	# 飞行相机（辅助工具）：G 开/关；开启时吞掉全部键盘（WASD/Space/Ctrl 计入移动），鼠标环视照常
+	if event is InputEventKey and event.pressed and not event.echo \
+			and (event.keycode == KEY_G or _fly_active()):
+		if event.keycode == KEY_G and _table3d_active:
+			_toggle_fly_camera()
+		elif _fly_active():
+			_fly_tool.handle_key(event.keycode, event.pressed)
+		else:
+			return
+		get_viewport().set_input_as_handled()
+		return
+	if _fly_active() and not (event is InputEventMouseMotion):
+		# 工具模式：非鼠标环视输入一律吞掉；键的抬起也要记账（WASD/Space/Ctrl）
+		if event is InputEventKey:
+			_fly_tool.handle_key(event.keycode, event.pressed)
+		get_viewport().set_input_as_handled()
 		return
 	# 设置菜单打开时：不消费 3D 输入（鼠标已释放给菜单；ESC 交给 _unhandled_input 关闭）。
 	if _settings_open():
@@ -999,6 +1021,9 @@ func _process(delta: float) -> void:
 		return
 	if table3d == null or not is_instance_valid(table3d):
 		return
+	# 飞行相机（辅助工具）：按 WASD/Space/Ctrl 推进全局位移
+	if _fly_active():
+		_fly_tool.step(delta, table3d.camera.camera_node())
 	# 准星默认隐藏，仅按住放大（Command/Alt）时出现。
 	if _crosshair != null and is_instance_valid(_crosshair):
 		_crosshair.visible = bool(table3d.camera.zoomed)
@@ -1186,6 +1211,22 @@ var _talking_local := false
 var _crosshair: Control = null
 var _card_tooltip: CardTooltip = null
 var _card_order_panel: CardOrderPanel = null
+var _fly_tool := CameraFlyTool.new()  # 飞行相机辅助工具（G 开/关）
+
+func _fly_active() -> bool:
+	return _fly_tool.active and _table3d_active and table3d != null and is_instance_valid(table3d)
+
+func _toggle_fly_camera() -> void:
+	if table3d == null or not is_instance_valid(table3d):
+		return
+	if _fly_tool.active:
+		_fly_tool.stop()
+		table3d.set_fly_mode(false)
+		_show_toast("飞行相机已关闭")
+	else:
+		_fly_tool.active = true
+		table3d.set_fly_mode(true)
+		_show_toast("飞行相机：WASD 移动 · Space 上升 · Ctrl 下降 · G 关闭")
 var _turn_effect_panel: TurnEffectPanel = null
 var _current_effect: Dictionary = {}
 var _effect_last_match := ""

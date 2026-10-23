@@ -27,6 +27,7 @@ var zoomed := false  # 是否按住 Command/Alt 拉近视场（供角色等联�
 var locked := false  # 道具卡目标锁定：禁用鼠标环视
 var _saved_view: Dictionary = {}
 var _lock_tween: Tween = null
+var framing_enabled := true  # 飞行相机（辅助工具）打开时为 false：保持手动位姿，不自动取景
 
 var _built := false
 var _framed := false
@@ -60,6 +61,9 @@ func camera_node() -> Camera3D:
 ## 座位在圆上角度 a（0°=近侧 +Z），rig +Z 沿径向外，故 -Z（相机视线）朝桌心。
 func frame_for_seat(seat_angle_deg: float, target_height := 0.0) -> void:
 	_build()
+	# 飞行相机（辅助工具）激活时保持用户手动位姿，不按座位重取景
+	if not framing_enabled:
+		return
 	var a := deg_to_rad(seat_angle_deg)
 	var dir := Vector3(sin(a), 0.0, cos(a))
 	position = dir * (Table3dLayout.SEAT_RADIUS + CAMERA_BACK) + Vector3(0.0, EYE_HEIGHT, 0.0)
