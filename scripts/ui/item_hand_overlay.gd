@@ -26,6 +26,8 @@ var _hint: Label
 var _target_panel: PanelContainer
 var _target_label: Label
 var _target_hint: Label
+var _ad_hint_left: PanelContainer
+var _ad_hint_right: PanelContainer
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -44,6 +46,17 @@ func _build() -> void:
 	_cards_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_cards_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_cards_layer)
+	# PS 式 A/D 切换提示（扇形两端）：只随有卡的手打开
+	_ad_hint_left = KeyHintPanel.make_chip("A ◀", 15, 8)
+	_ad_hint_left.name = "ADHintLeft"
+	_ad_hint_left.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ad_hint_left.z_index = 120
+	_cards_layer.add_child(_ad_hint_left)
+	_ad_hint_right = KeyHintPanel.make_chip("▶ D", 15, 8)
+	_ad_hint_right.name = "ADHintRight"
+	_ad_hint_right.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ad_hint_right.z_index = 120
+	_cards_layer.add_child(_ad_hint_right)
 	_desc = PanelContainer.new()
 	_desc.name = "Description"
 	_desc.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -311,3 +324,8 @@ func _layout() -> void:
 	_hint.size = Vector2(size.x, 24.0)
 	_target_panel.position = Vector2(size.x * 0.5 - 280.0, size.y * 0.5 - 80.0)
 	_target_panel.size = Vector2(560.0, 160.0)
+	# A/D 提示位于扇形两端（有卡时可见；层随目标模式/空手隐藏）
+	if _ad_hint_left != null and is_instance_valid(_ad_hint_left):
+		_ad_hint_left.position = Vector2(size.x * 0.5 - 336.0, size.y - 230.0)
+	if _ad_hint_right != null and is_instance_valid(_ad_hint_right):
+		_ad_hint_right.position = Vector2(size.x * 0.5 + 268.0, size.y - 230.0)

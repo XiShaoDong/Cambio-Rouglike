@@ -108,6 +108,17 @@ func _test_overlay() -> void:
 	_check("Overlay 目标 Q/E 切换", overlay.target_seat() == 2)
 	overlay.cancel_target()
 	_check("Overlay 取消目标回到扇形", not overlay.is_target_mode() and not overlay.target_panel_visible())
+	# PS 式 A/D 箭头提示（扇形两端；目标模式随卡层隐藏）
+	var ad_l: PanelContainer = overlay.get_node_or_null("Cards/ADHintLeft")
+	var ad_r: PanelContainer = overlay.get_node_or_null("Cards/ADHintRight")
+	_check("两端有 A/D 切换提示 chip", ad_l != null and ad_r != null \
+		and (ad_l.get_node("Key") as Label).text == "A ◀" and (ad_r.get_node("Key") as Label).text == "▶ D")
+	_check("A/D 提示不拦截点击", ad_l.mouse_filter == Control.MOUSE_FILTER_IGNORE and ad_r.mouse_filter == Control.MOUSE_FILTER_IGNORE)
+	var half := overlay.size.x * 0.5
+	_check("A/D 提示位于扇形两端", ad_l.position.x < half and ad_r.position.x > half)
+	overlay.begin_target([1, 2])
+	_check("目标模式隐藏 A/D 提示", not overlay.get_node("Cards").visible or not ad_l.visible)
+	overlay.cancel_target()
 	overlay.close()
 	_check("Overlay 放下立即消失", not overlay.is_open())
 	# 可替换手部：换成同一场景仍实现接口
