@@ -23,7 +23,6 @@ func _run() -> void:
 	await _test_integration()
 	await _test_shared_world()
 	await _test_halo_frozen()
-	await _test_eye_whites()
 	_test_look_sync()
 
 ## 座位世界坐标必须与观看者无关（共享世界）——否则同步的世界注视方向会被镜像。
@@ -291,42 +290,6 @@ func _eye_snapshot(robot) -> Array:
 	for k in RobotAvatarMath.LOOK_NAMES:
 		out.append(round(robot.blend_value(k) * 1000.0))
 	return out
-
-## 非对称眼白：看左左眼眯/右眼睁大；看右反之；zoom 双眼半眯。
-## _process 手动驱动并保证 `_blink_t` 落在眨眼窗口之外，避免周期抖动。
-func _test_eye_whites() -> void:
-	var robot := RobotAvatar.new()
-	add_child(robot)
-	await get_tree().process_frame
-	await get_tree().process_frame
-	# 模型 +X = 左；看向左前方
-	robot.set_gaze_target_world(Vector3(5, 0, 2))
-	robot._blink_t = 0.0
-	robot._process(1.0)
-	_check("看左：左眼半眯", robot.blend_value("eyeBlinkLeft") > 0.1)
-	_check("看左：右眼睁大（眼白大）", robot.blend_value("eyeWideRight") > 0.1)
-	_check("看左：右眼不眯", robot.blend_value("eyeBlinkRight") <= 0.05)
-	# 看右前方
-	robot.set_gaze_target_world(Vector3(-5, 0, 2))
-	robot._blink_t = 0.0
-	robot._process(1.0)
-	_check("看右：右眼半眯", robot.blend_value("eyeBlinkRight") > 0.1)
-	_check("看右：左眼睁大（眼白大）", robot.blend_value("eyeWideLeft") > 0.1)
-	_check("看右：左眼不眯", robot.blend_value("eyeBlinkLeft") <= 0.05)
-	# zoom：双眼半眯 + Tiny_Eyes
-	robot.set_gaze_target_world(Vector3(0, 0, 5))
-	robot.set_eye_zoom(true)
-	robot._blink_t = 0.0
-	robot._process(1.0)
-	_check("zoom：双眼半眯", robot.blend_value("eyeBlinkLeft") >= 0.24 and robot.blend_value("eyeBlinkRight") >= 0.24)
-	_check("zoom：Tiny_Eyes 开", robot.blend_value("Tiny_Eyes") > 0.9)
-	_check("zoom：Eyes mesh 缩放", robot._eyes.scale.x < 1.0)
-	robot.set_eye_zoom(false)
-	robot._blink_t = 0.0
-	robot._process(1.0)
-	_check("zoom 关：半眯解除", robot.blend_value("eyeBlinkLeft") <= 0.05 and robot.blend_value("eyeBlinkRight") <= 0.05)
-	_check("zoom 关：Eyes mesh 复原", is_equal_approx(robot._eyes.scale.x, 1.0))
-	robot.queue_free()
 
 ## 光环（离线/出局）+ 视线冻结（头眼回正）。
 func _test_halo_frozen() -> void:

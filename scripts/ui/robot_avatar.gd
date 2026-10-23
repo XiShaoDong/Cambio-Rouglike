@@ -23,10 +23,6 @@ const HEAD_YAW_MAX_DEG := 30.0                  # Head Tracking 水平上限（�
 const HEAD_PITCH_MAX_DEG := 20.0                # Head Tracking 垂直上限
 const BLINK_PERIOD := 4.2                       # 自动眨眼周期（秒）
 const BLINK_DURATION := 0.14                    # 单次眨眼时长（秒）
-const LOOK_SQUINT_GAIN := 0.55                  # 看左/右：同向眼眯眼增益（眼皮压下 → 眼白显小）
-const LOOK_WIDE_GAIN := 0.35                    # 看左/右：镜像眼睁大增益（eyeWide → 眼白显大）
-const ZOOM_BLINK := 0.30                        # cmd/alt 放大：双眼半眯（叠加上面强变化）
-const EYE_ZOOM_SCALE := 0.8                     # zoom 时 Eyes mesh 整体缩放（虹膜+眼白一起小）
 
 # 机体外观（覆盖模型自带 Body 材质）
 const BODY_COLOR := Color("496AFE")             # 深蓝
@@ -45,8 +41,6 @@ var _nose_target_world: Vector3 = Vector3.ZERO   # 鼻子目标世界坐标（ZE
 var _eye_index := {}          # blendshape name -> index
 var _jaw_targets: Array = []  # [[MeshInstance3D, jawOpen_idx], ...]（嘴在下巴网格，不在 Eyes）
 var _eye_zoom := false
-var _zoom_on := false
-var _look_h := 0.0   # 最近一次水平注视（>0 = 向机器人左侧看，用于非对称眼白）
 var _body_color: Color = BODY_COLOR
 var _body_mat: StandardMaterial3D = null
 var _talking := false
@@ -87,23 +81,8 @@ func _process(delta: float) -> void:
 	if _blink_t < BLINK_DURATION:
 		p = sin(PI * _blink_t / BLINK_DURATION)
 	var w := RobotAvatarMath.blink_weights(p)
-	# ===== 眼白非对称/缩放 =====
-	# 看左：左眼眯（眼白小），右眼睁大（眼白大）；看右反之。zoom（cmd 放大）双眼半眯 → 眼白整体显小。
-	var h := _look_h
-	var squint_left := maxf(h, 0.0) * LOOK_SQUINT_GAIN      # 看左 → 左眼眯
-	var squint_right := maxf(-h, 0.0) * LOOK_SQUINT_GAIN    # 看右 → 右眼眯
-	var wide_left := 0.0
-	var wide_right := 0.0
-	if _zoom_on:
-		squint_left = maxf(squint_left, ZOOM_BLINK)
-		squint_right = maxf(squint_right, ZOOM_BLINK)   # 双眼半眯 → 眼白变小
-	else:
-		wide_left = maxf(-h, 0.0) * LOOK_WIDE_GAIN      # 看左 → 右眼白大
-		wide_right = maxf(h, 0.0) * LOOK_WIDE_GAIN      # 看右 → 左眼白大
-	_set_blend("eyeBlinkLeft", maxf(float(w["eyeBlinkLeft"]), squint_left))
-	_set_blend("eyeBlinkRight", maxf(float(w["eyeBlinkRight"]), squint_right))
-	_set_blend("eyeWideLeft", wide_left)
-	_set_blend("eyeWideRight", wide_right)
+	for name in w.keys():
+		_set_blend(str(name), float(w[name]))
 
 ## 构建（幂等）：实例化模型 → 剔除 Camera/Light → 缓存骨架/眼球/形状键 → 待机姿势。
 func _build() -> void:
@@ -177,14 +156,8 @@ func set_body_color(color: Color) -> void:
 	_apply_body_color()
 
 ## 放大时眼睛采用「小眼睛」（Tiny_Eyes 形状键）；松开归零。
-## zoom 同时驱动双眼半眯（_process 每帧套 ZOOM_BLINK）→ 眼白也显小。
-## 另：直接**缩放 Eyes mesh**（虹膜+眼白同面缩放，模型形状键不驱动白面顶点，
-## blend 对眼白无效）→ zoom 时整个眼睛（含眼白）可靠变小。
 func set_eye_zoom(on: bool) -> void:
 	_build()
-	_zoom_on = on
-	if _eyes != null:
-		_eyes.scale = Vector3.ONE * (EYE_ZOOM_SCALE if on else 1.0)
 	if _eye_zoom == on:
 		return
 	_eye_zoom = on
@@ -305,9 +278,6 @@ func _apply_look_dir(dir_lookat: Vector3) -> void:
 	var w := RobotAvatarMath.eye_look_weights(dir_lookat, EYE_YAW_MAX_DEG, EYE_PITCH_MAX_DEG, EYE_GAIN)
 	for name in w.keys():
 		_set_blend(str(name), float(w[name]))
-	# 缓存水平注视（>0 = 向左），供 _process 做非对称眼白（同向眯/镜像睁）
-	_look_h = (float(w["eyeLookOutLeft"]) + float(w["eyeLookInRight"]) \
-		- float(w["eyeLookOutRight"]) - float(w["eyeLookInLeft"])) * 0.5
 
 ## 眼球回到正前 + 头回正（无目标时）。
 func reset_eyes() -> void:
