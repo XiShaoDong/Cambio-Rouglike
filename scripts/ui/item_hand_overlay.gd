@@ -311,6 +311,8 @@ func _layout() -> void:
 	if _hand_art != null:
 		_hand_art.setup(Rect2(Vector2(size.x * 0.5 - HAND_W * 0.5, size.y - HAND_H), Vector2(HAND_W, HAND_H)))
 	var layout := ItemHandMath.fan_layout(model.count(), CARD_SIZE, center, 18.0, 92.0, model.selected, 30.0)
+	# A/D 提示用**基线扇形**（不带选中抬升）的端点位置 —— 不随左右卡被选中而跳
+	var base_layout := ItemHandMath.fan_layout(model.count(), CARD_SIZE, center, 18.0, 92.0, -1, 30.0)
 	for i in layout.size():
 		var item: Dictionary = layout[i]
 		var view: ItemCardView = _card_views[i]
@@ -331,14 +333,14 @@ func _layout() -> void:
 	if _ad_hint_left != null and is_instance_valid(_ad_hint_left):
 		_ad_hint_left.visible = has_cards
 		if has_cards:
-			var l_item: Dictionary = layout[0]
+			var l_item: Dictionary = base_layout[0]
 			_ad_hint_left.position = (l_item.pos as Vector2) + Vector2(-46.0, mid_off)
 			_ad_hint_left.rotation_degrees = float(l_item.rot_deg)
 			_ad_hint_left.pivot_offset = _ad_hint_left.size * 0.5
 	if _ad_hint_right != null and is_instance_valid(_ad_hint_right):
 		_ad_hint_right.visible = has_cards
 		if has_cards:
-			var r_item: Dictionary = layout[layout.size() - 1]
+			var r_item: Dictionary = base_layout[base_layout.size() - 1]
 			var r_right := (r_item.pos as Vector2).x + CARD_SIZE.x
 			_ad_hint_right.position = Vector2(r_right + 4.0, (r_item.pos as Vector2).y + mid_off)
 			_ad_hint_right.rotation_degrees = float(r_item.rot_deg)
