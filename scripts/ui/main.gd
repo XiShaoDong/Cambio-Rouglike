@@ -1226,7 +1226,7 @@ func _toggle_fly_camera() -> void:
 	else:
 		_fly_tool.active = true
 		table3d.set_fly_mode(true)
-		_show_toast("飞行相机：WASD 移动 · Space 上升 · Ctrl 下降 · G 关闭")
+		_show_toast("飞行相机：WASD 移动 · U 上升 · J 下降 · G 关闭")
 var _turn_effect_panel: TurnEffectPanel = null
 var _current_effect: Dictionary = {}
 var _effect_last_match := ""

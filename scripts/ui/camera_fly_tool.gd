@@ -1,7 +1,7 @@
 class_name CameraFlyTool
 extends RefCounted
-## 3D 开发辅助：自由飞行相机（左下角 WASD + Space/Ctrl）。
-## G 开/关；开启时 WASD 前后左右、Space 上升、Ctrl 下降、鼠标环视照常；
+## 3D 开发辅助：自由飞行相机（WASD + U/J）。
+## G 开/关；开启时 WASD 前后左右、U 上升、J 下降、鼠标环视照常；
 ## 其它键盘输入被工具模式吞掉（防误触轮盘/手牌/牌序等）。
 ## 移动以相机朝向为基准：前向 = 相机视线的水平投影（随环视转向）。
 
@@ -23,10 +23,10 @@ func stop() -> void:
 func reset() -> void:
 	_pressed.clear()
 
-## 是否属于本工具的移动键（WASD / Space / Ctrl）。
+## 是否属于本工具的移动键（WASD / U / J）。
 static func is_move_key(code: Key) -> bool:
 	return code == KEY_W or code == KEY_A or code == KEY_S or code == KEY_D \
-		or code == KEY_SPACE or code == KEY_CTRL
+		or code == KEY_U or code == KEY_J
 
 ## 记录按键状态；返回是否由本工具消费该键（G 切换由调用方处理）。
 func handle_key(code: Key, pressed: bool) -> bool:
@@ -58,9 +58,9 @@ func step(delta: float, cam: Camera3D) -> void:
 	if _pressed.get(KEY_A, false):
 		dir -= right
 	var vert := 0.0
-	if _pressed.get(KEY_SPACE, false):
+	if _pressed.get(KEY_U, false):
 		vert += VERTICAL
-	if _pressed.get(KEY_CTRL, false):
+	if _pressed.get(KEY_J, false):
 		vert -= VERTICAL
 	if dir.length_squared() > 0.001:
 		dir = dir.normalized()
