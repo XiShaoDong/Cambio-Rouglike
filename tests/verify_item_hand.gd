@@ -116,6 +116,11 @@ func _test_overlay() -> void:
 	_check("A/D 提示不拦截点击", ad_l.mouse_filter == Control.MOUSE_FILTER_IGNORE and ad_r.mouse_filter == Control.MOUSE_FILTER_IGNORE)
 	var half := overlay.size.x * 0.5
 	_check("A/D 提示位于扇形两端", ad_l.position.x < half and ad_r.position.x > half)
+	# A 卡左外侧/卡高中间；D 以端卡右缘为左边界（chip 高≈36 → 中心比卡中心高 18）
+	_check("A 位于端卡左侧", ad_l.position.x < overlay.card_view(0).position.x and \
+		is_equal_approx(ad_l.position.y + 18.0, overlay.card_view(0).position.y + overlay.card_view(0).size.y * 0.5))
+	_check("D 以端卡右缘为左边界", ad_r.position.x >= overlay.card_view(overlay.card_count() - 1).position.x + 110.0 \
+		and is_equal_approx(ad_r.position.y + 18.0, overlay.card_view(overlay.card_count() - 1).position.y + overlay.card_view(overlay.card_count() - 1).size.y * 0.5))
 	_check("A/D 提示跟随端卡倾斜", ad_l != null and ad_l.rotation_degrees != 0.0 \
 		and is_equal_approx(ad_l.rotation_degrees, overlay.card_view(0).rotation_degrees) \
 		and is_equal_approx(ad_r.rotation_degrees, overlay.card_view(overlay.card_count() - 1).rotation_degrees))
