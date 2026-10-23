@@ -116,6 +116,9 @@ func _test_overlay() -> void:
 	_check("A/D 提示不拦截点击", ad_l.mouse_filter == Control.MOUSE_FILTER_IGNORE and ad_r.mouse_filter == Control.MOUSE_FILTER_IGNORE)
 	var half := overlay.size.x * 0.5
 	_check("A/D 提示位于扇形两端", ad_l.position.x < half and ad_r.position.x > half)
+	_check("A/D 提示跟随端卡倾斜", ad_l != null and ad_l.rotation_degrees != 0.0 \
+		and is_equal_approx(ad_l.rotation_degrees, overlay.card_view(0).rotation_degrees) \
+		and is_equal_approx(ad_r.rotation_degrees, overlay.card_view(overlay.card_count() - 1).rotation_degrees))
 	overlay.begin_target([1, 2])
 	_check("目标模式隐藏 A/D 提示", not overlay.get_node("Cards").visible or not ad_l.visible)
 	overlay.cancel_target()

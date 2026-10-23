@@ -324,8 +324,19 @@ func _layout() -> void:
 	_hint.size = Vector2(size.x, 24.0)
 	_target_panel.position = Vector2(size.x * 0.5 - 280.0, size.y * 0.5 - 80.0)
 	_target_panel.size = Vector2(560.0, 160.0)
-	# A/D 提示位于扇形两端（有卡时可见；层随目标模式/空手隐藏）
+	# A/D 提示紧贴扇形两端，并跟随端卡倾斜角度（PS 式：“贴着卡牌”切换）
+	var has_cards := _card_views.size() > 0 and layout.size() > 0
 	if _ad_hint_left != null and is_instance_valid(_ad_hint_left):
-		_ad_hint_left.position = Vector2(size.x * 0.5 - 336.0, size.y - 230.0)
+		_ad_hint_left.visible = has_cards
+		if has_cards:
+			var l_item: Dictionary = layout[0]
+			_ad_hint_left.position = (l_item.pos as Vector2) + Vector2(-46.0, 34.0)
+			_ad_hint_left.rotation_degrees = float(l_item.rot_deg)
+			_ad_hint_left.pivot_offset = _ad_hint_left.size * 0.5
 	if _ad_hint_right != null and is_instance_valid(_ad_hint_right):
-		_ad_hint_right.position = Vector2(size.x * 0.5 + 268.0, size.y - 230.0)
+		_ad_hint_right.visible = has_cards
+		if has_cards:
+			var r_item: Dictionary = layout[layout.size() - 1]
+			_ad_hint_right.position = (r_item.pos as Vector2) + Vector2(46.0, 34.0)
+			_ad_hint_right.rotation_degrees = float(r_item.rot_deg)
+			_ad_hint_right.pivot_offset = _ad_hint_right.size * 0.5
