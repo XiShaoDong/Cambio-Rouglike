@@ -51,6 +51,17 @@ func _build_tabs() -> void:
 	bar.add_theme_constant_override("separation", 8)
 	vbox.add_child(bar)
 	vbox.move_child(bar, 1)  # 放在 Title 之后、Hint 之前
+	# PS 式左右“切页”提示键（纯展示，不拦截点击）：Q ◀ …… ▶ E
+	var hint_left := KeyHintPanel.make_chip("Q ◀", 15, 8)
+	hint_left.name = "TabHintLeft"
+	hint_left.tooltip_text = "Q：左切页签"
+	hint_left.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bar.add_child(hint_left)
+	var spacer_l := Control.new()
+	spacer_l.name = "SpacerL"
+	spacer_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	spacer_l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bar.add_child(spacer_l)
 	_tab_manual = _tab_button("手册")
 	_tab_manual.pressed.connect(func(): set_tab(TAB_MANUAL))
 	bar.add_child(_tab_manual)
@@ -60,9 +71,19 @@ func _build_tabs() -> void:
 	_tab_keys = _tab_button("按键")
 	_tab_keys.pressed.connect(func(): set_tab(TAB_KEYS))
 	bar.add_child(_tab_keys)
+	var spacer_r := Control.new()
+	spacer_r.name = "SpacerR"
+	spacer_r.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	spacer_r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bar.add_child(spacer_r)
+	var hint_right := KeyHintPanel.make_chip("E ▶", 15, 8)
+	hint_right.name = "TabHintRight"
+	hint_right.tooltip_text = "E：右切页签"
+	hint_right.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bar.add_child(hint_right)
 	var hint: Label = get_node("Center/Panel/VBox/Hint")
 	hint.add_theme_color_override("font_color", TEXT_MUTED)
-	hint.text = "Tab 手册 / S Stats / K 按键 / Esc 关闭"
+	hint.text = "Tab 手册 / S Stats / K 按键 / Q·E 切页 / Esc 关闭"
 
 func _tab_button(text: String) -> Button:
 	var btn := Button.new()

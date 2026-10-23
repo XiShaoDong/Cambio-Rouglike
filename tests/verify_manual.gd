@@ -106,6 +106,17 @@ func _run() -> void:
 	_check("E 循环回手册", main_node.manual_panel.current_tab() == ManualPanel.TAB_MANUAL)
 	main_node._cycle_manual_tab(-1)
 	_check("Q 反向到键位页", main_node.manual_panel.current_tab() == ManualPanel.TAB_KEYS)
+	# PS 式左右切页提示（tab 行两端 chip：Q ◀ / E ▶，纯展示不拦截）
+	var bar: HBoxContainer = main_node.manual_panel.get_node("Center/Panel/VBox/Tabs")
+	var hint_left: PanelContainer = bar.get_node_or_null("TabHintLeft")
+	var hint_right: PanelContainer = bar.get_node_or_null("TabHintRight")
+	_check("tab 行两端有 Q/E 提示 chip", hint_left != null and hint_right != null \
+		and (hint_left.get_node("Key") as Label).text == "Q ◀" \
+		and (hint_right.get_node("Key") as Label).text == "E ▶")
+	_check("切页提示不拦截点击", hint_left.mouse_filter == Control.MOUSE_FILTER_IGNORE \
+		and hint_right.mouse_filter == Control.MOUSE_FILTER_IGNORE \
+		and not hint_left.has_meta("board_interactive") and not hint_right.has_meta("board_interactive"))
+	_check("提示 chip 置于两端", bar.get_child(0) == hint_left and bar.get_child(bar.get_child_count() - 1) == hint_right)
 	main_node._close_manual()
 	# 四个角 UI 统一边距（目标屏幕像素 75 → 补偿拉伸后的设计坐标）
 	var m: float = float(int(round(main_node._corner_margin())))
