@@ -77,8 +77,15 @@ func _test_main_input() -> void:
 		if area != null and area.get_node_or_null("ItemTargetBorder") != null:
 			border_found = true
 	_check("2D 目标玩家区域高亮", border_found)
-	_check("main Q/E 切换目标", main_node._item_hand_handle_input(_key(KEY_E)) and main_node._item_target_seat == 2)
+	# 目标模式（Enter 后切换视角的连线）：A/D 切目标，Q/E 不再参与
+	_check("main A/D 切目标", main_node._item_hand_handle_input(_key(KEY_A)) and main_node._item_target_seat == ItemHandMath.target_order(main_node.latest_state.get("players", []), 0)[-1])
+	main_node._item_hand_handle_input(_key(KEY_D))
+	main_node._item_hand_handle_input(_key(KEY_D))
+	_check("main D 回绕切目标", main_node._item_target_seat == 2)
+	_check("main Q 已不参与目标切换", main_node._item_target_seat == 2)
 	_check("main Esc 取消目标回到扇形", main_node._item_hand_handle_input(_key(KEY_ESCAPE)) 		and not main_node._item_hand.is_target_mode() and main_node._item_hand.is_open())
+	_check("main A/D 切卡", main_node._item_hand_handle_input(_key(KEY_A)) \
+		and main_node._item_hand.selected_id() == ItemCards.INTERFERE_ID)
 	_check("main 空格放下手牌", main_node._item_hand_handle_input(_key(KEY_SPACE)) 		and not main_node._item_hand.is_open())
 	main_node.queue_free()
 

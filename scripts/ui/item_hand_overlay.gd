@@ -92,7 +92,7 @@ func _build() -> void:
 	_target_label.add_theme_color_override("font_color", Color(0.95, 0.82, 0.35))
 	tvb.add_child(_target_label)
 	_target_hint = Label.new()
-	_target_hint.text = "Q / E 切换目标 · Enter 确认 · Esc 取消"
+	_target_hint.text = "A / D 切换目标 · Enter 确认 · Esc 取消"
 	_target_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_target_hint.add_theme_font_size_override("font_size", 13)
 	_target_hint.add_theme_color_override("font_color", Color(1, 1, 1, 0.7))
@@ -272,7 +272,7 @@ func _update_selection() -> void:
 	var target_text := _target_mode_text(def)
 	if not target_text.is_empty():
 		_desc_body.text += "\n" + target_text
-	_hint.text = "空格 收起 · Q / E 选择 · Enter 使用"
+	_hint.text = "空格 收起 · A / D 选择 · Enter 使用"
 	if _hand_art != null:
 		_hand_art.set_selected_hint(model.selected, model.count())
 	_layout()

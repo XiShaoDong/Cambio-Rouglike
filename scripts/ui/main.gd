@@ -956,6 +956,12 @@ func _input(event: InputEvent) -> void:
 			_talking_local = not _talking_local
 			get_viewport().set_input_as_handled()
 			return
+		# 手册打开时 Q/E 左右切页（手册 → Stats → 键位 → 循环）
+		if manual_panel != null and is_instance_valid(manual_panel) \
+				and (event.keycode == KEY_Q or event.keycode == KEY_E):
+			_cycle_manual_tab(-1 if event.keycode == KEY_Q else 1)
+			get_viewport().set_input_as_handled()
+			return
 		# D 按下：出标记轮盘
 		if event.keycode == KEY_D:
 			_open_mark_wheel()
@@ -1999,7 +2005,7 @@ func _close_item_hand(render := true) -> void:
 	if render and not latest_state.is_empty():
 		game_view.render(latest_state)
 
-## 空格/Q/E/Enter/Esc 的道具手牌路由；返回 true 表示已消费。
+## 空格/A/D/Enter/Esc 的道具手牌路由；返回 true 表示已消费。
 func _item_hand_handle_input(event: InputEvent) -> bool:
 	if _item_hand != null and is_instance_valid(_item_hand) and _item_hand.is_open():
 		if event is InputEventMouseButton and event.pressed:
@@ -2008,11 +2014,11 @@ func _item_hand_handle_input(event: InputEvent) -> bool:
 			return false
 		if _item_hand.is_target_mode():
 			match event.keycode:
-				KEY_Q:
+				KEY_A:
 					_item_hand.cycle_target(-1)
 					_update_item_target_view()
 					return true
-				KEY_E:
+				KEY_D:
 					_item_hand.cycle_target(1)
 					_update_item_target_view()
 					return true
@@ -2024,10 +2030,10 @@ func _item_hand_handle_input(event: InputEvent) -> bool:
 					return true
 			return true
 		match event.keycode:
-			KEY_Q:
+			KEY_A:
 				_item_hand.select_next(-1)
 				return true
-			KEY_E:
+			KEY_D:
 				_item_hand.select_next(1)
 				return true
 			KEY_ENTER, KEY_KP_ENTER:
@@ -2139,6 +2145,20 @@ func _toggle_manual(tab := ManualPanel.TAB_MANUAL) -> void:
 			manual_panel.setup_stats(latest_state.get("discard_history", []))
 	else:
 		_open_manual(tab)
+
+## 手册面板打开时 Q/E 左右切页（手册 → Stats → 键位 → 循环）。
+func _cycle_manual_tab(dir: int) -> void:
+	if manual_panel == null or not is_instance_valid(manual_panel):
+		return
+	var order := [ManualPanel.TAB_MANUAL, ManualPanel.TAB_STATS, ManualPanel.TAB_KEYS]
+	var cur: int = manual_panel.current_tab()
+	var idx := order.find(cur)
+	if idx < 0:
+		idx = 0
+	idx = (idx + dir + order.size()) % order.size()
+	manual_panel.setup_keymap(keybinds.map, KeybindModel.RESERVED)
+	manual_panel.set_tab(order[idx])
+	manual_panel.setup_stats(latest_state.get("discard_history", []))
 
 func _open_manual(tab := ManualPanel.TAB_MANUAL) -> void:
 	if manual_panel != null and is_instance_valid(manual_panel):

@@ -95,6 +95,18 @@ func _run() -> void:
 	_check("回合徽标文本 回合 2/5", rl != null and rl.text == "回合 2/5")
 	_check("回合徽标字号 = 原两倍再缩小 1/3", rl != null and rl.get_theme_font_size("font_size") == KeyHintPanel.ROUND_FONT_SIZE)
 	_check("回合徽标左右内边距更宽", (main_node._round_badge.get_theme_stylebox("panel") as StyleBoxFlat).content_margin_left >= 12.0)
+	# 手册 Q/E 切页（手册 → Stats → 键位 → 循环）
+	main_node._open_manual(ManualPanel.TAB_MANUAL)
+	_check("手册打开", main_node.manual_panel != null and is_instance_valid(main_node.manual_panel))
+	main_node._cycle_manual_tab(1)
+	_check("E 切到 Stats", main_node.manual_panel.current_tab() == ManualPanel.TAB_STATS)
+	main_node._cycle_manual_tab(1)
+	_check("E 切到键位页", main_node.manual_panel.current_tab() == ManualPanel.TAB_KEYS)
+	main_node._cycle_manual_tab(1)
+	_check("E 循环回手册", main_node.manual_panel.current_tab() == ManualPanel.TAB_MANUAL)
+	main_node._cycle_manual_tab(-1)
+	_check("Q 反向到键位页", main_node.manual_panel.current_tab() == ManualPanel.TAB_KEYS)
+	main_node._close_manual()
 	# 四个角 UI 统一边距（目标屏幕像素 75 → 补偿拉伸后的设计坐标）
 	var m: float = float(int(round(main_node._corner_margin())))
 	_check("左下角边距=75px 换算值（按键提示上移让出牌序面板）", is_equal_approx(main_node._key_hints.offset_left, m) and is_equal_approx(main_node._key_hints.offset_bottom, -(m + main_node.CARD_ORDER_LIFT)))
