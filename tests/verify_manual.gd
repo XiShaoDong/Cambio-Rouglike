@@ -84,7 +84,10 @@ func _run() -> void:
 	_check("松开后准星隐藏", not main_node._crosshair.visible)
 	_check("3D 左下角按键提示存在", main_node._key_hints != null and is_instance_valid(main_node._key_hints))
 	_check("3D 按键提示可见", main_node._key_hints.visible)
-	_check("3D 按键提示 2 行", main_node._key_hints.row_count() == 2)
+	_check("3D 按键提示 4 行", main_node._key_hints.row_count() == 4)
+	_check("按键提示：道具 Space", main_node._key_hints.desc_text(0) == "道具" and main_node._key_hints.key_text(0) == "Space")
+	_check("按键提示：标记 D", main_node._key_hints.desc_text(1) == "标记" and main_node._key_hints.key_text(1) == "D")
+	_check("按键提示：放大 Cmd", main_node._key_hints.desc_text(2) == "放大" and main_node._key_hints.key_text(2) == "Cmd")
 	# 左上角回合徽标（原右上角移来）（同款 chip 样式，字号 = Command ×2，实时）
 	_check("3D 左上角回合徽标存在", main_node._round_badge != null and is_instance_valid(main_node._round_badge))
 	_check("回合徽标可见", main_node._round_badge.visible)

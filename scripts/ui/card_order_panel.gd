@@ -64,7 +64,7 @@ func _build_header() -> void:
 	row.add_child(title)
 	_shift_btn = Button.new()
 	_shift_btn.name = "Shift"
-	_shift_btn.text = "SHIFT"
+	_shift_btn.text = "Shift"
 	_shift_btn.focus_mode = Control.FOCUS_NONE
 	for st_name in ["normal", "hover", "pressed", "disabled"]:
 		_shift_btn.add_theme_stylebox_override(st_name, KeyHintPanel.chip_style_box())

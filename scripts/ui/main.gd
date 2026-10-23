@@ -530,7 +530,7 @@ func _show_bomb_burst(seat: int, slot: int) -> void:
 		if is_instance_valid(burst):
 			burst.queue_free())
 
-## 3D 左下角按键提示（放大 Command / 手册 Tab）：说明纯白 + 圆角白底按键。
+## 3D 左下角按键提示（道具 Space / 标记 D / 放大 Cmd / 手册 Tab）：说明纯白 + 圆角白底按键。
 func _ensure_key_hints() -> void:
 	if _key_hints != null and is_instance_valid(_key_hints):
 		return
@@ -545,7 +545,7 @@ func _ensure_key_hints() -> void:
 	# 让出左下角最底部给「牌序」面板
 	_key_hints.offset_top -= CARD_ORDER_LIFT
 	_key_hints.offset_bottom -= CARD_ORDER_LIFT
-	_key_hints.setup([["放大", "Command"], ["手册", "Tab"]])
+	_key_hints.setup([["道具", "Space"], ["标记", "D"], ["放大", "Cmd"], ["手册", "Tab"]])
 
 ## 3D 右上角回合徽标（与按键 chip 同款圆角灰底+边框，字号 = Command chip ×2）。
 func _ensure_round_badge() -> void:
