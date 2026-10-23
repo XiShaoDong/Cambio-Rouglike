@@ -10,6 +10,7 @@ func _ready() -> void:
 	_test_handle()
 	_test_step()
 	_test_toggle()
+	_test_save()
 	print("=== CAMERA FLY RESULT: %d/%d passed%s ===" % [checks - failures, checks, " (FAILURES!)" if failures else ""])
 	get_tree().quit(1 if failures else 0)
 
@@ -72,3 +73,18 @@ func _test_toggle() -> void:
 	_check("toggle 后不消费", not tool.handle_key(KEY_W, true))
 	tool.toggle()
 	_check("toggle 再次打开", tool.active)
+
+func _test_save() -> void:
+	var tool := FlyTool.new()
+	var cam := Camera3D.new()
+	add_child(cam)
+	_check("初始未保存", not tool.has_saved())
+	cam.global_position = Vector3(3, 2, -4)
+	cam.rotation_degrees = Vector3(0, 40, 0)
+	tool.save_view(cam)
+	_check("保存后 has_saved", tool.has_saved())
+	cam.global_position = Vector3.ZERO
+	cam.global_transform.basis = Basis.IDENTITY
+	tool.apply_saved(cam)
+	_check("apply 回到保存的姿态", cam.global_position.is_equal_approx(Vector3(3, 2, -4)) \
+		and cam.global_transform.basis.get_euler().y > 0.0)

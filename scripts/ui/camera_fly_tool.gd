@@ -10,6 +10,20 @@ const VERTICAL := 3.0  # 升降 m/s
 
 var active := false
 var _pressed := {}  # keycode -> true
+var saved_view = null  # F 保存的相机全局姿态（Transform3D）；null=未保存（自由视角 1）
+
+## F：把当前相机姿态保存为「自由视角 1」。
+func save_view(cam: Camera3D) -> void:
+	if cam != null:
+		saved_view = cam.global_transform
+
+func has_saved() -> bool:
+	return saved_view != null
+
+## T 面板「自由视角 1」：应用保存的姿态（相机不变×取景已由调用方暂停）。
+func apply_saved(cam: Camera3D) -> void:
+	if has_saved() and cam != null:
+		cam.global_transform = saved_view
 
 func toggle() -> void:
 	active = not active

@@ -74,6 +74,7 @@ func refresh_panel() -> void:
 	title.add_theme_color_override("font_color", UITheme.color("accent"))
 	box.add_child(title)
 	_build_test_mode_row(box)
+	_build_camera_row(box)
 	var slap_btn := Button.new()
 	slap_btn.text = "抢牌调试（不限时不限牌）：%s" % ("ON" if GameState.debug_duel else "OFF")
 	slap_btn.clip_text = true
@@ -136,6 +137,11 @@ func _toggle_test_mode() -> void:
 		# 默认用 +1 做可见的测试；可再选其他效果/随机。
 		GameState.dev_test_effect = "plus_one"
 	main._show_toast("测试模式 %s" % ("ON（已应用）" if GameState.dev_test_mode else "OFF"))
+	if not GameState.dev_test_mode and main._fly_tool.active:
+		# 测试模式关闭：飞行相机一并停（ belonging to T 开发者功能）
+		main._fly_tool.stop()
+		if main.table3d != null and is_instance_valid(main.table3d):
+			main.table3d.set_fly_mode(false)
 	if GameState.dev_test_mode and Network.is_host:
 		_restart_with_test()
 	else:
@@ -158,6 +164,22 @@ func _restart_with_test() -> void:
 		return
 	GameState.request_restart_match(main._next_action_id())
 	main._show_toast("已重开本局，应用测试设置")
+
+## 「摄像机视角」：默认视角 / 自由视角 1（F 保存）。
+func _build_camera_row(box: VBoxContainer) -> void:
+	var lbl := Label.new()
+	lbl.text = "摄像机视角"
+	lbl.add_theme_color_override("font_color", UITheme.color("text_secondary"))
+	box.add_child(lbl)
+	var default_btn := Button.new()
+	default_btn.text = "默认视角（R）"
+	default_btn.pressed.connect(func(): main._fly_camera_set_default())
+	box.add_child(default_btn)
+	var saved_btn := Button.new()
+	saved_btn.text = "自由视角 1（%s）" % ("已保存，F=重设" if main._fly_tool.has_saved() else "未保存，飞行中按 F")
+	saved_btn.disabled = not main._fly_tool.has_saved()
+	saved_btn.pressed.connect(func(): main._fly_camera_set_saved())
+	box.add_child(saved_btn)
 
 ## 抢牌调试开关：debug_duel（不判正确性→贴错无罚牌；收集窗 400ms→30s 不限时）。
 func _toggle_slap_debug() -> void:

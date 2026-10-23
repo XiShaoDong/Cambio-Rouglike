@@ -674,6 +674,14 @@ func _attach_robot(avatar) -> void:
 ##  - 无同步（离线 / 2D 玩家 / 旧客户端）→ 稳定看向本机相机 + 用本机放大状态。
 ## 注意：环视只改相机朝向、位置基本不动，故本地目标不能直接用相机位置。
 ## 飞行相机（辅助工具）：on=true 时暂停 render 自动取景保持手动位姿；off 恢复本机座位基准位。
+## R（reset）：回到座位基准视角并继续飞行（取景一开一关同步完成）。
+func reset_fly_camera_to_default() -> void:
+	if camera == null:
+		return
+	camera.framing_enabled = true
+	camera.frame_for_seat(Table3dLayout.seat_angle(_viewer), Table3dLayout.TABLE_HEIGHT)
+	camera.framing_enabled = false
+
 func set_fly_mode(on: bool) -> void:
 	if camera == null:
 		return

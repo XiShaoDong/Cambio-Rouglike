@@ -902,13 +902,19 @@ func _input(event: InputEvent) -> void:
 		return
 	if not _table3d_active:
 		return
-	# 飞行相机（辅助工具）：G 开/关；开启时吞掉全部键盘（WASD/Space/Ctrl 计入移动），鼠标环视照常
+	# 飞行相机（辅助工具）：G 开/关（需测试模式），R 恢复默认、F 存自由视角；开启时吞掉全部键盘
 	if event is InputEventKey and event.pressed and not event.echo \
-			and (event.keycode == KEY_G or _fly_active()):
+			and (event.keycode == KEY_G or event.keycode == KEY_R or event.keycode == KEY_F or _fly_active()):
 		if event.keycode == KEY_G and _table3d_active:
 			_toggle_fly_camera()
 		elif _fly_active():
-			_fly_tool.handle_key(event.keycode, event.pressed)
+			match event.keycode:
+				KEY_R:
+					_fly_restore_default()
+				KEY_F:
+					_fly_save_current()
+				_:
+					_fly_tool.handle_key(event.keycode, event.pressed)
 		else:
 			return
 		get_viewport().set_input_as_handled()
@@ -1219,6 +1225,9 @@ func _fly_active() -> bool:
 func _toggle_fly_camera() -> void:
 	if table3d == null or not is_instance_valid(table3d):
 		return
+	if not GameState.dev_test_mode:
+		_show_toast("飞行相机需在 T 开发者面板开启测试模式（T）")
+		return
 	if _fly_tool.active:
 		_fly_tool.stop()
 		table3d.set_fly_mode(false)
@@ -1226,7 +1235,45 @@ func _toggle_fly_camera() -> void:
 	else:
 		_fly_tool.active = true
 		table3d.set_fly_mode(true)
-		_show_toast("飞行相机：WASD 移动 · U 上升 · J 下降 · G 关闭")
+		_show_toast("飞行相机：WASD 移动 · U 上升 · J 下降 · R 默认 · F 存自由视角 · G 关闭")
+
+## R：回默认视角（飞行模式内保持飞行继续）。
+func _fly_restore_default() -> void:
+	if not _fly_active():
+		return
+	table3d.reset_fly_camera_to_default()
+
+## F：把当前相机姿态保存为「自由视角 1」。
+func _fly_save_current() -> void:
+	if not _fly_active():
+		return
+	_fly_tool.save_view(table3d.camera.camera_node())
+	_show_toast("已保存自由视角 1（T 面板可一键回到该视角）")
+
+## T 面板「默认视角」：回座位基准（非飞行模式=正常取景；飞行=瞬间回默认继续飞）。
+func _fly_camera_set_default() -> void:
+	if table3d == null or not is_instance_valid(table3d):
+		_show_toast("先进入 3D 桌面（V/F10）")
+		return
+	if _fly_tool.active:
+		table3d.reset_fly_camera_to_default()
+		_show_toast("已回默认视角（飞行中）")
+	else:
+		table3d.set_fly_mode(false)
+		_show_toast("已回默认视角")
+
+## T 面板「自由视角 1」：应用 F 保存的姿态（保存过取景暂停以保持该视角）。
+func _fly_camera_set_saved() -> void:
+	if table3d == null or not is_instance_valid(table3d):
+		_show_toast("先进入 3D 桌面（V/F10）")
+		return
+	if not _fly_tool.has_saved():
+		_show_toast("尚未保存自由视角 1（飞行中按 F）")
+		return
+	if not _fly_tool.active:
+		table3d.set_fly_mode(true)  # 取景暂停以保持该自由姿态
+	_fly_tool.apply_saved(table3d.camera.camera_node())
+	_show_toast("已回到自由视角 1")
 var _turn_effect_panel: TurnEffectPanel = null
 var _current_effect: Dictionary = {}
 var _effect_last_match := ""
