@@ -1978,13 +1978,12 @@ func _can_open_item_hand() -> bool:
 		return false
 	if _table3d_active and table3d != null and is_instance_valid(table3d) and table3d.is_dealing():
 		return false
-	return not (latest_state.get("item_cards", []) as Array).is_empty()
+	return true
 
 func _open_item_hand() -> void:
-	if not _can_open_item_hand():
-		if (latest_state.get("item_cards", []) as Array).is_empty():
-			_show_toast("没有道具卡")
-		return
+	_ensure_item_hand()
+	_item_hand.setup(latest_state, int(latest_state.get("viewer_id", -1)))
+	_item_hand.open()
 	_ensure_item_hand()
 	_item_hand.setup(latest_state, int(latest_state.get("viewer_id", -1)))
 	_item_hand.open()

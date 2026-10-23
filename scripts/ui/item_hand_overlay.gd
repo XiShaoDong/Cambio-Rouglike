@@ -171,13 +171,11 @@ func set_cards(ids: Array) -> void:
 func open() -> void:
 	if not _built:
 		_build()
-	if model.count() <= 0:
-		close()
-		return
 	visible = true
 	model.end_target()
 	_target_panel.visible = false
-	_cards_layer.visible = true
+	var empty := model.count() <= 0
+	_cards_layer.visible = not empty
 	_hand_art.visible = true
 	_desc.visible = true
 	_hint.visible = true
@@ -253,14 +251,21 @@ func cancel_target() -> void:
 	_layout()
 
 func _update_selection() -> void:
-	if not _built or _card_views.is_empty():
+	if not _built:
+		return
+	if _card_views.is_empty():
+		# 空手状态：依然打开手部，只提示没有可用道具
+		_desc_title.text = "没有道具卡"
+		_desc_body.text = "没有道具可以使用"
+		_hint.text = "空格 收起 · 商店可购买道具卡"
+		_layout()
 		return
 	for i in _card_views.size():
 		_card_views[i].set_selected(i == model.selected)
 	var def := model.selected_def()
 	if def.is_empty():
 		_desc_title.text = "没有道具卡"
-		_desc_body.text = "在商店购买道具卡后，按空格查看。"
+		_desc_body.text = "没有道具可以使用"
 	else:
 		_desc_title.text = str(def.get("name", ""))
 		_desc_body.text = str(def.get("desc", ""))
