@@ -4,6 +4,7 @@
 [ext_resource type="Script" uid="uid://c0v4tvslqpr3e" path="res://scripts/ui/table3d_camera.gd" id="2_cam"]
 [ext_resource type="Script" uid="uid://cv4ieubwgfs04" path="res://scripts/ui/card_block.gd" id="3_block"]
 [ext_resource type="Script" path="res://scripts/ui/table3d_hud.gd" id="4_hud"]
+[ext_resource type="Script" path="res://scripts/ui/poker_table_model.gd" id="5_pokertable"]
 
 [sub_resource type="ProceduralSkyMaterial" id="SkyMat_1"]
 sky_top_color = Color(0.42, 0.44, 0.5, 1)
@@ -95,15 +96,17 @@ transform = Transform3D(1, 0, 0, 0, 0.939693, -0.34202, 0, 0.34202, 0.939693, 0,
 [node name="Camera3D" type="Camera3D" parent="CameraRig/PitchPivot" unique_id=1662406061]
 transform = Transform3D(1, 0, 0, 0, 0.9999997, 2.9802322e-08, 0, 0, 0.9999997, 0, 0, 0)
 
-[node name="Table" type="MeshInstance3D" parent="." unique_id=480668252]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.96, 0)
+[node name="Table" type="MeshInstance3D" parent="." visible=false]
 material_override = SubResource("TableMat")
 mesh = SubResource("TableMesh")
 
-[node name="TableEdge" type="MeshInstance3D" parent="." unique_id=730121467]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.91, 0)
+[node name="TableEdge" type="MeshInstance3D" parent="." visible=false]
 material_override = SubResource("TableEdgeMat")
 mesh = SubResource("TableEdgeMesh")
+
+[node name="PokerTable" type="Node3D" parent="." unique_id=480668253]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+script = ExtResource("5_pokertable")
 
 [node name="Seats" type="Node3D" parent="." unique_id=1748982733]
 
