@@ -4,8 +4,9 @@ extends RefCounted
 ## 职责：座位角度、槽位网格坐标、已知牌分类色、尺寸常量。
 ## 纯函数、无节点依赖 → headless 可测。
 
-const BLOCK_SIZE := Vector3(0.7, 0.04, 1.0)   # 平铺桌面：X 宽 × Y 厚 × Z 深
-const BLOCK_GAP := Vector3(0.06, 0.0, 0.06)
+const BLOCK_SCALE := 2.0 / 3.0                          # 卡牌尺寸基准缩放（2026-10-22 缩 2/3）
+const BLOCK_SIZE := Vector3(0.7, 0.04, 1.0) * BLOCK_SCALE   # 平铺桌面：X 宽 × Y 厚 × Z 深（比例不变 0.7）
+const BLOCK_GAP := Vector3(0.06, 0.0, 0.06) * BLOCK_SCALE   # 槽间距（同比例缩小；网格 (0.5-列) 居中不偏）
 const TABLE_RADIUS := 3.8  # 桌面半边长（场景 Table 网格 7×7）×2 前基准
 const SEAT_RADIUS := 3.0
 const TABLE_HEIGHT := 1.0  # 桌面世界高度（玩家腰/手高度）；机器人脚在 y=0，故桌子在腰间

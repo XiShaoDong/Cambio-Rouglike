@@ -33,7 +33,7 @@ const BELL_PICK_SCALE := 2.0 / 3.0
 const STAT_VIEWPORT_SIZE := Vector2i(320, 120)
 const STAT_PANEL_OFFSET := Vector3(0.0, 0.75, 0.0)
 const STAT_PANEL_PIXEL_SIZE := 0.005
-const PENDING_Y := 0.95  # 大牌竖立悬浮中心离桌高度（牌高 1.0 → 底≈0.45、顶≈1.45）
+const PENDING_Y := 0.633  # 大牌竖立悬浮中心离桌高度（=0.95×2/3；卡高 0.667 → 底≈0.30、顶≈0.967）
 const DEAL_INTERVAL := 0.15  # 开局发牌：每张间隔（秒，按 _deal_speed 缩放）
 const STAT_PANEL_ABOVE := 0.45   # 状态面板相对机器人头顶的上方间隙
 const MARKER_ABOVE_PANEL := 0.5  # 回合标识相对状态面板的上方间隙
