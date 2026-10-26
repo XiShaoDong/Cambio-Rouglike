@@ -46,6 +46,16 @@ func _run() -> void:
 	_check("kongbaya 非当前不可用", not ActionModel.kongbaya_available({"phase": 2, "viewer_id": 1, "current_player": 0}))
 	_check("kongbaya 非抽牌阶段不可用", not ActionModel.kongbaya_available({"phase": 3, "viewer_id": 0, "current_player": 0}))
 	_check("空快照 kongbaya 不可用", not ActionModel.kongbaya_available({}))
+	_check("kongbaya 已被喊出不可用", not ActionModel.kongbaya_available({"phase": 2, "viewer_id": 0, "current_player": 0, "kong_caller": 1}))
+	# 铃铛圆环状态：0=隐藏 1=绿(可点) 2=红(不可点)
+	_check("铃环 绿=自己等待抽牌", ActionModel.bell_ring_state({"phase": 2, "viewer_id": 0, "current_player": 0, "kong_caller": -1}) == 1)
+	_check("铃环 红=别人回合", ActionModel.bell_ring_state({"phase": 2, "viewer_id": 1, "current_player": 0}) == 2)
+	_check("铃环 红=已抽牌(Settle 窗口)", ActionModel.bell_ring_state({"phase": 2, "viewer_id": 0, "current_player": 0, "settle_deadline_server_ms": 123}) == 2)
+	_check("铃环 红=已有人喊 Kongbaya", ActionModel.bell_ring_state({"phase": 2, "viewer_id": 0, "current_player": 0, "kong_caller": 2}) == 2)
+	_check("铃环 红=非抽牌阶段", ActionModel.bell_ring_state({"phase": 3, "viewer_id": 0, "current_player": 0}) == 2)
+	_check("铃环 红一局后期阶段均不可点(Duel)", ActionModel.bell_ring_state({"phase": 8, "viewer_id": 0, "current_player": 0}) == 2)
+	_check("铃环 隐藏=大厅/结算/商店", ActionModel.bell_ring_state({"phase": 0}) == 0 \
+		and ActionModel.bell_ring_state({"phase": 7}) == 0 and ActionModel.bell_ring_state({"phase": 10}) == 0)
 	var r := {"ready_count": 1, "players": [{}, {}]}
 	_check("Ready 文案", ActionModel.ready_text(r, false) == "Ready（1/2）")
 	_check("已准备文案", ActionModel.ready_text(r, true) == "已准备（1/2）")

@@ -74,9 +74,22 @@ static func draw_available(state: Dictionary) -> bool:
 	return int(state.get("phase", 0)) == PHASE_TURN_DRAW \
 		and int(state.get("viewer_id", 0)) == int(state.get("current_player", -1))
 
-## 铃铛（Kongbaya）可用：与抽牌同条件（TURN_DRAW 且 viewer 为当前玩家）。
+## 铃铛（Kongbaya）可用：与抽牌同条件（TURN_DRAW 且 viewer 为当前玩家）；
+## Kongbaya 一局仅一次，已有人喊出（kong_caller != -1）即不可再点。
 static func kongbaya_available(state: Dictionary) -> bool:
+	if int(state.get("kong_caller", -1)) != -1:
+		return false
 	return draw_available(state)
+
+## 铃铛圆环状态（服务端/客户端同源）：0=隐藏(大厅/结算/商店)、1=绿(可点)、2=红(不可点)。
+## 红：其它对局中状态——已抽牌 / 别人回合 / 已有人喊 Kongbaya / 非抽牌阶段 / 结算贴牌窗口。
+static func bell_ring_state(state: Dictionary) -> int:
+	if state.is_empty():
+		return 0
+	var phase := int(state.get("phase", 0))
+	if phase == 0 or phase == 7 or phase == 10:  # LOBBY / GAME_OVER / SHOP
+		return 0
+	return 1 if kongbaya_available(state) else 2
 
 ## 弃牌堆可直接点「取弃牌顶」：TURN_DRAW 且当前玩家且弃牌堆非空；结算贴牌窗口内锁死。
 static func discard_take_available(state: Dictionary) -> bool:

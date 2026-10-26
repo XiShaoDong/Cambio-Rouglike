@@ -437,6 +437,62 @@ func _update_bell(state: Dictionary) -> void:
 	if _bell_model == null:
 		return
 	_bell_model.set_glow(ActionModel.kongbaya_available(state))
+	_bell_ring_refresh(ActionModel.bell_ring_state(state))
+
+## 铃铛状态圆环（贴桌面虚线圈，与卡牌 locked dash 同语义）：0=隐藏/1=绿(可点)/2=红(不可点)。
+const BELL_RING_RADIUS := 0.26   # 圆环半径（略大于铃铛底盘）
+const BELL_RING_W := 0.028       # 虚线弧的径向宽度
+const BELL_RING_Y := 0.006       # 贴桌面高度（KongBell 根在桌面）
+const BELL_DASH_COUNT := 24
+const BELL_DASH_SPLIT := 0.55    # 每段中实线占比（其余为间隙）
+
+var _bell_ring: MeshInstance3D = null
+
+func _bell_ring_refresh(mode: int) -> void:
+	if _bell_ring == null:
+		_bell_ring_build()
+		if _bell_ring == null:
+			return
+	_bell_ring.visible = mode != 0
+	var mat := _bell_ring.material_override as StandardMaterial3D
+	if mat != null:
+		# 绿=可点（呼应当前 slap HUD 绿）；红=不可点（与卡牌 locked dash 红一致）
+		mat.albedo_color = Color(0.5, 0.95, 0.55, 0.95) if mode == 1 else Color(1.0, 0.34, 0.34, 0.95)
+
+func _bell_ring_build() -> void:
+	var bell := get_node_or_null("Center/KongBell") as Node3D
+	if bell == null:
+		return
+	var inner := BELL_RING_RADIUS - BELL_RING_W * 0.5
+	var outer := BELL_RING_RADIUS + BELL_RING_W * 0.5
+	var step := TAU / float(BELL_DASH_COUNT)
+	var im := ImmediateMesh.new()
+	for i in BELL_DASH_COUNT:
+		var a0 := float(i) * step
+		var a1 := a0 + step * BELL_DASH_SPLIT
+		var p0 := Vector3(cos(a0) * outer, 0.0, sin(a0) * outer)
+		var p1 := Vector3(cos(a1) * outer, 0.0, sin(a1) * outer)
+		var p2 := Vector3(cos(a1) * inner, 0.0, sin(a1) * inner)
+		var p3 := Vector3(cos(a0) * inner, 0.0, sin(a0) * inner)
+		im.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+		im.surface_add_vertex(p0)
+		im.surface_add_vertex(p1)
+		im.surface_add_vertex(p2)
+		im.surface_add_vertex(p0)
+		im.surface_add_vertex(p2)
+		im.surface_add_vertex(p3)
+		im.surface_end()
+	var mi := MeshInstance3D.new()
+	mi.name = "DashRing"
+	mi.mesh = im
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.albedo_color = Color(0.5, 0.95, 0.55, 0.95)
+	mi.material_override = mat
+	mi.position = Vector3(0.0, BELL_RING_Y, 0.0)
+	bell.add_child(mi)
+	_bell_ring = mi
 
 ## 座位世界坐标（与相机基准同一角度约定）。
 func _seat_world(angle_deg: float) -> Vector3:

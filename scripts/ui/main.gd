@@ -356,6 +356,21 @@ func _update_card_tooltip() -> void:
 	if table3d == null or not is_instance_valid(table3d):
 		_hide_card_tooltip()
 		return
+	# 铃铛 hover：提示 Kongbaya 语义（同款能力框，无第二框）。
+	var pick_meta: Dictionary = table3d.hovered_pick()
+	if str(pick_meta.get("kind", "")) == "hud" and str(pick_meta.get("action", "")) == "kongbaya":
+		var bell_cam: Camera3D = table3d.camera.camera_node()
+		if bell_cam == null:
+			_hide_card_tooltip()
+			return
+		var vp2 := get_viewport().get_visible_rect().size
+		var bell_rect: Rect2 = table3d.hovered_screen_rect(bell_cam)
+		if vp2.x > 0.0 and vp2.y > 0.0:
+			var bsx := size.x / vp2.x
+			var bsy := size.y / vp2.y
+			bell_rect = Rect2(Vector2(bell_rect.position.x * bsx, bell_rect.position.y * bsy), Vector2(bell_rect.size.x * bsx, bell_rect.size.y * bsy))
+		_card_tooltip.show_with_note("点击跳过摸牌，直接进入决胜回合", "", bell_rect)
+		return
 	var card: Dictionary = table3d.hovered_card()
 	var rank := str(card.get("rank", ""))
 	if rank.is_empty():
