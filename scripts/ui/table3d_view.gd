@@ -260,10 +260,8 @@ func _ensure_restart_button() -> void:
 	shape.shape = sphere
 	area.add_child(shape)
 	root.add_child(area)
-	root.position = Vector3(
-		Table3dLayout.TABLE_RADIUS * 0.8,
-		Table3dLayout.TABLE_HEIGHT + 0.03,
-		Table3dLayout.TABLE_RADIUS * 0.8)
+	# 位置：本机视角右下方、置于桌面内（旧位 (R*0.8,R*0.8) 悬在桌外角落）
+	root.position = Vector3(2.9, Table3dLayout.TABLE_HEIGHT + 0.03, 2.2)
 	add_child(root)
 	_restart_button = root
 
@@ -544,9 +542,9 @@ func _render_seat(node: Node3D, p: Dictionary, face_all := true) -> void:
 			_card_blocks[int(p.id)] = {}
 		_card_blocks[int(p.id)][i] = block
 
-## 每席 3 个饰品篮：放在该玩家视角的左手边（本地 +X），沿 Z 排开。
-const RELIC_BASKET_X := 1.15
-const RELIC_BASKET_Z := [-0.55, 0.0, 0.55]
+## 每席 3 个饰品篮：放在该玩家视角的左手边（本地 +X），沿 Z 排开；x 靠近手牌两列（外缘 ≈0.49）。
+const RELIC_BASKET_X := 0.9
+const RELIC_BASKET_Z := [-0.12, 0.38, 0.88]  # 整组上移：第一颗(0.88)顶边=0.88+0.16=1.04 与手牌顶排上边缘(0.706+0.333)齐平；间距 0.5
 
 func _ensure_relic_baskets(seat_node: Node3D, seat: int) -> Node3D:
 	var root: Node3D = seat_node.get_node_or_null("RelicBaskets")

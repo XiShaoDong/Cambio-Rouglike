@@ -42,8 +42,8 @@ func _run() -> void:
 	var baskets: Array = view.relic_baskets(0)
 	_check("每席 3 个饰品篮", baskets.size() == 3)
 	_check("饰品篮在本地 +X（手牌左侧）", baskets.size() == 3 and is_equal_approx((baskets[0] as Node3D).position.x, Table3dView.RELIC_BASKET_X))
-	_check("饰品篮沿 Z 排开", baskets.size() == 3 and is_equal_approx((baskets[0] as Node3D).position.z, -0.55) \
-		and is_equal_approx((baskets[1] as Node3D).position.z, 0.0) and is_equal_approx((baskets[2] as Node3D).position.z, 0.55))
+	_check("饰品篮整组上移（第一颗顶边与手牌顶边齐平）", baskets.size() == 3 and is_equal_approx((baskets[0] as Node3D).position.z, -0.12) \
+		and is_equal_approx((baskets[1] as Node3D).position.z, 0.38) and is_equal_approx((baskets[2] as Node3D).position.z, 0.88))
 	_check("非空篮显示占位字符", baskets.size() == 3 and (baskets[0] as RelicBasket).relic() == "relic_tax_hand" \
 		and (baskets[0] as RelicBasket).get_node("Glyph").text == "-1")
 	_check("空篮显示空样式", baskets.size() == 3 and (baskets[2] as RelicBasket).relic() == "" \

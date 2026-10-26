@@ -24,18 +24,6 @@ ambient_light_energy = 0.7
 sky = SubResource("Sky_1")
 reflected_light_source = 1
 
-[sub_resource type="StandardMaterial3D" id="TableMat"]
-albedo_color = Color(0.16, 0.18, 0.22, 1)
-
-[sub_resource type="BoxMesh" id="TableMesh"]
-size = Vector3(7.6, 0.08, 7.6)
-
-[sub_resource type="StandardMaterial3D" id="TableEdgeMat"]
-albedo_color = Color(0.09, 0.1, 0.12, 1)
-
-[sub_resource type="BoxMesh" id="TableEdgeMesh"]
-size = Vector3(7.975, 0.12, 7.975)
-
 [sub_resource type="SphereMesh" id="BellDomeMesh"]
 radius = 0.26
 height = 0.52
@@ -95,14 +83,6 @@ transform = Transform3D(1, 0, 0, 0, 0.939693, -0.34202, 0, 0.34202, 0.939693, 0,
 
 [node name="Camera3D" type="Camera3D" parent="CameraRig/PitchPivot" unique_id=1662406061]
 transform = Transform3D(1, 0, 0, 0, 0.9999997, 2.9802322e-08, 0, 0, 0.9999997, 0, 0, 0)
-
-[node name="Table" type="MeshInstance3D" parent="." visible=false]
-material_override = SubResource("TableMat")
-mesh = SubResource("TableMesh")
-
-[node name="TableEdge" type="MeshInstance3D" parent="." visible=false]
-material_override = SubResource("TableEdgeMat")
-mesh = SubResource("TableEdgeMesh")
 
 [node name="PokerTable" type="Node3D" parent="." unique_id=480668253]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
