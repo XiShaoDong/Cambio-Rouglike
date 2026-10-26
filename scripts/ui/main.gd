@@ -630,28 +630,23 @@ func _board_anchor_world(seat_pos: Vector3, cam: Camera3D, board_h: float) -> Ve
 			return cam.global_position + dir.normalized() * BOARD_DIST
 	return Vector3.ZERO
 
-## 有模态面板 / 提示按钮时，自动把相机视线对准看板——看板锚在高位，默认准星落在桌面会打不到。
-## 模态板：仅在**打开时**对准一次（商店/结算内容或高度变化不再重对准，避免相机跳动打断点击）。
-## 提示板（Ready/Q/J）：按钮集合变化时重新对准，保证新出现的按钮落在准星上。
+## 有模态面板时，自动把相机视线对准看板（**仅模态打开时对准一次**）。
+## 常驻提示板（Ready/Q/J 按钮）不再自动对准——保持玩家自由环视；
+## 按钮拾取盒已放宽（PICK_PAD 0.5），准星转到按钮上自可命中。
 func _auto_aim_board() -> void:
 	# 结算（算分/翻牌）期间不要强制调整玩家镜头；也不在此时聚焦，交由玩家自由环视。
 	if int(latest_state.get("phase", -1)) == PHASE_GAME_OVER:
 		_board_aim_key = ""
 		return
 	var host: Node3D = null
-	var key := ""
 	if _board_has_panel() and board3d != null and is_instance_valid(board3d) and board3d.visible:
 		host = board3d
-		key = "modal"
-	elif hint3d != null and is_instance_valid(hint3d) and hint3d.visible:
-		host = hint3d
-		key = "hint|%s" % str(hint3d.world_size())
 	if host == null:
 		_board_aim_key = ""
 		return
-	if key == _board_aim_key:
+	if _board_aim_key == "modal":
 		return
-	_board_aim_key = key
+	_board_aim_key = "modal"
 	if table3d.camera != null:
 		table3d.camera.aim_at(host.global_position)
 
