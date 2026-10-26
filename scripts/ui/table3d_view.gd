@@ -34,6 +34,7 @@ const STAT_VIEWPORT_SIZE := Vector2i(320, 120)
 const STAT_PANEL_OFFSET := Vector3(0.0, 0.75, 0.0)
 const STAT_PANEL_PIXEL_SIZE := 0.005
 const PENDING_Y := 0.633  # 大牌竖立悬浮中心离桌高度（=0.95×2/3；卡高 0.667 → 底≈0.30、顶≈0.967）
+const PENDING_THICKNESS := 0.06  # 大牌侧壁边条厚度（侧面可见"那里有张牌"；正面只露细线；0=关）
 const DEAL_INTERVAL := 0.15  # 开局发牌：每张间隔（秒，按 _deal_speed 缩放）
 const STAT_PANEL_ABOVE := 0.45   # 状态面板相对机器人头顶的上方间隙
 const MARKER_ABOVE_PANEL := 0.5  # 回合标识相对状态面板的上方间隙
@@ -150,6 +151,9 @@ func _bind() -> void:
 		_pending_node.position = Vector3(mid.x, PENDING_Y, mid.z)
 	if _pending_block != null and _pending_block.has_method("set_upright"):
 		_pending_block.set_upright(true)
+		# 大牌厚度侧壁：侧面（2/4 号位）也能看到"那里有张牌"
+		if _pending_block.has_method("set_thickness"):
+			_pending_block.set_thickness(PENDING_THICKNESS)
 	var bell := get_node_or_null("Center/KongBell")
 	if bell != null:		# 旧占位（Base/Dome/Knob）隐藏，改挂 call-bell.glb 模型 + 金属着色器。
 		for old_name in ["Base", "Dome", "Knob"]:

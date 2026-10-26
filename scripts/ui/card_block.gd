@@ -63,6 +63,12 @@ var _showing_back := true
 var _glow_nodes: Array = []      # [{node: MeshInstance3D, mat: StandardMaterial3D, alpha: float}]
 var _glow_base := Color(0, 0, 0, 0)
 var _flash_color := Color(0, 0, 0, 0)
+const ZERO_T := 0.001
+const EDGE_SLIM_X := 0.006  # 侧壁 slab 的 X 向宽度（正面只露发丝线；侧看厚度由 Y 向尺寸决定）
+var _edge_l: MeshInstance3D = null
+var _edge_r: MeshInstance3D = null
+var _edge_material: StandardMaterial3D = null
+var _edge_visible := false
 var _reveal_color := Color(0, 0, 0, 0)   # 揭示炫光色（绿/红/蓝），优先于 actionable/hover
 var _upright := false
 var _border_mesh: MeshInstance3D
@@ -164,6 +170,24 @@ func _build() -> void:
 	_back_material.albedo_color = Color.WHITE
 	_back_node.material_override = _back_material
 	_flip.add_child(_back_node)
+	# 厚度侧壁（默认无；大牌竖立时开启 2/4 号玩家从侧面也能看到"那里有张牌"）。
+	# 形态：贴在牌左右两边缘的竖条 slab——侧面看是薄边，正面只露一条细线不遮挡牌面。
+	_edge_l = MeshInstance3D.new()
+	_edge_l.name = "EdgeL"
+	var elm := BoxMesh.new()
+	elm.size = Vector3(ZERO_T, ZERO_T, Table3dLayout.BLOCK_SIZE.z)
+	_edge_l.mesh = elm
+	_edge_material = StandardMaterial3D.new()
+	_edge_material.albedo_color = Color(0.16, 0.20, 0.30)
+	_edge_material.roughness = 0.6
+	_edge_l.material_override = _edge_material
+	_flip.add_child(_edge_l)
+	_edge_r = _edge_l.duplicate()
+	_edge_r.name = "EdgeR"
+	_flip.add_child(_edge_r)
+	_edge_visible = false
+	_edge_l.visible = false
+	_edge_r.visible = false
 	_label_shadow = Label3D.new()
 	_label_shadow.name = "LabelShadow"
 	_label_shadow.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -285,6 +309,23 @@ func set_hover(on: bool, color := BORDER_WHITE) -> void:
 ## 该卡当前是否可操作（供 table3d_view 决定 hover 边框红/绿）。
 func is_actionable() -> bool:
 	return _actionable
+
+## 设置厚度侧壁（t=侧壁厚度世界单位，即侧面看到的薄边宽度；0=隐藏）。
+## 两条竖 slab 贴在牌左右±X 边缘：侧看是 t 宽薄边；正面只露 EDGE_SLIM 细线（X 向极窄，
+## 避免出现"卡面两边加宽"的深色竖带）。
+func set_thickness(t: float, color := Color(0.16, 0.20, 0.30)) -> void:
+	_build()
+	if _edge_l == null or _edge_r == null:
+		return
+	_edge_visible = t > 0.001
+	for node: MeshInstance3D in [_edge_l, _edge_r]:
+		var mesh := node.mesh as BoxMesh
+		mesh.size = Vector3(EDGE_SLIM_X, t, Table3dLayout.BLOCK_SIZE.z)
+		var sx := Table3dLayout.BLOCK_SIZE.x * 0.5 - EDGE_SLIM_X * 0.5
+		# 立牌后本地 +Y = 朝行动者的法线、本地 +X = 左右 → slab 贴 ±X 边缘
+		node.position = Vector3(sx if node == _edge_r else -sx, 0.0, 0.0)
+		node.visible = _edge_visible
+	_edge_material.albedo_color = color
 
 ## 结算贴牌窗口锁锁死态：常驻红色虚线框（不受 hover 影响；settle 结束时恢复）。
 func set_locked_dash(on: bool) -> void:
