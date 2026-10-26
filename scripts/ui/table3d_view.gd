@@ -151,8 +151,7 @@ func _bind() -> void:
 	if _pending_block != null and _pending_block.has_method("set_upright"):
 		_pending_block.set_upright(true)
 	var bell := get_node_or_null("Center/KongBell")
-	if bell != null:
-		# 旧占位（Base/Dome/Knob）隐藏，改挂 call-bell.glb 模型 + 金属着色器。
+	if bell != null:		# 旧占位（Base/Dome/Knob）隐藏，改挂 call-bell.glb 模型 + 金属着色器。
 		for old_name in ["Base", "Dome", "Knob"]:
 			var old := bell.get_node_or_null(old_name)
 			if old is Node3D:
