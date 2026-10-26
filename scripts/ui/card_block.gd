@@ -169,7 +169,7 @@ func _build() -> void:
 	_label_shadow.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_label_shadow.no_depth_test = true
 	_label_shadow.pixel_size = 0.0025
-	_label_shadow.font_size = 96
+	_label_shadow.font_size = 64
 	_label_shadow.modulate = LABEL_SHADOW_COLOR
 	_label_shadow.position = Vector3(0.0, Table3dLayout.BLOCK_SIZE.y * 0.5 + LABEL_LIFT, 0.0) + LABEL_SHADOW_OFFSET
 	_flip.add_child(_label_shadow)
@@ -177,7 +177,7 @@ func _build() -> void:
 	_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_label.no_depth_test = true
 	_label.pixel_size = 0.0025
-	_label.font_size = 96
+	_label.font_size = 64
 	_label.position = Vector3(0.0, Table3dLayout.BLOCK_SIZE.y * 0.5 + LABEL_LIFT, 0.0)
 	_flip.add_child(_label)
 	# 炸弹角标（随机增强）：卡牌右上角，billboard 始终朝向相机。
