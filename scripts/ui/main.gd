@@ -368,6 +368,13 @@ func _update_card_tooltip() -> void:
 	var granted := str((latest_state.get("pending", {}) as Dictionary).get("granted_ability", ""))
 	if not granted.is_empty():
 		text += "\n饰品赋予：可查看一张牌"
+	# 第二框（能力触发提示）：仅本行动者本人 hover 自己从抽牌堆抽出的、有能力的大牌时显示。
+	# 判据同服务端 _server_use_ability：pending.source=="draw" + (granted 或 KongRules.has_ability)。
+	var note := ""
+	if source == "draw" and (not granted.is_empty() or KongRules.has_ability(rank)):
+		var me := int(latest_state.get("viewer_id", -1))
+		if me >= 0 and me == int(latest_state.get("current_player", -2)):
+			note = "点击弃牌堆以触发能力"
 	var cam: Camera3D = table3d.camera.camera_node()
 	if cam == null:
 		_hide_card_tooltip()
@@ -378,7 +385,7 @@ func _update_card_tooltip() -> void:
 		var sx := size.x / vp.x
 		var sy := size.y / vp.y
 		rect = Rect2(Vector2(rect.position.x * sx, rect.position.y * sy), Vector2(rect.size.x * sx, rect.size.y * sy))
-	_card_tooltip.show_line(text, rect)
+	_card_tooltip.show_with_note(text, note, rect)
 
 ## 驱动 HintHud：文本随 hint 变化，进入新回合（key 变化）时重置 30 并播进场。
 func _update_hint_hud(phase: int, viewer: int, current: int) -> void:

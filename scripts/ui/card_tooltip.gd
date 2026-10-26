@@ -15,6 +15,9 @@ var _bubble: PanelContainer
 var _label: Label
 var _style: StyleBoxFlat
 var _shown := false
+var _bubble2: PanelContainer
+var _label2: Label
+var _note_shown := false
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -38,7 +41,31 @@ func _ready() -> void:
 	_label.add_theme_color_override("font_color", TEXT)
 	_bubble.add_child(_label)
 	add_child(_bubble)
+	# 第二框（能力提示："点击弃牌堆以触发能力"）——出现在第一气泡正下方。
+	_bubble2 = PanelContainer.new()
+	_bubble2.name = "BubbleNote"
+	_bubble2.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_bubble2.add_theme_stylebox_override("panel", _make_style())
+	_label2 = Label.new()
+	_label2.name = "Text"
+	_label2.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_label2.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_label2.custom_minimum_size.x = FIXED_W - 20.0
+	_label2.add_theme_font_size_override("font_size", FONT)
+	_label2.add_theme_color_override("font_color", TEXT)
+	_bubble2.add_child(_label2)
+	add_child(_bubble2)
 	visible = false
+
+## 样式构造复用（第一/第二气泡同款深色圆角）。
+func _make_style() -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = BG
+	style.set_corner_radius_all(14)
+	style.set_content_margin_all(10)
+	style.border_color = BORDER
+	style.set_border_width_all(1)
+	return style
 
 ## 在卡牌屏幕矩形右上角外侧显示一行气泡文案。
 func show_line(text: String, card_rect: Rect2) -> void:
@@ -50,9 +77,36 @@ func show_line(text: String, card_rect: Rect2) -> void:
 	var pos := Vector2(card_rect.end.x + GAP_X, card_rect.position.y - sz.y - GAP_Y)
 	_place(pos, sz)
 
+## 第一框显示能力文案；note 非空时在其正下方再弹第二框（能力触发提示）。
+func show_with_note(text: String, note: String, card_rect: Rect2) -> void:
+	if text.is_empty():
+		hide_tip()
+		return
+	_label.text = text
+	var sz := _bubble.get_combined_minimum_size()
+	var pos := Vector2(card_rect.end.x + GAP_X, card_rect.position.y - sz.y - GAP_Y)
+	_place(pos, sz)
+	if note.is_empty():
+		_label2.text = ""
+		_bubble2.visible = false
+		_note_shown = false
+		return
+	_label2.text = note
+	var sz2 := _bubble2.get_combined_minimum_size()
+	# 第二框贴第一框正下方：x 与第一框左缘对齐、y = 第一框 bottom + 间距
+	var pos2 := Vector2(pos.x, pos.y + sz.y + GAP_Y)
+	_place2(pos2, sz2)
+
 func hide_tip() -> void:
 	_shown = false
+	_note_shown = false
 	visible = false
+
+func note_text() -> String:
+	return _label2.text if _label2 != null else ""
+
+func note_shown() -> bool:
+	return _note_shown
 
 func text() -> String:
 	return _label.text if _label != null else ""
@@ -70,3 +124,11 @@ func _place(pos: Vector2, sz: Vector2) -> void:
 	_bubble.size = sz
 	_shown = true
 	visible = true
+
+func _place2(pos: Vector2, sz: Vector2) -> void:
+	pos.x = clampf(pos.x, 8.0, maxf(8.0, size.x - sz.x - 8.0))
+	pos.y = clampf(pos.y, 8.0, maxf(8.0, size.y - sz.y - 8.0))
+	_bubble2.position = pos
+	_bubble2.size = sz
+	_note_shown = true
+	_bubble2.visible = true
