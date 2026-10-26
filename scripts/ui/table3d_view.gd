@@ -839,25 +839,22 @@ func pick_center() -> Dictionary:
 
 ## 每帧让大牌绕世界 Y 朝向本机相机（保持竖直，不用含俯仰的完全 billboard）。
 ## 位置不变，只重写 basis：本地 +Y（卡面法向）→ 水平指向相机；本地 +Z（卡高）→ 世界向上。
-func update_facing() -> void:
-	if _pending_node == null or not is_instance_valid(_pending_node) or camera == null:
+## 大牌朝向：绕世界 Y 面向"当前行动者座位"（世界固定，全房一致——
+## 行动者看正面、对面看背面、两侧看薄边）。actor_seat<0 时保持现有姿态不重写。
+func update_facing(actor_seat := -1) -> void:
+	if actor_seat < 0:
 		return
-	var cam: Camera3D = camera.camera_node()
-	if cam == null:
+	if _pending_node == null or not is_instance_valid(_pending_node):
 		return
-	var node := _pending_node as Node3D
-	var origin := node.global_position
-	var to_cam := cam.global_position - origin
-	to_cam.y = 0.0
-	if to_cam.length_squared() < 0.0001:
-		return
-	var fwd := to_cam.normalized()
+	var origin := _pending_node.global_position
+	var a := deg_to_rad(Table3dLayout.seat_angle(actor_seat))
+	var fwd := Vector3(sin(a), 0.0, cos(a))
 	var up := Vector3.UP
 	var x := fwd.cross(up)
 	if x.length_squared() < 0.0001:
 		x = Vector3.RIGHT
 	x = x.normalized()
-	node.global_transform = Transform3D(Basis(x, fwd, up), origin)
+	_pending_node.global_transform = Transform3D(Basis(x, fwd, up), origin)
 
 ## 瞬时揭示某槽位（水平翻到正面，dur 秒后翻回）。槽位不存在则忽略；
 ## 记录在 `_reveals`，`render` 重建卡牌后会重新应用（否则状态广播会把翻牌冲掉）。

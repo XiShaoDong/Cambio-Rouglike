@@ -1045,7 +1045,8 @@ func _process(delta: float) -> void:
 		board3d.set_facing(cam)
 	if hint3d != null and is_instance_valid(hint3d):
 		hint3d.set_facing(cam)
-	table3d.update_facing()
+	# 大牌朝向：绕世界 Y 面向当前行动者座位（世界固定，全房一致）
+	table3d.update_facing(int(latest_state.get("current_player", -1)))
 	_update_look_send(delta, cam)
 	table3d.update_avatars(cam, GameState.remote_looks, GameState.remote_zoom, bool(table3d.camera.zoomed), GameState.remote_talk, _talking_local)
 	var on_board := _update_board_hover()

@@ -179,20 +179,23 @@ func _test_view() -> void:
 	var avatar = view._seat_nodes[0].get_node("Avatar")
 	_check("角色位于眼位（EYE_HEIGHT/CAMERA_BACK）", avatar.position.is_equal_approx(Vector3(0.0, view.camera.EYE_HEIGHT, -view.camera.CAMERA_BACK)))
 	_check("身体在头正下方（无水平位移）", avatar.get_node("Body").position.x == 0.0 and avatar.get_node("Body").position.z == 0.0)
-	# 大牌竖立悬浮 + 面向本机相机
+	# 大牌竖立悬浮 + 面向当前行动者座位（世界固定）
 	var pnode: Node3D = view.get_node("Center/Pending")
 	var dnode: Node3D = view.get_node("Center/Deck")
 	var xnode: Node3D = view.get_node("Center/DiscardTop")
 	var mid := Vector3((dnode.position.x + xnode.position.x) * 0.5, Table3dView.PENDING_Y, (dnode.position.z + xnode.position.z) * 0.5)
 	_check("大牌位于牌堆中点/悬浮高度", pnode.position.distance_to(mid) < 0.001)
-	view.update_facing()
+	view.update_facing(0)  # 行动者 = 房主 seat0
 	var b := pnode.global_transform.basis
 	_check("大牌竖直(+Z 对齐世界上方)", b.z.dot(Vector3.UP) > 0.99)
 	_check("大牌无俯仰(+Y.y≈0)", absf(b.y.y) < 0.01)
-	var cam: Camera3D = view.camera.camera_node()
-	var horiz := cam.global_position - pnode.global_position
-	horiz.y = 0.0
-	_check("大牌朝向相机(+Y 指向相机水平方向)", horiz.length_squared() > 0.0001 and b.y.dot(horiz.normalized()) > 0.99)
+	var fwd0 := Vector3(sin(deg_to_rad(Table3dLayout.seat_angle(0))), 0.0, cos(deg_to_rad(Table3dLayout.seat_angle(0))))
+	_check("大牌正面朝行动者(0)", b.y.dot(fwd0) > 0.99)
+	view.update_facing(1)
+	var fwd1 := Vector3(sin(deg_to_rad(Table3dLayout.seat_angle(1))), 0.0, cos(deg_to_rad(Table3dLayout.seat_angle(1))))
+	_check("大牌正面朝行动者(1)", pnode.global_transform.basis.y.dot(fwd1) > 0.99)
+	view.update_facing(-1)
+	_check("actor<0 保持现有姿态", is_equal_approx(pnode.global_transform.basis.y.dot(fwd1), 1.0))
 	_check("大牌标签竖立在牌顶", (view.get_node("Center/Pending") as CardBlock)._label.position.z > 0.0)
 	# 默认取景对准桌心（大牌在桌心正上方）；两堆现对称偏在左右侧（Deck -0.45 / DiscardTop +0.45），
 	# 需瞄准后再验证 hover 反馈。
