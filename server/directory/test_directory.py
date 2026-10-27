@@ -72,6 +72,56 @@ def test_fixed_code():
     _ok("非法码被拒", s.create("1.2.3.4", 7007, "dedicated", 4, code="ab") is None)
 
 
+def test_pool_allocate():
+    s = DirectoryStore(ttl=10**9, hb_timeout=10**9)
+    c1 = s.create("1.1.1.1", 7007, "dedicated", 4, now=1000, state="idle")
+    c2 = s.create("1.1.1.1", 7008, "dedicated", 4, now=1000, state="idle")
+    _ok("idle 不可 join", s.join(c1, now=1001) is None)
+    r = s.allocate(now=1002)
+    _ok("allocate 返回码与地址", r is not None and r["code"] in (c1, c2) and r["port"] in (7007, 7008))
+    _ok("allocate 后变 reserved 且不可再分配同一间",
+        s.allocate(now=1003)["code"] != r["code"])
+    _ok("reserved 可 join 并转 in_use", s.join(r["code"], now=1004) is not None)
+    _ok("in_use 不可再被 allocate",
+        s.allocate(now=1005) is None or s.allocate(now=1005)["code"] != r["code"])
+
+
+def test_pool_no_room_and_timeout():
+    s = DirectoryStore(ttl=10**9, hb_timeout=10**9)
+    _ok("空池 allocate → None", s.allocate(now=10) is None)
+    c = s.create("1.1.1.1", 7007, "dedicated", 4, now=20, state="idle")
+    r = s.allocate(now=21)
+    _ok("预约后拿到码", r is not None and r["code"] == c)
+    s.allocate(now=21)
+    _ok("预约 30s 内不可重复分配", s.allocate(now=40) is None)
+    r2 = s.allocate(now=52)
+    _ok("预约超时回 idle 可再分配（码不变）", r2 is not None and r2["code"] == c)
+
+
+def test_pool_rotate_code():
+    s = DirectoryStore(ttl=10**9, hb_timeout=10**9)
+    old = s.create("1.1.1.1", 7007, "dedicated", 4, now=1000, state="idle")
+    s.close(old)
+    new = s.create("1.1.1.1", 7007, "dedicated", 4, now=1001, state="idle")
+    _ok("轮换后新码有效", new != old and s.allocate(now=1002)["code"] == new)
+    _ok("旧码失效", s.close(old) is False)
+
+
+def test_pool_stats():
+    s = DirectoryStore(ttl=10**9, hb_timeout=10**9)
+    s.create("1.1.1.1", 7007, "dedicated", 4, now=1, state="idle")
+    s.create("1.1.1.1", 7008, "dedicated", 4, now=1, state="idle")
+    s.create("1.1.1.1", 7009, "dedicated", 4, now=1)
+    st = s.stats()
+    _ok("stats 计数", st["rooms"] == 3 and st["idle"] == 2 and st["busy"] == 1)
+
+
+def test_loopback_not_limited():
+    from directory import Handler
+    _ok("回环不限速", not Handler._should_limit("127.0.0.1") and not Handler._should_limit("::1"))
+    _ok("外部 IP 仍限速", Handler._should_limit("203.0.113.5"))
+
+
 def main():
     test_code_gen()
     test_create_join_close()
@@ -79,6 +129,11 @@ def main():
     test_ttl()
     test_rate_limit()
     test_fixed_code()
+    test_pool_allocate()
+    test_pool_no_room_and_timeout()
+    test_pool_rotate_code()
+    test_pool_stats()
+    test_loopback_not_limited()
     total = _checks
     passed = _checks - _fail
     print("=== DIRECTORY RESULT: %d/%d passed%s ===" % (passed, total, " (FAILURES!)" if _fail else ""))

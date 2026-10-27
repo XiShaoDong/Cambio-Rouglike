@@ -1,0 +1,14 @@
+[Unit]
+Description=KONG room instance %i
+After=network-online.target kong-directory.service
+Wants=network-online.target
+
+[Service]
+User=kong
+WorkingDirectory=/home/kong/kong
+ExecStart=/usr/local/bin/godot --headless --path /home/kong/kong res://scenes/server.tscn -- --port %i --pool --directory http://127.0.0.1:8080 --advertise __VPS_PUBLIC_IP__
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

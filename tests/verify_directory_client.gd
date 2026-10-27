@@ -70,4 +70,35 @@ func _test_integration() -> void:
 	await _wait_box(cl)
 	_check("集成：close_room 成功", bool(cl["ok"]))
 
+	# 池模式：idle 登记 + allocate
+	var p := {"done": false, "ok": false, "data": {}}
+	var cb_pool := func(ok: bool, data: Dictionary):
+		p["done"] = true; p["ok"] = ok; p["data"] = data
+	dc.create_room(7011, "dedicated", 4, cb_pool, "", "", "idle")
+	await _wait_box(p)
+	_check("集成：create idle 成功", bool(p["ok"]))
+
+	var idle_join := {"done": false, "ok": false, "data": {}}
+	var cb_idle_join := func(ok: bool, data: Dictionary):
+		idle_join["done"] = true; idle_join["ok"] = ok; idle_join["data"] = data
+	dc.join_room(str((p["data"] as Dictionary).get("code", "")), cb_idle_join)
+	await _wait_box(idle_join)
+	_check("集成：idle 不可 join", not bool(idle_join["ok"]))
+
+	var a := {"done": false, "ok": false, "data": {}}
+	var cb_alloc := func(ok: bool, data: Dictionary):
+		a["done"] = true; a["ok"] = ok; a["data"] = data
+	dc.allocate_room(cb_alloc)
+	await _wait_box(a)
+	_check("集成：allocate_room 返回码与端口",
+		bool(a["ok"]) and int((a["data"] as Dictionary).get("port", 0)) == 7011)
+
+	var b := {"done": false, "ok": false, "data": {}}
+	var cb_alloc2 := func(ok: bool, data: Dictionary):
+		b["done"] = true; b["ok"] = ok; b["data"] = data
+	dc.allocate_room(cb_alloc2)
+	await _wait_box(b)
+	_check("集成：无 idle → NO_ROOM",
+		not bool(b["ok"]) and str((b["data"] as Dictionary).get("error", "")) == "NO_ROOM")
+
 	OS.kill(pid)

@@ -94,6 +94,7 @@ run_single "camera_fly" res://tests/verify_camera_fly.tscn
 run_single "lobby"      res://tests/verify_lobby.tscn
 run_single "dedicated"  res://tests/verify_dedicated.tscn -- --port 17081
 run_single "directory_client" res://tests/verify_directory_client.tscn
+run_single "pool_registrar" res://tests/verify_pool_registrar.tscn
 run_single "account_client"  res://tests/verify_account_client.tscn
 run_single "steam_stub"      res://tests/verify_steam_stub.tscn
 run_single "kongbaya"   res://tests/verify_kongbaya.tscn

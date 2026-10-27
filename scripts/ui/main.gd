@@ -1491,6 +1491,31 @@ func _on_directory_host_started(_profile: Dictionary) -> void:
 			else:
 				_show_toast("创建房间码失败：%s" % str(data.get("error", "?"))))
 
+## 在线建房（房间池）：向目录申请空闲实例 → 拿到码 → 直连成为房主。
+func create_online_room() -> void:
+	if directory == null or not directory.is_configured():
+		_show_toast("未配置房间服务：请到 设置 → 目录地址 填写（或用局域网房间）。")
+		return
+	_reconnect_expected = false
+	directory.allocate_room(func(ok: bool, data: Dictionary):
+		if not ok:
+			if str(data.get("error", "")) == "NO_ROOM":
+				_show_toast("服务器已满，请稍后再试。")
+			else:
+				_show_toast("无法连接房间服务（%s）。" % str(data.get("error", "?")))
+			return
+		var code := str(data.get("code", ""))
+		directory.join_room(code, func(ok2: bool, data2: Dictionary):
+			if not ok2 or not data2.has("host"):
+				_show_toast("加入失败：房间不存在或已过期。")
+				return
+			room_code = code
+			var host := str(data2["host"])
+			var p := int(data2.get("port", KongNetwork.DEFAULT_PORT))
+			address_input.text = host
+			port_input.text = str(p)
+			Network.join_game(host, {"name": _entered_name()}, p)))
+
 func _on_directory_heartbeat() -> void:
 	if not room_code.is_empty() and directory != null and directory.is_configured():
 		directory.heartbeat(room_code)
