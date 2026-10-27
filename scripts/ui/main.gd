@@ -567,7 +567,7 @@ func _ensure_key_hints() -> void:
 	# 让出左下角最底部给「牌序」面板
 	_key_hints.offset_top -= CARD_ORDER_LIFT
 	_key_hints.offset_bottom -= CARD_ORDER_LIFT
-	_key_hints.setup([["道具", "Space"], ["标记", "D"], ["放大", "Cmd"], ["手册", "Tab"]])
+	_key_hints.setup([["道具", "Space"], ["标记", "D"], ["放大", "__mouse__"], ["手册", "Tab"]])
 
 ## 3D 右上角回合徽标（与按键 chip 同款圆角灰底+边框，字号 = Command chip ×2）。
 func _ensure_round_badge() -> void:
@@ -972,6 +972,11 @@ func _input(event: InputEvent) -> void:
 	# 按住 Command/Alt（或自定义 kb_zoom）：拉近视场（放大）；松开恢复。不标记 handled。
 	if event is InputEventKey and not event.echo and (act == "kb_zoom" or event.keycode == KEY_ALT):
 		if table3d != null and is_instance_valid(table3d):
+			table3d.camera.set_zoom(event.pressed)
+	# 按住鼠标右键：放大（2026-10-22 由 Cmd 改为右键，键盘绑定保留兼容）
+	# 注意：鼠标事件没有 echo 属性（那是键盘事件的），不要访问。
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT:
+		if _table3d_active and table3d != null and is_instance_valid(table3d):
 			table3d.camera.set_zoom(event.pressed)
 	if event is InputEventKey and event.pressed and not event.echo:
 		# Shift：开/关左下角「牌序」卡序

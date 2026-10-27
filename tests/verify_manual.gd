@@ -87,7 +87,7 @@ func _run() -> void:
 	_check("3D 按键提示 4 行", main_node._key_hints.row_count() == 4)
 	_check("按键提示：道具 Space", main_node._key_hints.desc_text(0) == "道具" and main_node._key_hints.key_text(0) == "Space")
 	_check("按键提示：标记 D", main_node._key_hints.desc_text(1) == "标记" and main_node._key_hints.key_text(1) == "D")
-	_check("按键提示：放大 Cmd", main_node._key_hints.desc_text(2) == "放大" and main_node._key_hints.key_text(2) == "Cmd")
+	_check("按键提示：放大=鼠标右键图标", main_node._key_hints.desc_text(2) == "放大" and main_node._key_hints.has_mouse_icon(2))
 	# 左上角回合徽标（原右上角移来）（同款 chip 样式，字号 = Command ×2，实时）
 	_check("3D 左上角回合徽标存在", main_node._round_badge != null and is_instance_valid(main_node._round_badge))
 	_check("回合徽标可见", main_node._round_badge.visible)
@@ -159,7 +159,7 @@ func _run() -> void:
 	_check("按键板存在且可见", km != null and km.visible)
 	_check("按键页行数=动作数", km != null and km.row_count() == KeybindModel.action_ids().size())
 	_check("按键页时手册网格隐藏", not (main_node.manual_panel.get_node("Center/Panel/VBox/Grid") as Control).visible)
-	var tab_manual: Button = main_node.manual_panel.get_node("Center/Panel/VBox/Tabs").get_child(0)
+	var tab_manual: Button = main_node.manual_panel.get_node("Center/Panel/VBox/Tabs/TabManual")
 	_check("页签带 board_interactive", tab_manual.has_meta("board_interactive") and bool(tab_manual.get_meta("board_interactive")))
 	# 保存确认浮层
 	_check("初始无确认浮层", not main_node.manual_panel.confirm_visible())

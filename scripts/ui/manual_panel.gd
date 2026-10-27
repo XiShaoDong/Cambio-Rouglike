@@ -63,6 +63,7 @@ func _build_tabs() -> void:
 	spacer_l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	bar.add_child(spacer_l)
 	_tab_manual = _tab_button("手册")
+	_tab_manual.name = "TabManual"
 	_tab_manual.pressed.connect(func(): set_tab(TAB_MANUAL))
 	bar.add_child(_tab_manual)
 	_tab_stats = _tab_button("Stats")

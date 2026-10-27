@@ -61,6 +61,7 @@ func setup(rows: Array) -> void:
 	add_theme_constant_override("separation", 8)
 	alignment = BoxContainer.ALIGNMENT_BEGIN
 	for entry in rows:
+		# entry[1] == "__mouse__"：该行按键位换成鼠标形状图标（右键放大）。
 		add_child(_make_row(str(entry[0]), str(entry[1])))
 
 func _make_row(desc: String, key: String) -> HBoxContainer:
@@ -74,8 +75,47 @@ func _make_row(desc: String, key: String) -> HBoxContainer:
 	d.add_theme_color_override("font_color", DESC_COLOR)
 	d.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	row.add_child(d)
-	row.add_child(_make_chip(key))
+	if key == "__mouse__":
+		var icon := _make_mouse_icon()
+		row.add_child(icon)
+	else:
+		row.add_child(_make_chip(key))
 	return row
+
+## 鼠标形状图标（"放大=按住右键"）：椭圆轮廓 + 中部水平线 + 上半竖线；右上半填充黑色（右击）。
+func _make_mouse_icon() -> Control:
+	var icon := Control.new()
+	icon.name = "MouseIcon"
+	icon.custom_minimum_size = Vector2(22, 32)
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	icon.draw.connect(_draw_mouse.bind(icon))
+	return icon
+
+func _draw_mouse(c: Control) -> void:
+	const W := 22.0
+	const H := 32.0
+	var cx := W * 0.5
+	var cy := H * 0.5
+	var rx := W * 0.42
+	var ry := H * 0.5
+	var line := Color(1.0, 1.0, 1.0)
+	var fill := Color(0.08, 0.09, 0.12)
+	# 右上半填充（参数角 -90°..0° 为右上象限，闭合到中心）
+	var pts := PackedVector2Array([Vector2(cx, cy)])
+	for i in 13:
+		var a := -PI * 0.5 + (PI * 0.5) * float(i) / 12.0
+		pts.append(Vector2(cx + rx * cos(a), cy + ry * sin(a)))
+	c.draw_colored_polygon(pts, fill)
+	# 椭圆轮廓
+	var outline := PackedVector2Array()
+	for i in 33:
+		var a := TAU * float(i) / 32.0
+		outline.append(Vector2(cx + rx * cos(a), cy + ry * sin(a)))
+	c.draw_polyline(outline, line, 2.0, true)
+	# 中部水平线（分上/下两半）
+	c.draw_line(Vector2(cx - rx, cy), Vector2(cx + rx, cy), line, 2.0, true)
+	# 上半竖线（分左键/右键）
+	c.draw_line(Vector2(cx, cy - ry), Vector2(cx, cy), line, 2.0, true)
 
 func _make_chip(key: String) -> PanelContainer:
 	return make_chip(key, CHIP_FONT_SIZE)
@@ -84,12 +124,18 @@ func _make_chip(key: String) -> PanelContainer:
 func row_count() -> int:
 	return get_child_count()
 
+func has_mouse_icon(index: int) -> bool:
+	var row := get_child(index)
+	return row.has_node("MouseIcon")
+
 func desc_text(index: int) -> String:
 	var row := get_child(index)
 	return (row.get_node("Desc") as Label).text
 
 func key_text(index: int) -> String:
 	var row := get_child(index)
+	if not row.has_node("Chip/Key"):
+		return ""
 	return (row.get_node("Chip/Key") as Label).text
 
 func chip_style(index: int) -> StyleBoxFlat:
