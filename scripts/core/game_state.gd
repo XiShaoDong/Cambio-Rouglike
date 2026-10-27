@@ -20,6 +20,7 @@ signal registered_token_received(token: String)
 signal resume_hand_received(hand: Array, pending: Dictionary)
 signal sfx_played(kind: String)
 signal room_reset  # 服务器把全体拉回等待房间（系列赛把末）：客户端重置快照水位线并回到房间 UI
+signal room_ended  # 房间被解散/中止（dedicated 下由 server_main 用于把实例回收进房间池）
 
 enum Phase { LOBBY, INITIAL_PEEK, TURN_DRAW, TURN_DECISION, Q_DECISION, SLAP_WINDOW, SLAP_EXCHANGE, GAME_OVER, SLAP_DUEL, BET, SHOP, EFFECT_PASS, EFFECT_REVEAL }
 
@@ -1522,6 +1523,7 @@ func _end_room(code: int, message: String) -> void:
 		if mp is ENetMultiplayerPeer:
 			for pid in client_peers:
 				mp.disconnect_peer(pid)
+	room_ended.emit()
 
 func _discard_pending_and_open_slap(_resume: String) -> void:
 	var card_id: String = pending_draw.card_id
