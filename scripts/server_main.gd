@@ -17,7 +17,15 @@ func _ready() -> void:
 	var advertise := ""
 	var room_code_arg := ""
 	var pool := false
-	var args := OS.get_cmdline_user_args()
+	var raw_args := OS.get_cmdline_user_args()
+	var args: Array = []
+	for a in raw_args:
+		if str(a).begins_with("--") and str(a).contains("="):
+			var kv := str(a).split("=", true, 1)
+			args.append(kv[0])
+			args.append(kv[1])
+		else:
+			args.append(a)
 	for i in range(args.size()):
 		if args[i] == "--port" and i + 1 < args.size():
 			var p := int(args[i + 1])

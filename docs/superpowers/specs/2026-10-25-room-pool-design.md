@@ -135,7 +135,7 @@ Wants=network-online.target
 User=kong
 WorkingDirectory=/home/kong/kong
 ExecStart=/usr/local/bin/godot --headless --path /home/kong/kong res://scenes/server.tscn -- \
-  --port=%i --pool --directory http://127.0.0.1:8080 --advertise <VPS公网IP>
+  --port %i --pool --directory http://127.0.0.1:8080 --advertise <VPS公网IP>
 Restart=always
 RestartSec=2
 
