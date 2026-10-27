@@ -116,6 +116,12 @@ def test_pool_stats():
     _ok("stats 计数", st["rooms"] == 3 and st["idle"] == 2 and st["busy"] == 1)
 
 
+def test_loopback_not_limited():
+    from directory import Handler
+    _ok("回环不限速", not Handler._should_limit("127.0.0.1") and not Handler._should_limit("::1"))
+    _ok("外部 IP 仍限速", Handler._should_limit("203.0.113.5"))
+
+
 def main():
     test_code_gen()
     test_create_join_close()
@@ -127,6 +133,7 @@ def main():
     test_pool_no_room_and_timeout()
     test_pool_rotate_code()
     test_pool_stats()
+    test_loopback_not_limited()
     total = _checks
     passed = _checks - _fail
     print("=== DIRECTORY RESULT: %d/%d passed%s ===" % (passed, total, " (FAILURES!)" if _fail else ""))

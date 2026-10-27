@@ -200,9 +200,14 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self._json({"error": "BAD_REQUEST"}, 404)
 
+    @staticmethod
+    def _should_limit(ip):
+        """回环（同机池心跳）不限速；外部请求仍按 IP 限速。"""
+        return str(ip) not in ("127.0.0.1", "::1", "localhost")
+
     def do_POST(self):
         ip = self.client_address[0]
-        if not self.limiter.allow(ip):
+        if self._should_limit(ip) and not self.limiter.allow(ip):
             self._json({"error": "RATE_LIMITED"}, 429)
             return
         data = self._read_json()

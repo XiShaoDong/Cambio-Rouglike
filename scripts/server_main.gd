@@ -106,14 +106,23 @@ func _on_pool_room_ended() -> void:
 			print("[KONG] pool re-register failed: %s" % _pool.last_error))
 
 func _on_pool_heartbeat() -> void:
-	if _pool == null or _pool.code.is_empty():
+	if _pool == null or _pool_dc == null:
 		return
-	if _pool_dc == null:
+	var re_register := func():
+		_pool.re_register(_pool_port, "dedicated", KongRules.MAX_PLAYERS,
+			not GameState.players.is_empty(), func(ok2: bool, _d2: Dictionary):
+				if ok2:
+					print("[KONG] pool re-registered code: %s" % _pool.code)
+				else:
+					print("[KONG] pool re-register failed: %s" % _pool.last_error))
+	if _pool.code.is_empty():
+		re_register.call()
 		return
-	var code := _pool.code
-	_pool_dc.heartbeat(code, func(ok: bool, _d: Dictionary):
+	_pool_dc.heartbeat(_pool.code, func(ok: bool, data: Dictionary):
 		if ok:
 			return
-		_pool.re_register(_pool_port, "dedicated", KongRules.MAX_PLAYERS,
-			not GameState.players.is_empty(), func(_ok2: bool, _d2: Dictionary):
-				print("[KONG] pool re-registered code: %s" % _pool.code)))
+		var err := str(data.get("error", ""))
+		if err == "ROOM_NOT_FOUND":
+			re_register.call()
+		else:
+			print("[KONG] pool heartbeat warning: %s" % err))
