@@ -35,6 +35,8 @@ var _shop_off_btn: Button
 var _match_plus: Button
 var _match_limit_value := KongRules.DEFAULT_MATCH_LIMIT
 var _disband_dialog: Control
+var _create_dialog: Control
+var _create_close: Callable
 var _disband_ok: Button
 var _disband_close: Callable
 var _detail_dialog: Control
@@ -1661,7 +1663,46 @@ func _update_seat_columns() -> void:
 	(_slots_box as GridContainer).columns = 2 if width >= 560.0 else 1
 
 func host_game() -> void:
-	Network.host_game({"name": main._entered_name()}, main._entered_port())
+	_ensure_create_dialog()
+	_create_dialog.visible = true
+
+## 创建房间：在线（服务器池，跨网络）或局域网（本机 host）。
+func _ensure_create_dialog() -> void:
+	if _create_dialog != null and is_instance_valid(_create_dialog):
+		return
+	var modal := _make_modal("创建房间")
+	_create_dialog = modal.root
+	_create_close = modal.close
+	var hint := Label.new()
+	hint.text = "在线房间由服务器托管，朋友凭房间码跨网络加入；局域网房间用本机做房主。"
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.add_theme_font_size_override("font_size", 13)
+	hint.add_theme_color_override("font_color", UITheme.color("text_secondary"))
+	modal.vbox.add_child(hint)
+	var online: Button = main._button("在线房间\n服务器分配房间码")
+	online.custom_minimum_size = Vector2(320, 64)
+	online.pressed.connect(func():
+		_create_close.call()
+		main.create_online_room())
+	_apply_primary_style(online)
+	modal.vbox.add_child(online)
+	var lan: Button = main._button("局域网房间\n直接用本机作为房主")
+	lan.custom_minimum_size = Vector2(320, 64)
+	lan.pressed.connect(func():
+		_create_close.call()
+		Network.host_game({"name": main._entered_name()}, main._entered_port()))
+	_apply_secondary_style(lan)
+	modal.vbox.add_child(lan)
+	var cancel: Button = main._button("取消")
+	cancel.custom_minimum_size = Vector2(130, 44)
+	cancel.pressed.connect(func(): _create_close.call())
+	_apply_secondary_style(cancel)
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_child(cancel)
+	modal.vbox.add_child(row)
+	main.add_child(_create_dialog)
 
 ## 直连加入（高级：IP:端口）。
 func join_game() -> void:
@@ -1687,6 +1728,7 @@ func join_by_code() -> void:
 		if ok and data.has("host"):
 			var host := str(data["host"])
 			var p := int(data.get("port", KongNetwork.DEFAULT_PORT))
+			main.room_code = code.to_upper()
 			main.address_input.text = host
 			main.port_input.text = str(p)
 			Network.join_game(host, {"name": main._entered_name()}, p)

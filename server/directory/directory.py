@@ -24,6 +24,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 # Crockford base32：去易混字符 I/L/O/U
 ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 CODE_LEN = 6
+IDLE = "idle"               # 池实例：可被分配，不可加入
+RESERVED = "reserved"       # 已被某次创建占用，等玩家连入
+IN_USE = "in_use"           # 正常房间
+RESERVE_TIMEOUT = 30        # 预约超时（秒）：超时无人连入则回 idle（码不变）
 DEFAULT_TTL = 1800          # 码 TTL（秒）= 30min：仅限制"用码加入"，与房间存活/重连无关
 DEFAULT_HB_TIMEOUT = 30     # 心跳超时（秒）：宿主停跳即视为失效
 DEFAULT_RATE = 10           # 每 IP 窗口内允许的请求数
@@ -33,9 +37,10 @@ RATE_WINDOW = 60            # 限速窗口（秒）
 class DirectoryStore:
     """内存房间目录（纯逻辑，可注入 now 便于单测；线程安全）。"""
 
-    def __init__(self, ttl=DEFAULT_TTL, hb_timeout=DEFAULT_HB_TIMEOUT):
+    def __init__(self, ttl=DEFAULT_TTL, hb_timeout=DEFAULT_HB_TIMEOUT, reserve_timeout=RESERVE_TIMEOUT):
         self.ttl = ttl
         self.hb_timeout = hb_timeout
+        self.reserve_timeout = reserve_timeout
         self._rooms = {}  # code -> {host, port, mode, max_players, created, last_seen}
         self._lock = threading.Lock()
 
@@ -53,9 +58,13 @@ class DirectoryStore:
             if now - r["last_seen"] > self.hb_timeout or now - r["created"] > self.ttl:
                 del self._rooms[code]
                 removed.append(code)
+                continue
+            if r["state"] == RESERVED and now - r["reserved_at"] > self.reserve_timeout:
+                r["state"] = IDLE
+                r["reserved_at"] = 0
         return removed
 
-    def create(self, host, port, mode, max_players, now=None, code=None):
+    def create(self, host, port, mode, max_players, now=None, code=None, state=IN_USE):
         now = time.time() if now is None else now
         with self._lock:
             self.sweep(now)
@@ -72,10 +81,35 @@ class DirectoryStore:
                 "port": int(port),
                 "mode": str(mode),
                 "max_players": int(max_players),
+                "state": state if state in (IDLE, RESERVED, IN_USE) else IN_USE,
                 "created": now,
                 "last_seen": now,
+                "reserved_at": 0,
+                "last_alloc": 0,
             }
             return code
+
+    def allocate(self, now=None):
+        """池分配：选最久未分配的 idle → 置 reserved。无可用房 → None。"""
+        now = time.time() if now is None else now
+        with self._lock:
+            self.sweep(now)
+            idle = [c for c, r in self._rooms.items() if r["state"] == IDLE]
+            if not idle:
+                return None
+            idle.sort(key=lambda c: self._rooms[c]["last_alloc"])
+            code = idle[0]
+            r = self._rooms[code]
+            r["state"] = RESERVED
+            r["reserved_at"] = now
+            r["last_alloc"] = now
+            return {"code": code, "host": r["host"], "port": r["port"]}
+
+    def stats(self):
+        with self._lock:
+            idle = sum(1 for r in self._rooms.values() if r["state"] == IDLE)
+            busy = sum(1 for r in self._rooms.values() if r["state"] != IDLE)
+            return {"rooms": len(self._rooms), "idle": idle, "busy": busy}
 
     @staticmethod
     def _valid_code(code):
@@ -89,8 +123,10 @@ class DirectoryStore:
         with self._lock:
             self.sweep(now)
             r = self._rooms.get(str(code).strip().upper())
-            if r is None:
+            if r is None or r["state"] == IDLE:
                 return None
+            r["state"] = IN_USE
+            r["reserved_at"] = 0
             return {"host": r["host"], "port": r["port"], "mode": r["mode"]}
 
     def heartbeat(self, code, now=None):
@@ -159,13 +195,19 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path.rstrip("/") == "/health":
-            self._json({"ok": True, "rooms": self.store.count()})
+            st = self.store.stats()
+            self._json({"ok": True, "rooms": st["rooms"], "idle": st["idle"], "busy": st["busy"]})
         else:
             self._json({"error": "BAD_REQUEST"}, 404)
 
+    @staticmethod
+    def _should_limit(ip):
+        """回环（同机池心跳）不限速；外部请求仍按 IP 限速。"""
+        return str(ip) not in ("127.0.0.1", "::1", "localhost")
+
     def do_POST(self):
         ip = self.client_address[0]
-        if not self.limiter.allow(ip):
+        if self._should_limit(ip) and not self.limiter.allow(ip):
             self._json({"error": "RATE_LIMITED"}, 429)
             return
         data = self._read_json()
@@ -187,11 +229,14 @@ class Handler(BaseHTTPRequestHandler):
                 host = self.advertise_host
             code = self.store.create(
                 host, port, data.get("mode", "dedicated"), data.get("max_players", 4),
-                code=data.get("code"))
+                code=data.get("code"), state=data.get("state", IN_USE))
             if code is None:
                 self._json({"error": "BAD_CODE"}, 400)
                 return
             self._json({"code": code, "expires_in": self.store.ttl})
+        elif path == "/allocate_room":
+            r = self.store.allocate()
+            self._json(r if r is not None else {"error": "NO_ROOM"})
         elif path == "/join_room":
             r = self.store.join(str(data.get("code", "")))
             self._json(r if r is not None else {"error": "ROOM_NOT_FOUND"})
@@ -210,10 +255,12 @@ def main():
     ap.add_argument("--ttl", type=int, default=DEFAULT_TTL)
     ap.add_argument("--heartbeat-timeout", type=int, default=DEFAULT_HB_TIMEOUT)
     ap.add_argument("--rate", type=int, default=DEFAULT_RATE)
+    ap.add_argument("--reserve-timeout", type=int, default=RESERVE_TIMEOUT)
     ap.add_argument("--advertise-host", default="", help="同机部署时对外广播的公网 IP（源 IP 为回环时使用）")
     args = ap.parse_args()
 
-    Handler.store = DirectoryStore(ttl=args.ttl, hb_timeout=args.heartbeat_timeout)
+    Handler.store = DirectoryStore(ttl=args.ttl, hb_timeout=args.heartbeat_timeout,
+                                   reserve_timeout=args.reserve_timeout)
     Handler.limiter = RateLimiter(limit=args.rate)
     Handler.advertise_host = args.advertise_host
     srv = ThreadingHTTPServer(("0.0.0.0", args.port), Handler)
