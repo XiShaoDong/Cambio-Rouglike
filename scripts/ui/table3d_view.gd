@@ -740,7 +740,7 @@ func _attach_robot(avatar) -> void:
 
 ## 每帧更新各席机器人眼睛：
 ##  - 有该席玩家同步来的注视方向（remote_looks[seat]）+ 放大状态（remote_zoom[seat]）→ 跟随其主人；
-##  - 无同步（离线 / 2D 玩家 / 旧客户端）→ 稳定看向本机相机 + 用本机放大状态。
+##  - 无同步（离线 / 2D 玩家 / 旧客户端）→ 稳定看向本机相机，眼睛/嘴保持中立（不继承本机状态）。
 ## 注意：环视只改相机朝向、位置基本不动，故本地目标不能直接用相机位置。
 ## 飞行相机（辅助工具）：on=true 时暂停 render 自动取景保持手动位姿；off 恢复本机座位基准位。
 ## R（reset）：回到座位基准视角并继续飞行（取景一开一关同步完成）。
@@ -786,9 +786,11 @@ func update_avatars(cam: Camera3D, remote_looks := {}, remote_zoom := {}, local_
 			robot.set_talking(bool(remote_talk.get(seat, false)))
 			robot.set_arm_up(bool(remote_arm.get(seat, false)))
 		else:
+			# 无同步数据的席位（2D / 旧客户端）只看本机相机；不能继承本机的放大/说话，
+			# 否则本机按 Cmd 时会让这些席位的眼睛一起变小（B49）。
 			robot.set_gaze_target_world(cam.global_position)
-			robot.set_eye_zoom(local_zoom)
-			robot.set_talking(local_talk)
+			robot.set_eye_zoom(false)
+			robot.set_talking(false)
 			# 无远程数据时：只有 viewer 自己（若可见）用本机抬臂，其他席保持放下。
 			robot.set_arm_up(local_arm if seat == _viewer else false)
 

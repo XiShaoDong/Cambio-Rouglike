@@ -270,6 +270,11 @@ func _test_integration() -> void:
 	view.set_eye_zoom(false)
 	view.camera.reset_zoom()
 	_check("reset_zoom 清 zoomed", not bool(view.camera.zoomed))
+	# 回归 B49：无远程同步的席位不能继承本机放大（否则本机按 Cmd 别人的眼睛也缩）
+	view.update_avatars(cam, {}, {}, true, {}, false)
+	_check("无同步席位不继承本机放大", robot1b.blend_value("Tiny_Eyes") == 0.0)
+	view.update_avatars(cam, {1: eye1 + Vector3(0, 0, 10)}, {1: false}, true, {}, false)
+	_check("有同步席位只用自己的 zoom（本机放大不影响）", robot1b.blend_value("Tiny_Eyes") == 0.0)
 	# 远程说话同步：该席 jawOpen 被驱动
 	view.update_avatars(cam, {1: eye1 + Vector3(0, 0, 10)}, {}, false, {1: true})
 	var jaw_i := 0.0
