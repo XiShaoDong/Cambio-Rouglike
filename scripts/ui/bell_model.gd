@@ -39,6 +39,13 @@ func build() -> void:
 	_mat.set_shader_parameter("base_top", BASE_TOP)
 	_mat.set_shader_parameter("knob_bottom", KNOB_BOTTOM)
 	_mat.set_shader_parameter("glow", 0.0)
+	# 高光/轮廓强度跟卡面共享沙盒存档，保证桌面整体光感一致。
+	var look := CardTiltPreset.load_params()
+	if look.is_empty():
+		look = CardTiltPreset.DEFAULTS
+	_mat.set_shader_parameter("light_dir_world", Vector3(-0.4, 0.82, 0.41))
+	_mat.set_shader_parameter("eye_spec", 0.5 + float(look.get("gloss_strength", 0.35)) * 1.2)
+	_mat.set_shader_parameter("fresnel_lift", 0.12 + float(look.get("rim_strength", 0.30)) * 0.35)
 	_mesh_nodes = _collect_meshes(model)
 	for mi in _mesh_nodes:
 		mi.material_override = _mat

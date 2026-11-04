@@ -11,6 +11,8 @@ uniform float knob_bottom = 1.10;    // 模型局部 Y：钟体与顶钮的分�
 uniform float glow = 0.0;            // 可用性辉光强度（0/1）
 uniform float ambient_lift = 0.30;   // 自发光提亮基底（补偿暗环境；0=纯 PBR 金属）
 uniform float fresnel_lift = 0.22;   // 菲涅尔边缘提亮（均匀环境下也有光泽）
+uniform vec3 light_dir_world = vec3(-0.4, 0.82, 0.41);  // 与卡面同源的"打光"方向
+uniform float eye_spec = 0.9;         // 随视角移动的金属高光强度
 
 varying float v_y;
 
@@ -33,6 +35,20 @@ void fragment() {
 		ROUGHNESS = 0.20;
 	}
 	// 自发光基底 + 可用性金光 + 菲涅尔边缘，保证在偏暗/均匀环境下也明亮有光泽。
-	float fres = pow(1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0), 3.0);
-	EMISSION = ALBEDO * ambient_lift + dome_color * glow + ALBEDO * fres * fresnel_lift;
+	vec3 n = normalize(NORMAL);
+	vec3 v = normalize(VIEW);
+	float fres = pow(1.0 - clamp(dot(n, v), 0.0, 1.0), 3.0);
+
+	// 额外的"眼神高光"：固定世界光方向 + 当前视角的 Blinn 高光，
+	// 弧面法线让亮点随相机转动在铃身上滑动（底座不参与）。
+	vec3 l = normalize((VIEW_MATRIX * vec4(light_dir_world, 0.0)).xyz);
+	vec3 h = normalize(l + v);
+	float spec = pow(max(dot(n, h), 0.0), 56.0) * eye_spec;
+	float surface = 0.0;
+	if (v_y >= base_top) {
+		surface = 1.0;
+	}
+	vec3 spec_col = mix(dome_color, knob_color, step(knob_bottom, v_y));
+	EMISSION = ALBEDO * ambient_lift + dome_color * glow + ALBEDO * fres * fresnel_lift
+		+ spec_col * spec * surface;
 }

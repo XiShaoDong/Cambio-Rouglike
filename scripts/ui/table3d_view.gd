@@ -62,6 +62,7 @@ var _restart_button: Node3D = null  # 房主重开按钮（牌桌右后角，准
 var _item_target_ring: MeshInstance3D = null  # 道具卡选目标时的金色目标环
 var _card_blocks := {}  # {seat: {slot: CardBlock}}
 var _viewer := 0
+var crown_ready := true   # 结算冠军音结束前先不显示皇冠
 var _sel_active := false           # 当前是否有"选择"上下文（决定 hover 边框红/绿/白）
 var _hover_slot := {}
 var _hover_ray_local := Vector2.ZERO
@@ -275,7 +276,7 @@ func set_active(on: bool) -> void:
 		clear_emotes()
 
 ## 按快照全量重建（无增量、无插值）。state 为 HiddenInfo 投影出的公开快照。
-func render(state: Dictionary, actionable := Callable()) -> void:
+func render(state: Dictionary, actionable := Callable(), ability_pending := false) -> void:
 	_bind()
 	if not _bound:
 		return
@@ -347,6 +348,8 @@ func render(state: Dictionary, actionable := Callable()) -> void:
 		_deck_pile.set_count(maxi(draw_n - 1, 0))
 	if _deck_node != null and is_instance_valid(_deck_node):
 		_deck_node.position.y = draw_n * DeckPile.CARD_THICKNESS + STACK_BASE_LIFT
+		if _deck_label != null:
+			_deck_label.position.y = _deck_node.position.y + 0.18
 		# 抽牌堆：hover 虚线圈压到牌堆底部（贴桌面），而不是浮在顶牌上
 		if _deck_node.has_method("set_border_offset"):
 			_deck_node.set_border_offset(-_deck_node.position.y)
@@ -362,9 +365,11 @@ func render(state: Dictionary, actionable := Callable()) -> void:
 	if _discard_node != null and is_instance_valid(_discard_node):
 		# + 极小抬升：空弃牌堆贴桌时炫光会被桌面遮住（橙光/金光都看不到）。
 		_discard_node.position.y = discard_count * DeckPile.CARD_THICKNESS + STACK_BASE_LIFT
-	# 弃牌堆可点：取弃牌顶（金）/ 弃掉抽到的牌·用能力（橙）；可点时对应光晕
-	var discard_actionable := ActionModel.discard_pile_actionable(state)
-	var use_power := ActionModel.pending_discard_available(state)
+	# 弃牌堆可点：取弃牌顶（金）/ 弃掉抽到的牌·用能力（橙）；可点时对应光晕。
+	# ability_pending=true 表示玩家已在本地发起用能力（等待选目标/服务器确认），
+	# 此时立即熄灭橙色光晕，不等下一次快照。
+	var use_power := ActionModel.pending_discard_available(state) and not ability_pending
+	var discard_actionable := ActionModel.discard_take_available(state) or use_power
 	if _discard_hold:
 		# 顶牌变换动画期间：保留显示"上一张"，避免下方为空（无上一张则隐藏）
 		var held: Dictionary = _discard_shown if not _discard_shown.is_empty() else discard
@@ -406,11 +411,16 @@ func render(state: Dictionary, actionable := Callable()) -> void:
 
 ## 重建后重放在途 hover（immediate，避免广播导致弹跳）。
 func _reapply_hover_pose() -> void:
-	if _hover_slot.is_empty():
-		return
-	var b = _find_block(int(_hover_slot.get("seat", -1)), int(_hover_slot.get("slot", -1)))
+	var b = _hovered_pose_block()
 	if b != null and b.hover_anim_enabled:
 		b.set_hover_pose(true, _hover_ray_local, true)
+
+
+## 当前 hover pose 对应的卡（槽位或中央大牌）。
+func _hovered_pose_block():
+	if _hover_slot.is_empty():
+		return null
+	return _find_block(int(_hover_slot.get("seat", -1)), int(_hover_slot.get("slot", -1)))
 
 func _ray_local_for_block(b, hit_pos: Vector3) -> Vector2:
 	var p: Vector3 = b.global_transform.affine_inverse() * hit_pos
@@ -421,7 +431,7 @@ func _ray_local_for_block(b, hit_pos: Vector3) -> Vector2:
 func _leave_hover_slot() -> void:
 	if _hover_slot.is_empty():
 		return
-	var b = _find_block(int(_hover_slot.get("seat", -1)), int(_hover_slot.get("slot", -1)))
+	var b = _hovered_pose_block()
 	if b != null:
 		b.set_hover_pose(false, Vector2.ZERO)
 	_hover_slot = {}
@@ -699,6 +709,8 @@ func _apply_avatar(seat_node: Node3D, p: Dictionary, viewer: int, state: Diction
 		if not col.is_empty() and Color.html_is_valid(col):
 			robot.set_body_color(Color.html(col))
 		robot.set_overlay(overlay)
+		var prev_winners: Array = (state.get("run", {}) as Dictionary).get("prev_winners", [])
+		robot.set_crown(crown_ready and prev_winners.has(seat))
 		# 离线/出局：头顶光环（😇 式金环），table3d 不再向其喂注视目标（视线冻结在正前）
 		robot.set_halo(ghost)
 		_avatar_meta[seat] = {"ghost": ghost}
@@ -746,7 +758,7 @@ func set_fly_mode(on: bool) -> void:
 	if not on:
 		camera.frame_for_seat(Table3dLayout.seat_angle(_viewer), Table3dLayout.TABLE_HEIGHT)
 
-func update_avatars(cam: Camera3D, remote_looks := {}, remote_zoom := {}, local_zoom := false, remote_talk := {}, local_talk := false) -> void:
+func update_avatars(cam: Camera3D, remote_looks := {}, remote_zoom := {}, local_zoom := false, remote_talk := {}, local_talk := false, remote_arm := {}, local_arm := false) -> void:
 	_bind()
 	if not _bound or cam == null:
 		return
@@ -772,10 +784,13 @@ func update_avatars(cam: Camera3D, remote_looks := {}, remote_zoom := {}, local_
 			robot.set_gaze_target_world(remote_looks[seat])
 			robot.set_eye_zoom(bool(remote_zoom.get(seat, false)))
 			robot.set_talking(bool(remote_talk.get(seat, false)))
+			robot.set_arm_up(bool(remote_arm.get(seat, false)))
 		else:
 			robot.set_gaze_target_world(cam.global_position)
 			robot.set_eye_zoom(local_zoom)
 			robot.set_talking(local_talk)
+			# 无远程数据时：只有 viewer 自己（若可见）用本机抬臂，其他席保持放下。
+			robot.set_arm_up(local_arm if seat == _viewer else false)
 
 ## 本机放大状态联动（所有可见机器人眼睛用小眼）；主路径由 update_avatars 逐席下发。
 func set_eye_zoom(on: bool) -> void:
@@ -1127,7 +1142,9 @@ func update_hover(selection_active := false) -> bool:
 ## 仅 viewer 自己手牌槽驱动抬起/倾斜；其他 kind/座位不动 pose。
 func _update_hover_pose(hit: Dictionary) -> void:
 	var meta: Dictionary = hit.get("pick", {})
-	var is_slot := str(meta.get("kind", "")) == "slot"
+	# 中央大牌保持静止：不随 cursor 旋转。
+	var kind := str(meta.get("kind", ""))
+	var is_slot := kind == "slot"
 	if not is_slot:
 		_leave_hover_slot()
 		return

@@ -8,15 +8,16 @@ signal target_changed(seat: int)
 const CARD_SIZE := Vector2(110, 154)
 const HAND_W := 520.0
 const HAND_H := 300.0
-const FAN_CENTER_LIFT := 120.0
+const FAN_CENTER_LIFT := 200.0
 const DESC_W := 460.0
 
-var hand_art_scene: PackedScene = preload("res://scenes/ui/hand_silhouette_2d.tscn")
+var hand_art_scene: PackedScene = preload("res://scenes/ui/item_arm_hand_3d.tscn")
 var model := ItemHandModel.new()
 var _viewer := -1
 var _built := false
 var _pending_cards: Array = []
 var _hand_art: ItemHandArt
+var _hand_color := Color(0, 0, 0, 0)
 var _cards_layer: Control
 var _card_views: Array = []
 var _desc: PanelContainer
@@ -41,6 +42,7 @@ func _build() -> void:
 	_built = true
 	_hand_art = _instantiate_hand_art()
 	add_child(_hand_art)
+	_apply_hand_color()
 	_cards_layer = Control.new()
 	_cards_layer.name = "Cards"
 	_cards_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -60,6 +62,7 @@ func _build() -> void:
 	_desc = PanelContainer.new()
 	_desc.name = "Description"
 	_desc.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_desc.custom_minimum_size = Vector2(DESC_W, 92.0)
 	var desc_style := StyleBoxFlat.new()
 	desc_style.bg_color = Color(0.06, 0.07, 0.10, 0.88)
 	desc_style.set_corner_radius_all(10)
@@ -80,6 +83,7 @@ func _build() -> void:
 	_desc_body.name = "Body"
 	_desc_body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_desc_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_desc_body.custom_minimum_size.x = DESC_W - 20.0
 	_desc_body.add_theme_font_size_override("font_size", 14)
 	_desc_body.add_theme_color_override("font_color", Color(0.92, 0.94, 1.0))
 	vb.add_child(_desc_body)
@@ -115,6 +119,20 @@ func _build() -> void:
 	if not _pending_cards.is_empty():
 		set_cards(_pending_cards)
 
+func _viewer_color(state: Dictionary, viewer: int) -> Color:
+	for p in state.get("players", []):
+		if int(p.get("id", -1)) == viewer:
+			var txt := str(p.get("color", ""))
+			if not txt.is_empty() and Color.html_is_valid(txt):
+				return Color.html(txt)
+	return Color(0, 0, 0, 0)
+
+
+func _apply_hand_color() -> void:
+	if _hand_art != null and _hand_color.a > 0.0 and _hand_art.has_method("set_body_color"):
+		_hand_art.set_body_color(_hand_color)
+
+
 func _instantiate_hand_art() -> ItemHandArt:
 	if hand_art_scene != null:
 		var node = hand_art_scene.instantiate()
@@ -137,6 +155,7 @@ func set_hand_art_scene(scene: PackedScene) -> void:
 		_hand_art.queue_free()
 	_hand_art = _instantiate_hand_art()
 	add_child(_hand_art)
+	_apply_hand_color()
 	move_child(_hand_art, 0)
 	_layout()
 
@@ -154,6 +173,8 @@ func target_panel_visible() -> bool:
 
 func setup(state: Dictionary, viewer: int) -> void:
 	_viewer = viewer
+	_hand_color = _viewer_color(state, viewer)
+	_apply_hand_color()
 	var ids: Array = state.get("item_cards", [])
 	if _built:
 		set_cards(ids)
@@ -320,9 +341,9 @@ func _layout() -> void:
 		view.rotation_degrees = float(item.rot_deg)
 		view.scale = Vector2.ONE * float(item.scale)
 		view.z_index = int(item.z)
-	_desc.position = Vector2(size.x * 0.5 - DESC_W * 0.5, size.y - 348.0)
+	_desc.position = Vector2(size.x * 0.5 - DESC_W * 0.5, size.y - 450.0)
 	_desc.size = Vector2(DESC_W, 92.0)
-	_hint.position = Vector2(0, size.y - 36.0)
+	_hint.position = Vector2(0, _desc.position.y + _desc.size.y + 8.0)
 	_hint.size = Vector2(size.x, 24.0)
 	_target_panel.position = Vector2(size.x * 0.5 - 280.0, size.y * 0.5 - 80.0)
 	_target_panel.size = Vector2(560.0, 160.0)

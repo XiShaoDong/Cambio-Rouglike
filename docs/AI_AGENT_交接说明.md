@@ -101,6 +101,18 @@
 - **按键映射页签 + 手册页部分穿透（分支 `agent/feature-uiboard`，纯客户端展示层，规则/协议/快照零改动）**：手册面板新增第三页签「按键」（默认 **K** 打开），列出界面/展示类按键（Tab 手册 / S Stats / K 按键映射 / M 说话 / Command·Alt 放大 / V 切 3D）并可重绑——点键行进入捕获、按新键即改（冲突**自动交换**、**保留键**（空格/Enter/Esc/F10/Alt）拒绝），底部「保存」经**页内确认浮层**后落盘 `user://keybinds.cfg`（仅本机用户，预留 `profile` 供未来账户绑定）。键处理抽到纯函数 `KeybindModel`（`scripts/core/keybind_model.gd`）+ 薄壳 `KeybindStore`（`scripts/core/keybind_store.gd`，可注入路径）；页内容 `KeymapBoard`（`scripts/ui/keymap_board.gd`）。**手册/Stats/按键页打开时不再完全接管点击**：`Board3d.interactive_at` 只让带 `meta("board_interactive")` 的控件（页签/按钮/键行）接管，`main._board_hit` 对非交互处穿透到牌桌——可一边看手册一边点卡牌。测试 `verify_keybind`（新增）。
 - **每局随机增强（UI + 玩法已实现，分支 `agent/feature/game-rule`）**：4 种效果（无效果 / 6 / 左下角 +1 / 炸弹）。**服务器**在**每局开局发牌后**（`_deal_new_match`）从 `TURN_EFFECT_IDS` 抽一个（**不与上一局重复**）写入 `turn_effect_id` 并**保持整局不变**；下一局结算/商店后重新抽取。**全员 Ready 后先进入 `EFFECT_REVEAL`（5s，禁止操作）**；到时 `_start_turn` 才开始第一个玩家的回合。每回合 `_start_turn` 只推进 `turn_index`、结算炸弹倒计时并触发本局效果（不重抽）。**6**：只有当任意花色的 6 被打出（弃置手牌中的 6 / 弃掉抽到的 6）或抽到红 Joker 选择「使用能力」时触发一次；进入 `Phase.EFFECT_PASS`（值 11），从打出者开始顺时针依次让每名有手牌玩家选一张自己的牌（`request_effect_pass`，快照 `effect_pass.await_seat`），全部选完后一次性传给下家（放入自己交出的槽位）；离线玩家自动随机选。红 Joker 能力按钮走 `request_effect_power`。**左下角 +1**：**每名玩家自己的回合开始**，仅该玩家的 `slot 2` 在 A→Q 循环 +1（K/Joker 不变）；按槽位生效，换牌后新牌在下个自己的回合继续 +1；触发时服务器广播 `card_exchange_animated`（kind `plus_one`，只含 seat/slot），客户端在左下角卡牌上方飘 `+1`（1s 上升 + 1s 淡出，总 2s）；K/Joker/空槽不广播也不飘。**炸弹**：开局从抽牌堆随机标记最多 4 张（只标记一次、不进开局手牌）；持有者每回合开始倒计时，3 回合后移出对局（不进弃牌堆）；爆炸时服务器广播 `card_exchange_animated`（kind `bomb_explode`，含 seat/slots + 公开牌面 `cards`），客户端隐藏槽位、播放槽位爆炸贴图（0.6s），并在屏幕右侧复用 `SlapSuccessBurst` 展示爆炸的那张牌（标题「炸弹爆炸」）。**6 触发**时同样复用该 UI 展示打出的 6 / 红 Joker（标题「6 效果触发」）。快照公开 `turn_index`/`turn_effect`/`effect_pass`/`slots[].bomb`（不泄露牌面）。客户端 `TurnEffect` + `TurnEffectPanel`（**全员 Ready 后**中央放大 → 5s → 缩小移到右上角）+ `main._maybe_new_turn_effect()`（依 `match_id` 每局播放一次；播放期间 hint=「查看本局特效」、倒计时 5s，结束后才开始第一个玩家 30s 倒计时）；2D `CardView`/3D `CardBlock` 右上角炸弹角标（`BombIcon.texture()`）。**测试模式**：T 面板开启后强制本局效果并准备对应牌局（`plus_one` 全员手牌 A；`six_swap` 抽牌堆全 6 保留 Joker；`bomb` 抽牌堆全部带炸弹），仅在房主测试模式生效，带「重开本局（应用测试）」。旧测试用 `GameState.turn_effect_rules_enabled=false` 关闭规则应用。测试 `verify_turn_effect` + `verify_turn_effect_rules`（79/79）。
 
+### 2.10 2026-10-30 视觉/手感批次（当前工作区，纯表现层）
+
+- **2D 伪 3D 卡牌（只给 pending 大牌）**：`CardTiltMath` / `CardTiltView` / `card_tilt.gdshader`；沙盒 `card_tilt_sandbox`；调参存 `assets/config/card_tilt_preset.cfg`（`CardTiltPreset`，读不到回退 `user://`）。`CardView` 默认不挂材质，`game_view._rebuild_pending_card()` 才 `set_tilt_enabled(true)`；普通 2D 卡不变。
+- **3D 卡面光影**：`CardBlock` 全部改用 `card_face_3d.gdshader`（`unshaded`；**EMISSION 在 unshaded 下不参与输出，高光/反光必须并进 ALBEDO**；随相机 gaze 的柔和反光 + 源 UV 边缘光）。标签 `render_priority=21`（阴影 20）、细描边 + 低透明软投影；`_sync_label_visibility()` 保证翻面 <0.5 不显示点数（卡背不露数字）；抽牌堆计数跟随堆顶 `top+0.18`。
+- **3D 材质/角色**：`table_surface.gdshader` 给牌桌 5 面做磨砂（金属度 0、roughness 0.86–0.98、细颗粒）；`bell_metal` 加同光向 Blinn；`avatar_body` 给机器人金属 PBR + 眼神高光/轮廓。三处强度都取同一份沙盒存档。
+- **手部**：`RobotAvatar` 右手在道具手牌打开时下放到桌面高度（世界 y≈1.08），手腕放平；原模型小臂无蒙皮权重，`_rerig_right_elbow` 在运行时把 Arms 远端重绑到 `lower_arm.R`，末端挂 `AvatarHand`（`avatar_hand.gd`）。同步复用注视 RPC：`server_look/receive_look/_apply_look` 新增 `arm_up` → `GameState.remote_arm` → `update_avatars`；`main._item_hand_open()` 决定本地状态。
+- **道具弹层手部**：`ItemHandOverlay.hand_art_scene` 默认 `scene/ui/item_arm_hand_3d.tscn`（`ItemArmHand3D`：透明 SubViewport + 俯视正交相机，程序化大臂/小臂 + `AvatarHand`；掌心朝相机，玩家色）；旧 `HandSilhouette2D` 仍可替换。
+- **冠军皇冠**：`champion_crown.glb`（FBX→GLB，Brass 贴图）+ `crown_gold.gdshader`；`run.prev_winners` 在结算时写入，快照随 `run` 下发；`Table3dView.crown_ready` 由 `AudioManager.play_winner()` 返回的音频时长门控，结算音结束后 `_refresh_table3d()` 放上皇冠（不等商店结束）；皇冠缩 2/3、自转 + 上下轻浮；与离线光环共存时光环抬高。
+- **交互修复**：`Table3dView.render(..., ability_pending)` 在发起用能力后立即熄灭弃牌堆橙光；3D 中心准星改为常驻单点（不放大也显示）。
+- **验证**：`verify_card_tilt_math` 46/46、`verify_robot_avatar` 84/84、`verify_table3d` 62/62、`verify_table3d_interaction` 99/99、`verify_item_hand` 43/43、`verify_manual` 73/73；`tools/run_all_tests.sh --quick` **53/53**。
+- **文档**：本批设计/验收见 `docs/superpowers/specs/2026-10-30-card-tilt-2d-fake3d-design.md`；功能清单见 `docs/功能实现文档.md` 的 2026-10-30 批次。
+
 ## 3. 架构不变量（禁止无理由重构）
 
 1. `GameState` 保存完整 `deck`/`discard_pile`/`cards`/各玩家手牌；客户端不保存权威牌面。
@@ -270,6 +282,8 @@ UI 层已拆分（main.gd 是组合根）：
 ## 8. 验证命令（headless 单元测试，不启动 GUI）
 
 > **一键全量回归**：`tools/run_all_tests.sh`（编译检查 + 全部单进程/双实例/网络注入测试，汇总 PASS/FAIL；`--quick` 只跑单进程核心；`--include-hint` 连已知失败的 hint 一起跑；`GODOT=/path` 覆盖引擎路径）。
+
+> **2026-10-30 视觉批次**：`--quick` 全量 **53/53**；本批新增/更新的关键用例：`card_tilt` 46/46、`robot_avatar` 84/84、`table3d` 62/62、`table3d_interaction` 99/99、`item_hand` 43/43、`manual` 73/73。
 
 ```bash
 # 编译检查

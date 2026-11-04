@@ -277,6 +277,8 @@ func _rebuild_pending_card(pending: Dictionary, is_current: bool = true) -> void
 	main.pending_card_button = main._make_card_button(display, CARD_BIG_SIZE)
 	main.pending_card_box.add_child(main.pending_card_button)
 	main.pending_card_button.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if main.pending_card_button is CardView:
+		(main.pending_card_button as CardView).set_tilt_enabled(true)
 	main.pending_card_button.move_to_front()
 	_apply_pending_setup(pending, is_current)
 	main.pending_card_box.visible = true

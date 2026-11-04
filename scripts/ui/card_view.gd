@@ -9,6 +9,7 @@ signal card_clicked(view: CardView)
 
 const BACK_TEXTURE := "res://assets/Cards/back07.png"
 const CARD_DIR := "res://assets/Cards/"
+const TILT_SHADER := preload("res://assets/shaders/card_tilt.gdshader")
 
 var card_data: Dictionary = {}
 var is_face_up := false
@@ -26,6 +27,15 @@ var _is_highlighted := false
 var _pending_flash: Array = []
 var _bomb_icon: BombIcon
 var _force_bomb := false
+var _tilt_params: Dictionary = {}
+var _tilt_mats: Array[ShaderMaterial] = []
+var _tilt_pad := 1.8
+var _tilt_yaw := 0.0
+var _tilt_pitch := 0.0
+var _tilt_target := Vector2.ZERO
+var _tilt_enabled := false
+var _tilt_external := false
+var _tilt_active := false
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -83,6 +93,115 @@ func _refresh_bomb() -> void:
 	if _bomb_icon == null or not is_instance_valid(_bomb_icon):
 		return
 	_bomb_icon.visible = has_bomb()
+
+## 只给"大牌"（如抽牌后竖起的 pending 卡）开启：显式调用，普通手牌/弃牌堆不受影响。
+func set_tilt_enabled(on: bool) -> void:
+	_tilt_enabled = on
+	if on:
+		if _tilt_mats.is_empty():
+			_setup_tilt()
+		_tilt_active = true
+		z_index = 1
+		set_process(true)
+	else:
+		_tilt_target = Vector2.ZERO
+		_tilt_yaw = 0.0
+		_tilt_pitch = 0.0
+		_refresh_tilt_uniforms()
+		_tilt_active = false
+		z_index = 0
+		set_process(false)
+
+
+func is_tilt_enabled() -> bool:
+	return _tilt_enabled
+
+
+## 2D 伪 3D 倾斜：给前后卡面贴同一 shader，鼠标在卡面内时按指针位置倾斜。
+## 画布由 shader 顶点按 pad 放大（card_tilt 的梯形/投影有空间溢出且不被裁剪）。
+func _setup_tilt() -> void:
+	_tilt_params = CardTiltPreset.load_params()
+	if _tilt_params.is_empty():
+		_tilt_params = CardTiltPreset.DEFAULTS.duplicate(true)
+	_tilt_pad = maxf(float(_tilt_params.get("pad", 1.8)), 1.0)
+	for tr in [back_texture, front_texture]:
+		var mat := ShaderMaterial.new()
+		mat.shader = TILT_SHADER
+		(tr as TextureRect).material = mat
+		_tilt_mats.append(mat)
+		(tr as TextureRect).resized.connect(_on_tilt_resized)
+	resized.connect(_on_tilt_resized)
+	_sync_tilt_aspect()
+	_refresh_tilt_uniforms()
+
+
+func _sync_tilt_aspect() -> void:
+	var w := size.x if size.x > 0.0 else custom_minimum_size.x
+	var h := size.y if size.y > 0.0 else custom_minimum_size.y
+	if w > 0.0 and h > 0.0:
+		_tilt_params["card_aspect"] = h / w
+
+
+func _on_tilt_resized() -> void:
+	_sync_tilt_aspect()
+	_refresh_tilt_uniforms()
+
+
+func _process(delta: float) -> void:
+	if not _tilt_active:
+		return
+	var inside := _tilt_external
+	if not _tilt_external:
+		var rect := get_global_rect()
+		inside = false
+		if rect.size.x > 0.0 and rect.size.y > 0.0:
+			var mouse := get_global_mouse_position()
+			inside = rect.has_point(mouse)
+			if inside:
+				var local := (mouse - rect.get_center()) / (rect.size * 0.5)
+				_tilt_target = Vector2(clampf(local.x, -1.0, 1.0), clampf(local.y, -1.0, 1.0))
+			else:
+				_tilt_target = Vector2.ZERO
+	var target := CardTiltMath.target_angles(_tilt_target, float(_tilt_params.get("max_tilt_deg", 14.0)))
+	var smoothed := CardTiltMath.smooth_angles(
+		Vector2(_tilt_yaw, _tilt_pitch), target, float(_tilt_params.get("response", 9.0)), delta)
+	_tilt_yaw = smoothed.x
+	_tilt_pitch = smoothed.y
+	_refresh_tilt_uniforms()
+	if not inside and absf(_tilt_yaw) + absf(_tilt_pitch) < 0.02:
+		_tilt_yaw = 0.0
+		_tilt_pitch = 0.0
+		_refresh_tilt_uniforms()
+		_tilt_active = false
+		z_index = 0
+		set_process(false)
+
+
+func _refresh_tilt_uniforms() -> void:
+	var rect_size := Vector2(maxf(front_texture.size.x, 1.0), maxf(front_texture.size.y, 1.0))
+	for mat in _tilt_mats:
+		CardTiltView.apply_uniforms(mat, _tilt_params, _tilt_yaw, _tilt_pitch)
+		mat.set_shader_parameter("rect_size", rect_size)
+		mat.set_shader_parameter("canvas_pad", _tilt_pad)
+
+
+## 外部/测试驱动：直接给归一化指针（-1..1），不依赖真实鼠标。
+func set_tilt_pointer(norm: Vector2) -> void:
+	_tilt_external = true
+	_tilt_active = true
+	_tilt_target = Vector2(clampf(norm.x, -1.0, 1.0), clampf(norm.y, -1.0, 1.0))
+	z_index = 1
+	set_process(true)
+
+
+func release_tilt() -> void:
+	_tilt_external = false
+	_tilt_target = Vector2.ZERO
+
+
+func tilt_angles() -> Vector2:
+	return Vector2(_tilt_yaw, _tilt_pitch)
+
 
 ## 设置卡牌数据；card 为空则显示背面。
 func setup(data: Dictionary) -> void:

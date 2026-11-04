@@ -123,4 +123,5 @@ static func new_default_run() -> Dictionary:
 		"start_health": START_HEALTH,   # 玩家初始生命（新一届系列赛开局生效）
 		"start_currency": START_CURRENCY,  # 玩家初始金钱
 		"shop_price": Relics.RELIC_PRICE,      # 商店物品基础价（遗物/道具卡同价，价格系一并生效）
+		"prev_winners": [],                     # 上一局冠军 seat 列表（下一局戴皇冠）
 	}

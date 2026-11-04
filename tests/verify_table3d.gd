@@ -21,6 +21,8 @@ func _run() -> void:
 	_test_card_block()
 	_test_camera()
 	await _test_view_render()
+	await _test_discard_glow_ability()
+	await _test_flip_label()
 
 func _test_card_block() -> void:
 	var known := CardBlock.new()
@@ -78,6 +80,48 @@ func _test_camera() -> void:
 	rig.frame_for_seat(180.0)
 	_check("重复取景保留环视（不复位）", is_equal_approx(rig.yaw, yaw_after_look))
 
+func _test_discard_glow_ability() -> void:
+	var view = load("res://scenes/ui/table3d.tscn").instantiate()
+	add_child(view)
+	await get_tree().process_frame
+	var state := {
+		"viewer_id": 0, "current_player": 0, "phase": 3,
+		"draw_count": 30,
+		"discard": {"rank": "K", "suit": "♠"},
+		"pending": {"rank": "A", "suit": "♥", "source": "draw"},
+		"players": [
+			{"id": 0, "name": "甲", "count": 2, "currency": 0, "health": 2, "eliminated": false,
+			 "slots": [{"card_id": "c1"}, {"card_id": "c2"}]},
+			{"id": 1, "name": "乙", "count": 2, "currency": 0, "health": 2, "eliminated": false,
+			 "slots": [{"card_id": "c3"}, {"card_id": "c4"}]},
+		],
+	}
+	view.render(state)
+	await get_tree().process_frame
+	_check("用能力前弃牌堆亮橙光", view._discard_block.has_glow())
+	view.render(state, Callable(), true)
+	await get_tree().process_frame
+	_check("发起用能力后弃牌堆立即熄灭", not view._discard_block.has_glow())
+	view.queue_free()
+	await get_tree().process_frame
+
+
+func _test_flip_label() -> void:
+	var b := CardBlock.new()
+	add_child(b)
+	await get_tree().process_frame
+	b.setup({})
+	_check("卡背默认不显示点数", not b._label.visible)
+	b.reveal({"rank": "A", "suit": "♥"})
+	_check("翻面开始时不在背面显示点数", not b._label.visible)
+	await get_tree().create_timer(0.35).timeout
+	_check("翻到正面后显示点数", b._label.visible)
+	b.show_back(true)
+	_check("切回卡背后隐藏点数", not b._label.visible)
+	b.queue_free()
+	await get_tree().process_frame
+
+
 func _test_view_render() -> void:
 	var scene: PackedScene = load("res://scenes/ui/table3d.tscn")
 	var view := scene.instantiate()
@@ -93,6 +137,7 @@ func _test_view_render() -> void:
 			 "slots": [{"card_id": "c9"}, {"card_id": "c10"}, {"card_id": "c11"}, {"card_id": "c12"}]},
 		],
 		"draw_count": 30,
+		"run": {"prev_winners": [1]},
 		"discard": {},
 		"pending": {},
 		"phase": 2,
@@ -114,6 +159,22 @@ func _test_view_render() -> void:
 	_check("对手面板 data", view._seat_panels[1].data.get("name") == "乙")
 	_check("每席面板各一", view._seat_panels.size() == 4)
 	_check("viewer 相机基准 0°", is_equal_approx(view.camera.base_yaw, 0.0))
+	var crown_robot = view._seat_nodes[1].get_node("Avatar/RobotAvatar")
+	_check("上一局冠军戴皇冠", crown_robot != null and crown_robot.crown_visible())
+	view.crown_ready = false
+	view.render(state)
+	await get_tree().process_frame
+	_check("冠军音未结束前藏皇冠", not crown_robot.crown_visible())
+	view.crown_ready = true
+	view.render(state)
+	await get_tree().process_frame
+	_check("音结束后显示皇冠", crown_robot.crown_visible())
+	_check("抽牌堆数字跟随堆顶", view._deck_label.position.y > (view.get_node("Center/Deck") as Node3D).position.y + 0.1)
+	var table_model = view.get_node_or_null("PokerTable")
+	var table_mesh = table_model.find_child("table", true, false) as MeshInstance3D if table_model != null else null
+	var table_mat = table_mesh.get_surface_override_material(0) as ShaderMaterial if table_mesh != null else null
+	_check("桌面表面使用光影 shader", table_mat != null and table_mat.shader != null and float(table_mat.get_shader_parameter("sheen_strength")) > 0.0)
+
 	var found_ace := false
 	var ace_block = null
 	for child in view._seat_nodes[0].get_node("HandAnchor").get_children():

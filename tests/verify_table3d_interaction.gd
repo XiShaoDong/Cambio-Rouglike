@@ -48,6 +48,8 @@ func _test_bell_model() -> void:
 	_check("BellModel set_glow(true) 写 glow=1", is_equal_approx(float(mat.get_shader_parameter("glow")), 1.0))
 	bell.set_glow(false)
 	_check("BellModel set_glow(false) 写 glow=0", is_equal_approx(float(mat.get_shader_parameter("glow")), 0.0))
+	_check("BellModel 眼神高光已启用", float(mat.get_shader_parameter("eye_spec")) > 0.0)
+	_check("BellModel 打光方向已写入", mat.get_shader_parameter("light_dir_world") != null)
 	bell.queue_free()
 
 func _test_card_block() -> void:

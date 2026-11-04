@@ -119,13 +119,47 @@ func _test_robot_avatar() -> void:
 	robot.set_overlay(null)
 	# 机体材质（逐实例覆盖，支持每玩家不同色；不改共享素材）
 	var arms = robot._robot.get_node("Armature/Skeleton3D/Arms")
-	_check("机体默认色金属", robot._body_mat != null and robot._body_mat.albedo_color.is_equal_approx(RobotAvatar.BODY_COLOR) and robot._body_mat.metallic > 0.5)
+	_check("机体默认色金属", robot._body_mat != null and (robot._body_mat.get_shader_parameter("albedo_color") as Color).is_equal_approx(RobotAvatar.BODY_COLOR) and float(robot._body_mat.get_shader_parameter("metallic")) > 0.5)
 	_check("机体用逐实例 surface override", arms.get_surface_override_material(0) == robot._body_mat)
+	_check("机体眼神高光已启用", float(robot._body_mat.get_shader_parameter("eye_spec")) > 0.0)
+	_check("机体打光方向已写入", robot._body_mat.get_shader_parameter("light_dir_world") != null)
 	var shared_body_mat = arms.mesh.surface_get_material(0)
 	robot.set_body_color(Color("3ABA64"))
-	_check("set_body_color 换色", robot._body_mat.albedo_color.is_equal_approx(Color("3ABA64")))
+	_check("set_body_color 换色", (robot._body_mat.get_shader_parameter("albedo_color") as Color).is_equal_approx(Color("3ABA64")))
 	_check("共享材质未被改动", not shared_body_mat.albedo_color.is_equal_approx(Color("3ABA64")))
 	robot.set_body_color(RobotAvatar.BODY_COLOR)
+	# 右小臂本来无蒙皮权重：实例网格重绑后应能被 lower_arm.R 驱动（可弯肘）
+	var skin = arms.skin
+	var lower_bind := -1
+	for bi in skin.get_bind_count():
+		if skin.get_bind_name(bi) == "lower_arm.R":
+			lower_bind = bi
+	var arrays = arms.mesh.surface_get_arrays(0)
+	var bones_arr: PackedInt32Array = arrays[Mesh.ARRAY_BONES]
+	var rerig_ok := false
+	if lower_bind >= 0:
+		for b in bones_arr:
+			if b == lower_bind:
+				rerig_ok = true
+				break
+	_check("右小臂已重绑蒙皮（可弯肘）", rerig_ok)
+	var hand_attach = robot._robot.get_node_or_null("Armature/Skeleton3D/HandR")
+	_check("右手模型挂到 hand.R 骨骼", hand_attach is BoneAttachment3D and (hand_attach as BoneAttachment3D).bone_name == "hand.R")
+	_check("右手模型含手掌+手指", robot._hand != null and robot._hand.mesh_count() >= 6)
+	robot.set_arm_up(true)
+	await get_tree().create_timer(0.5).timeout
+	_check("抬右手进度到位", robot.arm_progress() > 0.8)
+	robot.set_arm_up(false)
+	await get_tree().create_timer(0.5).timeout
+	_check("再次按下手放回", robot.arm_progress() < 0.1)
+	robot.set_crown(true)
+	_check("冠军皇冠可显示", robot.crown_visible())
+	_check("皇冠缩小 2/3", robot._crown.scale.x < 0.75)
+	var rot0: float = robot._crown.rotation.y
+	await get_tree().create_timer(0.25).timeout
+	_check("皇冠自转/悬浮", robot._crown.rotation.y > rot0)
+	robot.set_crown(false)
+	_check("皇冠可隐藏", not robot.crown_visible())
 	_check("Tiny_Eyes 形状键存在", robot._eye_index.has("Tiny_Eyes"))
 	robot.set_eye_zoom(true)
 	_check("放大 → 小眼睛 Tiny_Eyes=1", robot.blend_value("Tiny_Eyes") == 1.0)
@@ -204,7 +238,9 @@ func _test_integration() -> void:
 	_check("viewer 自身角色隐藏", not view._seat_nodes[0].get_node("Avatar").visible)
 	var robot1 = view._seat_nodes[1].get_node("Avatar").get_node_or_null("RobotAvatar")
 	_check("对手机器人可见（当前回合不再染色）", view._seat_nodes[1].get_node("Avatar").visible and robot1 != null and not _robot_has_overlay(robot1))
-	_check("快照 color 驱动机体颜色", robot1._body_mat.albedo_color.is_equal_approx(Color.html("#BD414B")))
+	_check("快照 color 驱动机体颜色", (robot1._body_mat.get_shader_parameter("albedo_color") as Color).is_equal_approx(Color.html("#BD414B")))
+	view.update_avatars(view.camera.camera_node(), {1: Vector3(0, 0, 5)}, {1: false}, false, {1: false}, false, {1: true}, false)
+	_check("远程抬右手状态同步到机器人", robot1.arm_up())
 	# 无同步数据时：稳定看向本机相机（位置固定）→ 转动朝向不应改变眼球（防旧"瞄准点翻转")
 	var cam: Camera3D = view.camera.camera_node()
 	cam.look_at_from_position(cam.global_position, cam.global_position + Vector3(1, 0, 0), Vector3.UP)
@@ -273,17 +309,20 @@ func _test_integration() -> void:
 func _test_look_sync() -> void:
 	GameState.remote_looks.clear()
 	GameState.remote_zoom.clear()
-	GameState._apply_look(1, Vector3(0, 0, 5), true, true)
+	GameState._apply_look(1, Vector3(0, 0, 5), true, true, Vector3.ZERO, true)
 	_check("_apply_look 存储注视点", GameState.remote_looks.has(1) and (GameState.remote_looks[1] as Vector3).is_equal_approx(Vector3(0, 0, 5)))
 	_check("_apply_look 存储 zoom", bool(GameState.remote_zoom.get(1, false)))
 	_check("_apply_look 存储 talk", bool(GameState.remote_talk.get(1, false)))
-	GameState.receive_look(2, Vector3(1, 0, 0), false, false)
+	_check("_apply_look 存储抬右手", bool(GameState.remote_arm.get(1, false)))
+	GameState.receive_look(2, Vector3(1, 0, 0), false, false, Vector3.ZERO, true)
 	_check("receive_look 存储", GameState.remote_looks.has(2) and not bool(GameState.remote_zoom.get(2, true)))
+	_check("receive_look 存储抬右手", bool(GameState.remote_arm.get(2, false)))
 	GameState._apply_look(3, Vector3(INF, 0, 0), false)
 	_check("非有限注视点忽略", not GameState.remote_looks.has(3))
 	GameState.remote_looks.clear()
 	GameState.remote_zoom.clear()
 	GameState.remote_talk.clear()
+	GameState.remote_arm.clear()
 
 func _eye_snapshot(robot) -> Array:
 	var out: Array = []

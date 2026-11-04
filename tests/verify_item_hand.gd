@@ -100,6 +100,9 @@ func _test_overlay() -> void:
 	_check("Overlay 说明显示卡名/说明", overlay.selected_title_text() == "命运·加二" \
 		and overlay.selected_body_text().contains("对手"))
 	_check("Overlay 手部实现 ItemHandArt", overlay.hand_art() is ItemHandArt)
+	_check("默认手部为 3D 手臂模型", overlay.hand_art() is ItemArmHand3D)
+	var arm_art := overlay.hand_art() as ItemArmHand3D
+	_check("3D 手部 viewport 跟随手区尺寸", arm_art.viewport() != null and arm_art.viewport().size.x > 0 and arm_art.viewport().size.y > 0)
 	overlay.select_next(1)
 	_check("Overlay Q/E 切卡", overlay.selected_id() == ItemCards.INTERFERE_ID)
 	overlay.begin_target([1, 2, 3])

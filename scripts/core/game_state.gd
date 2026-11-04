@@ -114,6 +114,7 @@ var local_account_id := ""  # P3a：本机持久账号 id（由客户端在注�
 var remote_looks: Dictionary = {}  # {seat: Vector3} 各玩家世界注视点（gaze target，纯表现层，不入快照）
 var remote_zoom: Dictionary = {}   # {seat: bool} 各玩家是否处于放大（眼睛小眼），纯表现层
 var remote_talk: Dictionary = {}   # {seat: bool} 各玩家是否在说话（嘴开合），纯表现层
+var remote_arm: Dictionary = {}    # {seat: bool} 各玩家是否抬起右手看道具牌，纯表现层
 var remote_nose: Dictionary = {}   # {seat: Vector3} 各玩家鼻子目标世界坐标（ZERO=未伸出），纯表现层
 
 var peek: PeekSystem
@@ -187,6 +188,7 @@ func _on_peer_left(peer_id: int) -> void:
 	remote_looks.erase(seat)
 	remote_zoom.erase(seat)
 	remote_talk.erase(seat)
+	remote_arm.erase(seat)
 	remote_nose.erase(seat)
 	if phase == Phase.EFFECT_PASS:
 		# Joker 选牌阶段：离线玩家自动随机选，避免整个对局卡住。
@@ -249,6 +251,7 @@ func _reset_match() -> void:
 	remote_looks.clear()
 	remote_zoom.clear()
 	remote_talk.clear()
+	remote_arm.clear()
 	remote_nose.clear()
 
 func _new_match_id() -> String:
@@ -659,6 +662,8 @@ func _deal_new_match() -> void:
 	_apply_match_start_effect()
 	phase = Phase.INITIAL_PEEK
 	initial_confirmed.clear()
+	# 上一局冠军在"下一局"才戴皇冠；开局时把上一局结算结果搬过来，再清空结算。
+	run_state["prev_winners"] = (last_result.get("winners", []) as Array).duplicate()
 	last_result.clear()
 	_add_log("对局开始：请记住自己下方的两张牌。")
 	_broadcast_state()
@@ -2037,6 +2042,7 @@ func _finish_game(reason := "") -> void:
 	phase = Phase.GAME_OVER
 	if not reason.is_empty():
 		last_result = {"reason": reason, "ranking": []}
+		run_state["prev_winners"] = []
 		_broadcast_state()
 		return
 	var ranking := _calculate_ranking()
@@ -2056,6 +2062,7 @@ func _finish_game(reason := "") -> void:
 			penalized.append(int(seat))
 	last_result = {"ranking": ranking, "winners": winners, "penalized": penalized,
 		"first_turn_kong": kong_called_first_turn, "rewards": rewards}
+	run_state["prev_winners"] = winners.duplicate()
 	_add_log("对局结束，所有手牌已翻开。")
 	for entry in winners:
 		players[entry].wins = int(players[entry].get("wins", 0)) + 1
@@ -2780,6 +2787,7 @@ func _finish_game_over_hand(failed_seat: int) -> void:
 	var penalized: Array = [failed_seat]
 	var failed_name: String = players.get(failed_seat, {}).get("name", "玩家")
 	_add_log("%s 手牌超过 %d 张，判定失败。" % [failed_name, KongRules.MAX_HAND_CARDS])
+	run_state["prev_winners"] = winners.duplicate()
 	last_result = {
 		"reason": "%s 手牌超过 %d 张，判定失败。" % [failed_name, KongRules.MAX_HAND_CARDS],
 		"ranking": ranking,
@@ -3165,31 +3173,33 @@ func receive_match_aborted(code: int, message: String) -> void:
 ## 低频率、允许丢弃无妨；不参与规则/判定。
 
 @rpc("any_peer", "call_remote", "reliable")
-func server_look(target: Vector3, zoom: bool, talking: bool, nose := Vector3.ZERO) -> void:
+func server_look(target: Vector3, zoom: bool, talking: bool, nose := Vector3.ZERO, arm_up := false) -> void:
 	var seat := _peer_to_seat(multiplayer.get_remote_sender_id())
 	if seat < 0:
 		return
-	_apply_look(seat, target, zoom, talking, nose)
+	_apply_look(seat, target, zoom, talking, nose, arm_up)
 
 ## 服务器权威应用注视：记录本机 remote_looks/remote_zoom/remote_talk/remote_nose 并转发（房主本人经此路径）。
-func _apply_look(seat: int, target: Vector3, zoom := false, talking := false, nose := Vector3.ZERO) -> void:
+func _apply_look(seat: int, target: Vector3, zoom := false, talking := false, nose := Vector3.ZERO, arm_up := false) -> void:
 	if not target.is_finite():
 		return
 	var n := nose if nose.is_finite() else Vector3.ZERO
 	remote_looks[seat] = target
 	remote_zoom[seat] = zoom
 	remote_talk[seat] = talking
+	remote_arm[seat] = arm_up
 	remote_nose[seat] = n
 	for s in players.keys():
 		var peer := int(players[s].peer_id)
 		if peer > 1:
-			receive_look.rpc_id(peer, seat, target, zoom, talking, n)
+			receive_look.rpc_id(peer, seat, target, zoom, talking, n, arm_up)
 
 @rpc("authority", "call_remote", "reliable")
-func receive_look(seat: int, target: Vector3, zoom: bool, talking: bool, nose := Vector3.ZERO) -> void:
+func receive_look(seat: int, target: Vector3, zoom: bool, talking: bool, nose := Vector3.ZERO, arm_up := false) -> void:
 	remote_looks[seat] = target
 	remote_zoom[seat] = zoom
 	remote_talk[seat] = talking
+	remote_arm[seat] = arm_up
 	remote_nose[seat] = nose if nose.is_finite() else Vector3.ZERO
 
 ## ===== 桌面标记（纯表现层，不入快照）=====
