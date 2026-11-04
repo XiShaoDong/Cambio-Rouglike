@@ -157,6 +157,10 @@ class DirectoryStore:
                         r["empty_since"] = now
                 else:
                     r["empty_since"] = 0
+                    # 直连（重连）进来的房间可能仍是 idle：有玩家即视为占用，避免被再次分配。
+                    if r["state"] == IDLE:
+                        r["state"] = IN_USE
+                        r["reserved_at"] = 0
             return True
 
     def close(self, code):

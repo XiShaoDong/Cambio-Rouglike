@@ -137,6 +137,14 @@ def test_players_reset_empty_timer():
     _ok("有玩家后计时清零", s.allocate(now=1200) is None)
 
 
+def test_direct_join_promotes_idle():
+    s = DirectoryStore(ttl=10**9, hb_timeout=10**9)
+    c = s.create("1.1.1.1", 7007, "dedicated", 4, now=1000, state="idle")
+    _ok("idle 初始不可 join", s.join(c, now=1001) is None)
+    s.heartbeat(c, players=1, now=1002)
+    _ok("有玩家心跳后 idle → in_use（直连重连占房）", s.allocate(now=1003) is None)
+
+
 def test_loopback_not_limited():
     from directory import Handler
     _ok("回环不限速", not Handler._should_limit("127.0.0.1") and not Handler._should_limit("::1"))
@@ -157,6 +165,7 @@ def main():
     test_loopback_not_limited()
     test_empty_room_reaped()
     test_players_reset_empty_timer()
+    test_direct_join_promotes_idle()
     total = _checks
     passed = _checks - _fail
     print("=== DIRECTORY RESULT: %d/%d passed%s ===" % (passed, total, " (FAILURES!)" if _fail else ""))

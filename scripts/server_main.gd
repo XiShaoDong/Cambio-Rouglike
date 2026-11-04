@@ -57,6 +57,7 @@ func _register_with_directory(url: String, port: int, advertise := "", fixed_cod
 	var on_created := func(ok: bool, data: Dictionary):
 		if ok and data.has("code"):
 			var code := str(data["code"])
+			GameState.room_code = code
 			print("[KONG] room code: %s" % code)
 			var t := Timer.new()
 			t.wait_time = 10.0
@@ -85,6 +86,7 @@ func _start_pool(url: String, port: int, advertise: String) -> void:
 			dc.close_room(c, cb))
 	_pool.register_idle(port, "dedicated", KongRules.MAX_PLAYERS, func(ok: bool, _d: Dictionary):
 		if ok:
+			GameState.room_code = _pool.code
 			print("[KONG] pool room code: %s" % _pool.code)
 		else:
 			print("[KONG] pool register failed: %s" % _pool.last_error))
@@ -101,6 +103,7 @@ func _on_pool_room_ended() -> void:
 	print("[KONG] room ended; recycling pool instance on UDP %d" % _pool_port)
 	_pool.rotate_after_room(_pool_port, "dedicated", KongRules.MAX_PLAYERS, func(ok: bool, _d: Dictionary):
 		if ok:
+			GameState.room_code = _pool.code
 			print("[KONG] new room code: %s" % _pool.code)
 		else:
 			print("[KONG] pool re-register failed: %s" % _pool.last_error))
@@ -112,6 +115,7 @@ func _on_pool_heartbeat() -> void:
 		_pool.re_register(_pool_port, "dedicated", KongRules.MAX_PLAYERS,
 			not GameState.players.is_empty(), func(ok2: bool, _d2: Dictionary):
 				if ok2:
+					GameState.room_code = _pool.code
 					print("[KONG] pool re-registered code: %s" % _pool.code)
 				else:
 					print("[KONG] pool re-register failed: %s" % _pool.last_error))
