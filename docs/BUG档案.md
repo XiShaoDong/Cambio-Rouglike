@@ -586,3 +586,13 @@ at: Board3d.detach_all (board3d.gd) ← _set_table3d(false)
 **修复**：`Board3d.set_shown(on)`（**显隐同时**同步 `_pick_shape.disabled`）；`_refresh_hint_panel` 两处 `hint3d.visible = ...` 改用 `set_shown`；`_ensure_board` 创建提示板后默认 `set_shown(false)`（否则挂载瞬间空提示板先挡一帧）。
 
 **诊断方法**：`verify_board3d`「set_shown(false) 隐藏并禁用拾取盒 / set_shown(true) 显示并启用拾取盒」；`verify_manual`「Stats 打开时看板对点击透明（可点卡牌）」。
+
+## B49：按 Cmd 放大时其他玩家眼睛也变小
+
+**现象**：3D 对局中按住 Command/Alt 放大，其他玩家（机器人）的 `Tiny_Eyes` 也跟着变成小眼睛。
+
+**根因**：`Table3dView.update_avatars` 对**没有同步注视数据**的席位走了回退分支：`set_eye_zoom(local_zoom)` / `set_talking(local_talk)`。只要对端没有 `remote_looks[seat]`（2D 玩家、旧客户端、尚未发过 look 的席位），本机放大就会被套用到这些席位上。视觉同步本应只走每席主人自己的 `remote_zoom`。
+
+**修复**：回退分支改为中立——`set_eye_zoom(false)` / `set_talking(false)`，仍看向本机相机（カメラ方向不影响眼球）；有同步数据时继续用 `remote_zoom[seat]` / `remote_talk[seat]`。
+
+**诊断方法**：`verify_robot_avatar`「无同步席位不继承本机放大」「有同步席位只用自己的 zoom（本机放大不影响）」。
