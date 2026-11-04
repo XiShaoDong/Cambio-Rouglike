@@ -12,12 +12,13 @@ const TARGET_WIDTH := 7.6
 const LEG_DEPTH_WORLD := 1.03  # 桌腿世界深度：桌面(1.0)到腿底的距离（y 轴独立缩放贴地，原模型腿太长）
 
 const SURFACE_COLORS := {
-	"cloth": {"color": Color(0.27, 0.41, 0.29), "metallic": 0.0, "roughness": 0.9},
-	"main": {"color": Color(0.16, 0.10, 0.06), "metallic": 0.15, "roughness": 0.6},
-	"black": {"color": Color(0.05, 0.05, 0.06), "metallic": 0.3, "roughness": 0.5},
-	"foot": {"color": Color(0.04, 0.04, 0.05), "metallic": 0.1, "roughness": 0.7},
-	"sides.001": {"color": Color(0.13, 0.09, 0.06), "metallic": 0.15, "roughness": 0.6},
+	"cloth": {"color": Color(0.27, 0.41, 0.29), "metallic": 0.0, "roughness": 0.98, "sheen": 0.03, "rim": 0.006, "grain": 0.055},
+	"main": {"color": Color(0.16, 0.10, 0.06), "metallic": 0.0, "roughness": 0.86, "sheen": 0.08, "rim": 0.02, "grain": 0.035},
+	"black": {"color": Color(0.05, 0.05, 0.06), "metallic": 0.05, "roughness": 0.88, "sheen": 0.06, "rim": 0.02, "grain": 0.02},
+	"foot": {"color": Color(0.04, 0.04, 0.05), "metallic": 0.0, "roughness": 0.92, "sheen": 0.05, "rim": 0.015, "grain": 0.02},
+	"sides.001": {"color": Color(0.13, 0.09, 0.06), "metallic": 0.0, "roughness": 0.86, "sheen": 0.07, "rim": 0.02, "grain": 0.03},
 }
+const TABLE_SHADER := preload("res://assets/shaders/table_surface.gdshader")
 
 var _built := false
 
@@ -54,10 +55,21 @@ func _build() -> void:
 		var name: String = mat.resource_name if mat != null else ""
 		if SURFACE_COLORS.has(name):
 			var spec: Dictionary = SURFACE_COLORS[name]
-			var m := StandardMaterial3D.new()
-			m.albedo_color = spec["color"]
-			m.metallic = spec["metallic"]
-			m.roughness = spec["roughness"]
+			var m := ShaderMaterial.new()
+			m.shader = TABLE_SHADER
+			m.set_shader_parameter("albedo_color", spec["color"])
+			m.set_shader_parameter("metallic", spec["metallic"])
+			m.set_shader_parameter("roughness", spec["roughness"])
+			m.set_shader_parameter("light_dir_world", Vector3(-0.4, 0.82, 0.41))
+			var look := CardTiltPreset.load_params()
+			if look.is_empty():
+				look = CardTiltPreset.DEFAULTS
+			var gloss := 0.6 + float(look.get("gloss_strength", 0.35)) * 1.2
+			var rim := 0.5 + float(look.get("rim_strength", 0.30)) * 1.5
+			m.set_shader_parameter("sheen_strength", float(spec["sheen"]) * gloss)
+			m.set_shader_parameter("rim_strength", float(spec["rim"]) * rim)
+			m.set_shader_parameter("sheen_tint", look.get("gloss_tint", Color(0.62, 0.78, 1.0, 1.0)))
+			m.set_shader_parameter("grain_amount", float(spec.get("grain", 0.03)))
 			table.set_surface_override_material(s, m)
 	# 缩放：x/z 至目标宽度；y 轴独立压扁让桌腿贴地（腿过长原先伸到世界 -2.97）
 	# 桌面顶=topy_local*sy + position.y = TABLE_TOP_Y，腿底=POSITION.y - (-aabb.position.y)*sy ≈ 地面

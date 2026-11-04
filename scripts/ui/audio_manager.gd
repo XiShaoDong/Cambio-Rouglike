@@ -57,11 +57,13 @@ func play_bell() -> void:
 	_play(bell_sfx, bell_pitch)
 
 ## 结算胜利声：index>=0 时播指定曲目（服务器下发，保证所有客户端一致）；否则随机。
-func play_winner(index := -1) -> void:
+func play_winner(index := -1) -> float:
 	if winner_sfx.is_empty():
-		return
+		return 0.0
 	var i := index if index >= 0 else randi()
-	_play(winner_sfx[clampi(i, 0, winner_sfx.size() - 1)])
+	var stream := winner_sfx[clampi(i, 0, winner_sfx.size() - 1)]
+	_play(stream)
+	return stream.get_length() if stream != null else 0.0
 
 ## 播放一个音效；素材未绑定（stream 为 null）时静默跳过，不报错。
 func _play(stream: AudioStream, pitch := 1.0) -> void:

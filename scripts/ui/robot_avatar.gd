@@ -5,6 +5,9 @@ extends Node3D
 ## 纯客户端展示层：不涉及规则/协议/快照，也不参与拾取（不挂碰撞）。
 
 const ROBOT_SCENE := preload("res://assets/characters/source/Robot.blend")
+const BODY_SHADER := preload("res://assets/shaders/avatar_body.gdshader")
+const CROWN_SCENE := preload("res://assets/3Dmodels/champion_crown.glb")
+const CROWN_SHADER := preload("res://assets/shaders/crown_gold.gdshader")
 const STRIP_NODES := ["Camera", "Light"]
 
 # 模型空间尺度/锚点（见 docs/3D角色与场景说明.md）
@@ -23,6 +26,10 @@ const HEAD_YAW_MAX_DEG := 30.0                  # Head Tracking 水平上限（�
 const HEAD_PITCH_MAX_DEG := 20.0                # Head Tracking 垂直上限
 const BLINK_PERIOD := 4.2                       # 自动眨眼周期（秒）
 const BLINK_DURATION := 0.14                    # 单次眨眼时长（秒）
+# 右手抬臂（看道具牌）：上臂朝前上方、小臂折起；模型空间 +Z 为脸朝向、右手在 -X。
+const ARM_UP_UPPER_DIR := Vector3(-0.30, -0.92, 0.25)
+const ARM_UP_FORE_DIR := Vector3(-0.05, -0.85, 0.52)
+const ARM_UP_SPEED := 5.5                       # 抬/落速度（每秒进度）
 
 # 机体外观（覆盖模型自带 Body 材质）
 const BODY_COLOR := Color("496AFE")             # 深蓝
@@ -36,13 +43,14 @@ var _skeleton: Skeleton3D
 var _head_idx := -1
 var _eyes: MeshInstance3D
 var _nose = null                # NoseAvatar（挂在 Skeleton3D 下，随头）
+var _hand = null                # AvatarHand（挂在 hand.R 骨骼，随右臂抬/弯）
 var _nose_base_model: Vector3 = NOSE_BASE_MODEL  # 鼻根（模型/骨架空间，由 Eyes AABB 推出）
 var _nose_target_world: Vector3 = Vector3.ZERO   # 鼻子目标世界坐标（ZERO=未伸出）
 var _eye_index := {}          # blendshape name -> index
 var _jaw_targets: Array = []  # [[MeshInstance3D, jawOpen_idx], ...]（嘴在下巴网格，不在 Eyes）
 var _eye_zoom := false
 var _body_color: Color = BODY_COLOR
-var _body_mat: StandardMaterial3D = null
+var _body_mat: ShaderMaterial = null
 var _talking := false
 var _talk_t := 0.0
 var _blink_t := 0.0
@@ -51,15 +59,23 @@ var _halo: MeshInstance3D = null
 var _halo_t := 0.0
 var _halo_a := 0.0
 var _halo_target_a := 0.0
+var _crown: Node3D = null
+var _crown_on := false
+var _crown_t := 0.0
+var _arm_up := false
+var _arm_p := 0.0
 
 # 光环（离线/出局头顶 😇 式金环）：大小/位置在“状态面板（♥$卡）之下、头上一点”
 const HALO_Y_MODEL := 2.32     # 头顶(2.2) 上一点，低于头顶状态面板
 const HALO_COLOR := Color("FFE9A8")
+const CROWN_Y_MODEL := 2.20    # 皇冠底座套在头顶（上一局冠军）
+const CROWN_HALO_LIFT := 0.62  # 有皇冠时把光环抬高，避免与冠尖相交
 
 func _ready() -> void:
 	_build()
 
 func _process(delta: float) -> void:
+	_update_arm(delta)
 	_update_nose()
 	if _talking:
 		_talk_t += delta
@@ -72,8 +88,13 @@ func _process(delta: float) -> void:
 		if _halo_a <= 0.0 and _halo_target_a <= 0.0:
 			_halo.visible = false
 		var bob := sin(_halo_t * 1.6) * 0.02
-		_halo.position = Vector3(0.0, HALO_Y_MODEL + bob, 0.0)
+		var lift := CROWN_HALO_LIFT if (_crown != null and _crown.visible) else 0.0
+		_halo.position = Vector3(0.0, HALO_Y_MODEL + lift + bob, 0.0)
 		_halo.rotation.y += delta * 0.7
+	if _crown != null and _crown.visible:
+		_crown_t += delta
+		_crown.position.y = CROWN_Y_MODEL + sin(_crown_t * 1.8) * 0.025
+		_crown.rotation.y += delta * 0.6
 	if _eyes == null:
 		return
 	_blink_t = fmod(_blink_t + delta, BLINK_PERIOD)
@@ -122,28 +143,118 @@ func _build() -> void:
 				_jaw_targets.append([mi, ji])
 	_apply_idle_pose()
 	_apply_body_color()
+	_rerig_right_elbow()
+	_build_hand()
 	if _skeleton != null:
 		_nose = NoseAvatarScript.new()
 		_nose.name = "Nose"
 		_skeleton.add_child(_nose)
 		_nose.set_color(_body_color)
 
+## 右手低模：挂到 hand.R 骨骼（无蒙皮权重也能跟随小臂/手腕），共用机体材质。
+func _build_hand() -> void:
+	if _skeleton == null or _hand != null:
+		return
+	if _skeleton.find_bone("hand.R") < 0:
+		return
+	var attach := BoneAttachment3D.new()
+	attach.name = "HandR"
+	_skeleton.add_child(attach)
+	attach.bone_name = "hand.R"
+	_hand = AvatarHand.new()
+	_hand.name = "RightHand"
+	attach.add_child(_hand)
+	_hand.set_material(_body_mat)
+
+
+## 原模型的小臂/手没有蒙皮权重（整条手臂刚性绑在上臂），无法弯肘。
+## 在实例网格上把右臂远端顶点的权重从上臂渐变到 lower_arm.R，得到可弯折的肘部。
+func _rerig_right_elbow() -> void:
+	var arms := _robot.get_node_or_null("Armature/Skeleton3D/Arms") as MeshInstance3D
+	if arms == null or arms.mesh == null or arms.skin == null:
+		return
+	var skin := arms.skin
+	var bind_upper := -1
+	var bind_lower := -1
+	for bi in skin.get_bind_count():
+		match skin.get_bind_name(bi):
+			"upper_arm.R": bind_upper = bi
+			"lower_arm.R": bind_lower = bi
+	if bind_upper < 0 or bind_lower < 0:
+		return
+	var mesh := arms.mesh
+	var arrays := mesh.surface_get_arrays(0)
+	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var bones: PackedInt32Array = arrays[Mesh.ARRAY_BONES]
+	var weights: PackedFloat32Array = arrays[Mesh.ARRAY_WEIGHTS]
+	for v in verts.size():
+		var x: float = verts[v].x
+		if x > -0.74:
+			continue
+		var t := clampf((-x - 0.74) / 0.22, 0.0, 1.0)
+		t = t * t * (3.0 - 2.0 * t)  # smoothstep
+		var inf := {}
+		for k in 4:
+			var idx := v * 4 + k
+			var b := bones[idx]
+			var w := weights[idx]
+			if w > 0.00001:
+				inf[b] = float(inf.get(b, 0.0)) + w
+		var w_up := float(inf.get(bind_upper, 0.0))
+		if w_up <= 0.0:
+			continue
+		var move := w_up * t
+		inf[bind_upper] = w_up - move
+		inf[bind_lower] = float(inf.get(bind_lower, 0.0)) + move
+		# 取权重最大的 4 个影响写回（保持 4 槽格式）
+		var keys := inf.keys()
+		keys.sort_custom(func(a, b): return float(inf[a]) > float(inf[b]))
+		var total := 0.0
+		for k in mini(4, keys.size()):
+			total += float(inf[keys[k]])
+		if total <= 0.0:
+			continue
+		for k in 4:
+			var idx := v * 4 + k
+			if k < mini(4, keys.size()):
+				bones[idx] = int(keys[k])
+				weights[idx] = float(inf[keys[k]]) / total
+			else:
+				bones[idx] = 0
+				weights[idx] = 0.0
+	arrays[Mesh.ARRAY_BONES] = bones
+	arrays[Mesh.ARRAY_WEIGHTS] = weights
+	var new_mesh := ArrayMesh.new()
+	for b in mesh.get_blend_shape_count():
+		new_mesh.add_blend_shape(mesh.get_blend_shape_name(b))
+	new_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays, mesh.surface_get_blend_shape_arrays(0))
+	for si in mesh.get_surface_count():
+		new_mesh.surface_set_material(si, mesh.surface_get_material(si))
+	arms.mesh = new_mesh
+
+
 ## 机体外观：逐实例覆盖 Body 表面材质（不改共享网格/材质），支持每个玩家不同颜色。
 ## Arms/Body/Legs 单面；Face 面 0 = Body、面 1 = Mouth（保留）。
 func _apply_body_color() -> void:
-	var m := StandardMaterial3D.new()
-	m.albedo_color = _body_color
-	m.metallic = BODY_METALLIC
-	m.roughness = BODY_ROUGHNESS
-	m.metallic_specular = BODY_SPECULAR
-	_body_mat = m
+	if _body_mat == null:
+		_body_mat = ShaderMaterial.new()
+		_body_mat.shader = BODY_SHADER
+		_body_mat.set_shader_parameter("metallic", BODY_METALLIC)
+		_body_mat.set_shader_parameter("roughness", BODY_ROUGHNESS)
+		_body_mat.set_shader_parameter("light_dir_world", Vector3(-0.4, 0.82, 0.41))
+		var look := CardTiltPreset.load_params()
+		if look.is_empty():
+			look = CardTiltPreset.DEFAULTS
+		_body_mat.set_shader_parameter("eye_spec", 0.35 + float(look.get("gloss_strength", 0.35)) * 1.2)
+		_body_mat.set_shader_parameter("rim_strength", 0.1 + float(look.get("rim_strength", 0.30)) * 0.4)
+	_body_mat.set_shader_parameter("albedo_color", _body_color)
 	for nm in ["Arms", "Body", "Legs"]:
 		var mi = _robot.get_node_or_null("Armature/Skeleton3D/" + nm)
 		if mi != null:
-			mi.set_surface_override_material(0, m)
+			mi.set_surface_override_material(0, _body_mat)
 	var face = _robot.get_node_or_null("Armature/Skeleton3D/Face")
 	if face != null:
-		face.set_surface_override_material(0, m)
+		face.set_surface_override_material(0, _body_mat)
 	if _nose != null:
 		_nose.set_color(_body_color)
 
@@ -183,6 +294,77 @@ func jaw_value() -> float:
 func _set_jaw(v: float) -> void:
 	for e in _jaw_targets:
 		(e[0] as MeshInstance3D).set_blend_shape_value(int(e[1]), v)
+
+## 右手抬臂/放下（看道具牌）：平滑过渡到"上臂前伸 + 肘部弯折"的姿势。
+func set_arm_up(on: bool) -> void:
+	_build()
+	_arm_up = on
+
+
+func arm_up() -> bool:
+	return _arm_up
+
+
+func arm_progress() -> float:
+	return _arm_p
+
+
+func _update_arm(delta: float) -> void:
+	if _skeleton == null:
+		return
+	var target := 1.0 if _arm_up else 0.0
+	if is_equal_approx(_arm_p, target):
+		return
+	_arm_p = move_toward(_arm_p, target, delta * ARM_UP_SPEED)
+	_apply_arm_pose()
+
+
+## 右手姿势：idle（竖直下垂）↔ 抬起（上臂朝前 + 肘部弯折）。
+func _apply_arm_pose() -> void:
+	var up_i := _skeleton.find_bone("upper_arm.R")
+	var lo_i := _skeleton.find_bone("lower_arm.R")
+	var hand_i := _skeleton.find_bone("hand.R")
+	if up_i < 0 or lo_i < 0 or hand_i < 0:
+		return
+	var up_rest := _skeleton.get_bone_global_rest(up_i)
+	var lo_rest := _skeleton.get_bone_global_rest(lo_i)
+	var hand_rest := _skeleton.get_bone_global_rest(hand_i)
+	var lo_local := up_rest.affine_inverse() * lo_rest
+	var hand_local := lo_rest.affine_inverse() * hand_rest
+	# idle：上臂绕 Z 放下 82°；小臂/手自然继承。
+	var up_idle := Transform3D(Basis(Vector3(0, 0, 1), deg_to_rad(ARM_DOWN_DEG)) * up_rest.basis, up_rest.origin)
+	var lo_idle := up_idle * lo_local
+	var hand_idle := lo_idle * hand_local
+	# 抬起：上臂朝下前方；小臂再折向前，手腕放平到桌面高度。
+	var up_raised := Transform3D(_aim_basis(up_rest.basis, ARM_UP_UPPER_DIR), up_rest.origin)
+	var lo_inherited := up_raised * lo_local
+	var lo_raised := Transform3D(_aim_basis(lo_inherited.basis, ARM_UP_FORE_DIR), lo_inherited.origin)
+	var hand_inherited := lo_raised * hand_local
+	# 手背朝上、手指朝前，平放在桌面上（模型空间 +Z 为前、-Y 为下）。
+	var hand_basis := Basis(Vector3(1, 0, 0), Vector3(0, 0, 1), Vector3(0, -1, 0))
+	var hand_raised := Transform3D(hand_basis, hand_inherited.origin)
+	var up_t := _blend_xform(up_idle, up_raised, _arm_p)
+	var lo_t := _blend_xform(lo_idle, lo_raised, _arm_p)
+	var hand_t := _blend_xform(hand_idle, hand_raised, _arm_p)
+	_skeleton.set_bone_global_pose_override(up_i, up_t, 1.0, true)
+	_skeleton.set_bone_global_pose_override(lo_i, lo_t, 1.0, true)
+	_skeleton.set_bone_global_pose_override(hand_i, hand_t, 1.0, true)
+
+
+## 把骨骼的"长度轴"（本地 Y）从当前朝向转到目标方向，保留 roll。
+func _aim_basis(rest_basis: Basis, dir: Vector3) -> Basis:
+	var cur := rest_basis.y.normalized()
+	var to := dir.normalized()
+	if cur.dot(to) < -0.9999:
+		return rest_basis
+	return Basis(Quaternion(cur, to)) * rest_basis
+
+
+func _blend_xform(a: Transform3D, b: Transform3D, t: float) -> Transform3D:
+	var qa := a.basis.get_rotation_quaternion()
+	var qb := b.basis.get_rotation_quaternion()
+	return Transform3D(Basis(qa.slerp(qb, t)), a.origin.lerp(b.origin, t))
+
 
 ## 待机手臂姿势：绕世界 Z 轴把 T-pose 上臂放下（左侧 -，右侧 +）。
 ## 用 global pose override 直接给出目标全局姿势，子骨骼（小臂/手）随之联动。
@@ -298,6 +480,46 @@ func set_gaze_frozen(on: bool) -> void:
 
 func gaze_frozen() -> bool:
 	return _gaze_frozen
+
+func _apply_crown_material(root: Node) -> void:
+	var tex: Texture2D = null
+	var meshes: Array = []
+	_collect_meshes(root, meshes)
+	for mi in meshes:
+		if mi.mesh != null and mi.mesh.get_surface_count() > 0:
+			var src = mi.mesh.surface_get_material(0)
+			if tex == null and src is StandardMaterial3D:
+				tex = (src as StandardMaterial3D).albedo_texture
+	if tex == null:
+		return
+	var mat := ShaderMaterial.new()
+	mat.shader = CROWN_SHADER
+	mat.set_shader_parameter("albedo_tex", tex)
+	mat.set_shader_parameter("spec_strength", 1.1)
+	mat.set_shader_parameter("rim_strength", 0.35)
+	mat.set_shader_parameter("light_dir_world", Vector3(-0.45, 0.82, 0.36))
+	for mi in meshes:
+		mi.material_override = mat
+
+
+## 上一局冠军皇冠：套在头顶；和离线光环可同时存在（光环会自动抬高）。
+func set_crown(on: bool) -> void:
+	_build()
+	_crown_on = on
+	if on and _crown == null:
+		_crown = CROWN_SCENE.instantiate()
+		_crown.name = "ChampionCrown"
+		_crown.position = Vector3(0.0, CROWN_Y_MODEL, 0.0)
+		_crown.scale = Vector3.ONE * (2.0 / 3.0)
+		add_child(_crown)
+		_apply_crown_material(_crown)
+	if _crown != null:
+		_crown.visible = on
+
+
+func crown_visible() -> bool:
+	return _crown != null and _crown.visible
+
 
 ## 头顶光环（离线/出局 😇 式金环）：淡入、悬浮呼吸、缓慢旋转。
 func set_halo(on: bool) -> void:

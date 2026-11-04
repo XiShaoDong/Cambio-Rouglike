@@ -222,13 +222,13 @@ func _interaction_ctx() -> Dictionary:
 		"selected_own_slot": interaction.selected_own_slot,
 	}
 
-## 3D 激活时恒定捕获鼠标（看板交互走准星）。准星默认隐藏，仅按住放大时显示。
+## 3D 激活时恒定捕获鼠标（看板交互走准星）。准星常驻显示。
 func _sync_table3d_pointer() -> void:
 	if not _table3d_active:
 		return
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	if _crosshair != null and is_instance_valid(_crosshair):
-		_crosshair.visible = false
+		_crosshair.visible = true
 
 ## 3D 自己面板（屏幕右下角）：生命/金钱/卡牌数（无名字）。
 func _ensure_self_panel() -> void:
@@ -842,7 +842,7 @@ func _set_table3d(on: bool) -> void:
 			add_child(_crosshair)
 		_ensure_board()
 		table3d.set_hud_buttons(_hud_buttons())
-		table3d.render(latest_state, interaction.card_actionable)
+		table3d.render(latest_state, interaction.card_actionable, _ability_in_progress())
 		_maybe_play_deal()
 		_place_boards()
 		_sync_table3d_pointer()
@@ -1052,12 +1052,14 @@ func _process(delta: float) -> void:
 	# 飞行相机（辅助工具）：按 WASD/Space/Ctrl 推进全局位移
 	if _fly_active():
 		_fly_tool.step(delta, table3d.camera.camera_node())
-	# 准星默认隐藏，仅按住放大（Command/Alt）时出现。
+	# 准星常驻显示（不放大也保留中心点）。
 	if _crosshair != null and is_instance_valid(_crosshair):
-		_crosshair.visible = bool(table3d.camera.zoomed)
+		_crosshair.visible = true
 	if table3d != null and is_instance_valid(table3d):
 		table3d.set_deal_speed(2.0 if Input.is_key_pressed(KEY_SPACE) else 1.0)
 	if _settings_open():
+		if _crosshair != null and is_instance_valid(_crosshair):
+			_crosshair.visible = false
 		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 		return
 	_place_boards()
@@ -1070,7 +1072,7 @@ func _process(delta: float) -> void:
 	# 大牌朝向：绕世界 Y 面向当前行动者座位（世界固定，全房一致）
 	table3d.update_facing(int(latest_state.get("current_player", -1)))
 	_update_look_send(delta, cam)
-	table3d.update_avatars(cam, GameState.remote_looks, GameState.remote_zoom, bool(table3d.camera.zoomed), GameState.remote_talk, _talking_local)
+	table3d.update_avatars(cam, GameState.remote_looks, GameState.remote_zoom, bool(table3d.camera.zoomed), GameState.remote_talk, _talking_local, GameState.remote_arm, _item_hand_open())
 	var on_board := _update_board_hover()
 	if _board_has_panel():
 		table3d.clear_hover()
@@ -1092,6 +1094,10 @@ func _process(delta: float) -> void:
 
 ## 3D 下按固定频率把本机相机注视方向上报服务器（转发给其他玩家），
 ## 使每席机器人眼睛跟随其“主人”自己的鼠标/相机（而非本机）。方向无变化则不发送。
+func _item_hand_open() -> bool:
+	return _item_hand != null and is_instance_valid(_item_hand) and _item_hand.is_open()
+
+
 func _update_look_send(delta: float, cam: Camera3D) -> void:
 	if cam == null:
 		return
@@ -1105,23 +1111,25 @@ func _update_look_send(delta: float, cam: Camera3D) -> void:
 	dir = dir.normalized()
 	var zoomed := bool(table3d.camera.zoomed)
 	var talking := _talking_local
+	var arm_up := _item_hand_open()
 	var nose := Vector3.ZERO
 	var dir_changed := _last_look_dir == Vector3.ZERO or _last_look_dir.dot(dir) <= LOOK_SEND_EPS_DOT
 	var nose_changed := nose.distance_squared_to(_last_look_nose) > 0.000001
-	if not dir_changed and zoomed == _last_look_zoom and talking == _last_look_talk and not nose_changed:
+	if not dir_changed and zoomed == _last_look_zoom and talking == _last_look_talk and not nose_changed and arm_up == _last_look_arm:
 		return
 	_last_look_dir = dir
 	_last_look_zoom = zoomed
 	_last_look_talk = talking
 	_last_look_nose = nose
+	_last_look_arm = arm_up
 	var seat := int(latest_state.get("viewer_id", -1))
 	if seat < 0:
 		return
 	var target := cam.global_position + dir * LOOK_TARGET_DISTANCE
 	if multiplayer.is_server():
-		GameState._apply_look(seat, target, zoomed, talking, nose)
+		GameState._apply_look(seat, target, zoomed, talking, nose, arm_up)
 	else:
-		GameState.server_look.rpc_id(1, target, zoomed, talking, nose)
+		GameState.server_look.rpc_id(1, target, zoomed, talking, nose, arm_up)
 
 func _unhandled_input(event: InputEvent) -> void:
 	# 比拼中按空格 = 停止（与 STOP 按钮等效）
@@ -1236,6 +1244,7 @@ var _wheel_pos := Vector3.ZERO
 var _mark_wheel = null
 var _emote_wheel = null
 var _last_look_nose := Vector3.ZERO      # 上次上报的鼻子目标（变化即发）
+var _last_look_arm := false              # 上次上报的抬右手状态（道具手牌开合）
 var _talking_local := false
 var _crosshair: Control = null
 var _card_tooltip: CardTooltip = null
@@ -1353,6 +1362,7 @@ var _hint_hud: HintHud = null
 var _hud_turn_key := ""
 var _shop_result_shown := ""
 var _pending_winner_sfx := false
+var _crown_ready_token := 0
 var _pending_winner_sfx_index := -1   # 服务器下发的胜利曲目索引（保证全员一致）
 # Q 能力：下一次收到的看牌揭示保持正面（不自动翻回），直到玩家确认交换/不交换。
 var _hold_next_reveal := false
@@ -1860,6 +1870,11 @@ func _on_state_updated(state: Dictionary) -> void:
 	_was_in_match = int(state.phase) != 0
 	if interaction != null:
 		interaction.reset_for_phase(state)
+	if table3d != null and is_instance_valid(table3d):
+		if int(state.phase) == PHASE_GAME_OVER and last_phase != PHASE_GAME_OVER:
+			table3d.crown_ready = false
+		elif int(state.phase) == PHASE_INITIAL_PEEK:
+			table3d.crown_ready = true
 	if int(state.phase) != last_phase:
 		if last_phase == PHASE_GAME_OVER:
 			# 离开结算（新局/商店/回房间）：清 2D 动画残留 + 3D 逐张翻转状态
@@ -1949,10 +1964,15 @@ func _render_game() -> void:
 ## 渲染卡牌（含可操作高亮）/ HUD / 自身面板 / 提示板。
 ## 集中在此，保证**本地** action_mode 变化（用能力、J 两段交换）也能即时刷新 3D 提示与高亮——
 ## 过去只在 _on_state_updated（服务器广播）刷新，导致 3D 提示/高亮停留旧态，切 2D 再回才更新。
+## 用能力已发起、但服务器快照还没清掉 pending 的本地窗口期。
+func _ability_in_progress() -> bool:
+	return _pending_hidden_for_ability or (interaction != null and not interaction.action_mode.is_empty())
+
+
 func _refresh_table3d() -> void:
 	if not _table3d_active or table3d == null or not is_instance_valid(table3d):
 		return
-	table3d.render(latest_state, interaction.card_actionable)
+	table3d.render(latest_state, interaction.card_actionable, _ability_in_progress())
 	table3d.set_hud_buttons(_hud_buttons())
 	_update_self_panel()
 	_update_round_badge()
@@ -2322,10 +2342,28 @@ func _show_shop_result_toast(state: Dictionary) -> void:
 
 ## 冠军时刻：若服务器已广播过 winner 音效事件，此刻播放（延迟到冠军出场）。
 func _play_pending_winner() -> void:
-	if _pending_winner_sfx:
-		AudioManager.play_winner(_pending_winner_sfx_index)
-		_pending_winner_sfx = false
-		_pending_winner_sfx_index = -1
+	if not _pending_winner_sfx:
+		return
+	_pending_winner_sfx = false
+	_crown_ready_token += 1
+	var token := _crown_ready_token
+	if table3d != null and is_instance_valid(table3d):
+		table3d.crown_ready = false
+	var length := AudioManager.play_winner(_pending_winner_sfx_index)
+	_pending_winner_sfx_index = -1
+	if length <= 0.05:
+		_set_crown_ready(token)
+	else:
+		get_tree().create_timer(length).timeout.connect(_set_crown_ready.bind(token))
+
+
+## 结算冠军音结束 → 放上皇冠（并刷新 3D）。token 防止旧音效的计时器覆盖新一局。
+func _set_crown_ready(token: int) -> void:
+	if token != _crown_ready_token:
+		return
+	if table3d != null and is_instance_valid(table3d):
+		table3d.crown_ready = true
+	_refresh_table3d()
 
 ## 结算页「再来一局」→ 服务器开新局。
 func _request_next_match() -> void:

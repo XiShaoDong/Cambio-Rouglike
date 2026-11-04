@@ -45,13 +45,17 @@ var _built := false
 var _visual: Node3D
 var _flip: Node3D
 var _back_node: MeshInstance3D
-var _back_material: StandardMaterial3D
+var _back_material: Material
+var _front_tex: Texture2D = null
+var _front_color := Color.WHITE
+var _back_tex_current: Texture2D = null
+var _back_color := Color.WHITE
 var _mesh: MeshInstance3D
 var _label: Label3D
 var _label_shadow: Label3D
 var _bomb_badge: Sprite3D
 var _bomb_on := false
-var _material: StandardMaterial3D
+var _material: Material
 var _area: Area3D
 var _pick_shape: CollisionShape3D
 var _last_slot: Dictionary = {}
@@ -92,11 +96,62 @@ var _back_is_back := true
 
 ## 揭示 3D 翻转总时长（抬起+倾斜+绕长轴 180° 的整段）。调大 = 更慢。
 const FLIP_DURATION := 0.5
+const CARD3D_SHADER := preload("res://assets/shaders/card_face_3d.gdshader")
+const LIGHT3D := Vector3(-0.4, 0.82, 0.41)   # 指向光：左上前上方（近似 KeyLight）
 
 ## 点数标签：抬离牌面 + 一层深色底部投影，营造"悬浮在牌上"的立体感。
 const LABEL_LIFT := 0.16
-const LABEL_SHADOW_OFFSET := Vector3(0.03, -0.035, 0.03)
-const LABEL_SHADOW_COLOR := Color(0.0, 0.0, 0.0, 0.35)
+const LABEL_SHADOW_OFFSET := Vector3(0.018, -0.022, 0.018)
+const LABEL_SHADOW_COLOR := Color(0.0, 0.0, 0.0, 0.22)
+
+static var _look_cfg: Dictionary = {}
+static var _white_tex: Texture2D = null
+
+## 3D 卡面观感参数（与 2D 沙盒同一份存档）。
+static func _look() -> Dictionary:
+	if _look_cfg.is_empty():
+		var preset := CardTiltPreset.load_params()
+		_look_cfg = preset if not preset.is_empty() else CardTiltPreset.DEFAULTS.duplicate(true)
+	return _look_cfg
+
+
+static func _white_texture() -> Texture2D:
+	if _white_tex == null:
+		var img := Image.create(1, 1, false, Image.FORMAT_RGBA8)
+		img.fill(Color.WHITE)
+		_white_tex = ImageTexture.create_from_image(img)
+	return _white_tex
+
+
+func _make_face_material() -> ShaderMaterial:
+	var m := ShaderMaterial.new()
+	m.shader = CARD3D_SHADER
+	m.set_shader_parameter("uv_scale", Vector2(-1.0, -1.0))
+	m.set_shader_parameter("uv_offset", Vector2(1.0, 1.0))
+	var look := _look()
+	m.set_shader_parameter("gloss_strength", float(look.get("gloss_strength", 0.35)))
+	m.set_shader_parameter("rim_strength", float(look.get("rim_strength", 0.30)))
+	m.set_shader_parameter("base_gain", float(look.get("base_gain", 1.0)))
+	m.set_shader_parameter("gloss_tint", look.get("gloss_tint", Color(0.62, 0.78, 1.0, 1.0)))
+	m.set_shader_parameter("light_dir_world", LIGHT3D)
+	return m
+
+
+func _assign_front(tex: Texture2D, color: Color) -> void:
+	_front_tex = tex
+	_front_color = color
+	if _material != null:
+		_material.set_shader_parameter("albedo_tex", tex if tex != null else _white_texture())
+		_material.set_shader_parameter("albedo_color", color)
+
+
+func _assign_back(tex: Texture2D, color: Color) -> void:
+	_back_tex_current = tex
+	_back_color = color
+	if _back_material != null:
+		_back_material.set_shader_parameter("albedo_tex", tex if tex != null else _white_texture())
+		_back_material.set_shader_parameter("albedo_color", color)
+
 
 func _ready() -> void:
 	_build()
@@ -143,13 +198,11 @@ func _build() -> void:
 	plane.subdivide_width = 0
 	plane.subdivide_depth = 0
 	_mesh.mesh = plane
-	_material = StandardMaterial3D.new()
-	_material.cull_mode = BaseMaterial3D.CULL_DISABLED  # 两面可见，避免看到背面消失
+	# 所有 3D 卡统一用 card_face_3d shader（固定高光/反光条/轮廓）。
 	# PlaneMesh(FACE_Y)：u=0 在本地 -X、v=0 在本地 -Z；座位本地 +X = 持有者左侧、
 	# +Z = 朝桌心（远离持有者）。故 UV 绕中心旋转 180°（U、V 都翻），
 	# 使图案顶部朝桌心、左侧在持有者左手侧 → 持有者看为正、不镜像。
-	_material.uv1_scale = Vector3(-1.0, -1.0, 1.0)
-	_material.uv1_offset = Vector3(1.0, 1.0, 0.0)
+	_material = _make_face_material()
 	_mesh.material_override = _material
 	_mesh.position = Vector3(0.0, 0.002, 0.0)
 	_flip.add_child(_mesh)
@@ -162,12 +215,8 @@ func _build() -> void:
 	_back_node.mesh = bplane
 	_back_node.position = Vector3(0.0, -0.002, 0.0)
 	_back_node.rotation_degrees = Vector3(0.0, 0.0, 180.0)
-	_back_material = StandardMaterial3D.new()
-	_back_material.cull_mode = BaseMaterial3D.CULL_DISABLED
-	_back_material.uv1_scale = Vector3(-1.0, -1.0, 1.0)
-	_back_material.uv1_offset = Vector3(1.0, 1.0, 0.0)
-	_back_material.albedo_texture = _back_texture()
-	_back_material.albedo_color = Color.WHITE
+	_back_material = _make_face_material()
+	_assign_back(_back_texture(), Color.WHITE)
 	_back_node.material_override = _back_material
 	_flip.add_child(_back_node)
 	# 厚度侧壁（默认无；大牌竖立时开启 2/4 号玩家从侧面也能看到"那里有张牌"）。
@@ -196,6 +245,10 @@ func _build() -> void:
 	_label_shadow.font_size = 64
 	_label_shadow.modulate = LABEL_SHADOW_COLOR
 	_label_shadow.position = Vector3(0.0, Table3dLayout.BLOCK_SIZE.y * 0.5 + LABEL_LIFT, 0.0) + LABEL_SHADOW_OFFSET
+	_label_shadow.render_priority = 20
+	_label_shadow.modulate = Color(0.0, 0.0, 0.0, 0.10)
+	_label_shadow.outline_size = 10
+	_label_shadow.outline_modulate = Color(0.0, 0.0, 0.0, 0.16)
 	_flip.add_child(_label_shadow)
 	_label = Label3D.new()
 	_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -203,6 +256,11 @@ func _build() -> void:
 	_label.pixel_size = 0.0025
 	_label.font_size = 64
 	_label.position = Vector3(0.0, Table3dLayout.BLOCK_SIZE.y * 0.5 + LABEL_LIFT, 0.0)
+	_label.render_priority = 21
+	# 细描边保证可读；另保留一层很淡的偏移投影（低透明 + 小偏移），
+	# 避免以前那种超出卡牌就变成加粗黑字的感觉。
+	_label.outline_size = 4
+	_label.outline_modulate = Color(0.0, 0.0, 0.0, 0.55)
 	_flip.add_child(_label)
 	# 炸弹角标（随机增强）：卡牌右上角，billboard 始终朝向相机。
 	_bomb_badge = Sprite3D.new()
@@ -353,8 +411,7 @@ func border_color() -> Color:
 ## （=1 直接呈现正面、不再翻转），避免状态广播/落地刷新把揭示重播一次（翻完又翻）。
 func reveal(card: Dictionary, color := Color(0, 0, 0, 0), from_p := 0.0) -> void:
 	_build()
-	_back_material.albedo_texture = _face_texture(card) if not card.is_empty() else _back_texture()
-	_back_material.albedo_color = Color.WHITE
+	_assign_back(_face_texture(card) if not card.is_empty() else _back_texture(), Color.WHITE)
 	_back_is_back = card.is_empty()
 	_set_label_text(card_text(card))
 	set_bomb(bool(card.get("bomb", false)) or bool(_last_slot.get("bomb", false)))
@@ -371,8 +428,7 @@ func reveal(card: Dictionary, color := Color(0, 0, 0, 0), from_p := 0.0) -> void
 func reveal_hidden(color := Color(0, 0, 0, 0), from_p := 0.0) -> void:
 	_build()
 	_reveal_known = {}
-	_back_material.albedo_texture = _peek_hidden_texture()
-	_back_material.albedo_color = Color.WHITE
+	_assign_back(_peek_hidden_texture(), Color.WHITE)
 	_back_is_back = false
 	_set_label_text("")
 	_reveal_color = color
@@ -387,8 +443,7 @@ func reveal_hidden(color := Color(0, 0, 0, 0), from_p := 0.0) -> void:
 ## target<=0 时结束不保留揭示炫光（`_reveal_color` 置空）。
 func reveal_from_to(card: Dictionary, color: Color, from_p: float, target: float) -> void:
 	_build()
-	_back_material.albedo_texture = _face_texture(card) if not card.is_empty() else _back_texture()
-	_back_material.albedo_color = Color.WHITE
+	_assign_back(_face_texture(card) if not card.is_empty() else _back_texture(), Color.WHITE)
 	_back_is_back = card.is_empty()
 	_set_label_text(card_text(card))
 	_reveal_color = Color(0, 0, 0, 0) if target <= 0.0 else color
@@ -437,12 +492,14 @@ func _apply_flip_pose() -> void:
 		return
 	if _reveal_p <= 0.0:
 		_flip.transform = Transform3D.IDENTITY
+		_sync_label_visibility()
 		return
 	var cfg := _cfg()
 	var arc := sin(_reveal_p * PI)
 	var basis := Basis.from_euler(Vector3(-deg_to_rad(cfg.hover_pitch * arc), 0.0, 0.0)) \
 			* Basis(Vector3(0.0, 0.0, 1.0), deg_to_rad(_reveal_p * 180.0))
 	_flip.transform = Transform3D(basis, Vector3(0.0, cfg.flip_lift * arc, 0.0))
+	_sync_label_visibility()
 
 func reveal_progress() -> float:
 	return _reveal_p
@@ -469,19 +526,17 @@ func _apply_color() -> void:
 	if card.is_empty():
 		_showing_back = true
 		_front_is_back = true
-		_material.albedo_texture = _back_texture()
-		_material.albedo_color = Color.WHITE
+		_assign_front(_back_texture(), Color.WHITE)
 	else:
 		_showing_back = false
 		_front_is_back = false
 		var face := _face_texture(card)
-		_material.albedo_texture = face
-		_material.albedo_color = Color.WHITE if face != null else Table3dLayout.slot_color(_last_slot)
+		_assign_front(face, Color.WHITE if face != null else Table3dLayout.slot_color(_last_slot))
 	if _back_material != null and _reveal_p <= 0.0:
-		_back_material.albedo_texture = _back_texture()
-		_back_material.albedo_color = Color.WHITE
+		_assign_back(_back_texture(), Color.WHITE)
 		_back_is_back = true
 	_paint_glow()
+	_sync_label_visibility()
 
 ## 切换显示面：back=true 显示卡背并隐藏点数；false 恢复最近 setup(slot) 的正面。
 ## 供 CardAnimation 控制器独占的真实 3D 翻牌使用（不触发自带 scale.x 翻转）。
@@ -490,8 +545,7 @@ func show_back(back: bool) -> void:
 	if back:
 		_showing_back = true
 		_front_is_back = true
-		_material.albedo_texture = _back_texture()
-		_material.albedo_color = Color.WHITE
+		_assign_front(_back_texture(), Color.WHITE)
 		_set_label_text("")
 		_paint_glow()
 	else:
@@ -742,8 +796,8 @@ func shadow_text() -> String:
 
 ## 当前显示面是否为"他人 peek 闭眼占位面"。
 func is_peek_hidden() -> bool:
-	var m := _display_material()
-	return m != null and m.albedo_texture != null and m.albedo_texture == _peek_hidden_texture()
+	var tex := _display_texture()
+	return tex != null and tex == _peek_hidden_texture()
 
 ## 同步设置主标签与投影标签的文本。
 func _set_label_text(text: String) -> void:
@@ -751,6 +805,23 @@ func _set_label_text(text: String) -> void:
 		_label.text = text
 	if _label_shadow != null:
 		_label_shadow.text = text
+	_sync_label_visibility()
+
+
+## 翻牌期间：只有真正朝向相机的一面是"已知牌面"时才显示点数，
+## 避免背面/翻面中途把数字显示在卡背。
+func _sync_label_visibility() -> void:
+	if _label == null:
+		return
+	var vis := false
+	if not _label.text.is_empty():
+		if _reveal_p < 0.5:
+			vis = not _front_is_back
+		else:
+			vis = not _back_is_back
+	_label.visible = vis
+	if _label_shadow != null:
+		_label_shadow.visible = vis
 
 ## 竖立显示模式：标签从卡面法向正上方（本地 +Y）改到卡高方向顶端（本地 +Z）。
 ## 仅用于竖立的大牌；默认关闭，不影响手牌/弃牌/飞牌等平铺卡。
@@ -763,6 +834,11 @@ func set_upright(on: bool) -> void:
 		_label.position = Vector3(0.0, 0.0, Table3dLayout.BLOCK_SIZE.z * 0.5 + LABEL_LIFT)
 	else:
 		_label.position = Vector3(0.0, Table3dLayout.BLOCK_SIZE.y * 0.5 + LABEL_LIFT, 0.0)
+	_label.render_priority = 21
+	# 细描边保证可读；另保留一层很淡的偏移投影（低透明 + 小偏移），
+	# 避免以前那种超出卡牌就变成加粗黑字的感觉。
+	_label.outline_size = 4
+	_label.outline_modulate = Color(0.0, 0.0, 0.0, 0.55)
 	if _label_shadow != null:
 		_label_shadow.position = _label.position + LABEL_SHADOW_OFFSET
 
@@ -838,19 +914,17 @@ func _apply_hover_pose() -> void:
 		Basis.from_euler(Vector3(deg_to_rad(rot.x), deg_to_rad(rot.y), deg_to_rad(rot.z))),
 		c["visual_pos"])
 
-func _display_material() -> StandardMaterial3D:
-	return _material if _reveal_p < 0.5 else _back_material
-
 func _display_is_back() -> bool:
 	return _front_is_back if _reveal_p < 0.5 else _back_is_back
 
+func _display_texture() -> Texture2D:
+	return _back_tex_current if _reveal_p >= 0.5 else _front_tex
+
 func block_color() -> Color:
-	var m := _display_material()
-	return m.albedo_color if m != null else Color.BLACK
+	return _back_color if _reveal_p >= 0.5 else _front_color
 
 func albedo_texture() -> Texture2D:
-	var m := _display_material()
-	return m.albedo_texture if m != null else null
+	return _display_texture()
 
 ## 当前是否有边缘发光，及其基色（rgb；a 为 0/1 表示开关）。
 func has_glow() -> bool:
@@ -861,10 +935,8 @@ func glow_color() -> Color:
 
 ## 当前是否使用卡背贴图（未知牌）。
 func has_back_texture() -> bool:
-	var m := _display_material()
-	return m != null and m.albedo_texture != null and _display_is_back()
+	return _display_texture() != null and _display_is_back()
 
 ## 当前是否使用真实牌面贴图（已知牌且贴图可用）。
 func has_face_texture() -> bool:
-	var m := _display_material()
-	return m != null and m.albedo_texture != null and not _display_is_back()
+	return _display_texture() != null and not _display_is_back()
