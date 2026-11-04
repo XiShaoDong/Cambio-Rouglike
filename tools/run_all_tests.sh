@@ -135,6 +135,7 @@ run_single "hint"       res://tests/verify_hint.tscn
 run_single "hint_hud"   res://tests/verify_hint_hud.tscn
 run_single "slap_burst" res://tests/verify_slap_burst.tscn
 run_single "deck_back"  res://tests/verify_deck_back.tscn
+run_single "card_tilt"  res://tests/verify_card_tilt_math.tscn
 
 if [ "$QUICK" -eq 1 ]; then
 	say ""
