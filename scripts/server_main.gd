@@ -118,11 +118,12 @@ func _on_pool_heartbeat() -> void:
 	if _pool.code.is_empty():
 		re_register.call()
 		return
-	_pool_dc.heartbeat(_pool.code, func(ok: bool, data: Dictionary):
+	var on_hb := func(ok: bool, data: Dictionary):
 		if ok:
 			return
 		var err := str(data.get("error", ""))
 		if err == "ROOM_NOT_FOUND":
 			re_register.call()
 		else:
-			print("[KONG] pool heartbeat warning: %s" % err))
+			print("[KONG] pool heartbeat warning: %s" % err)
+	_pool_dc.heartbeat(_pool.code, on_hb, GameState.players.size())

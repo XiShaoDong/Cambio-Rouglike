@@ -32,8 +32,11 @@ func allocate_room(cb: Callable) -> void:
 func join_room(code: String, cb: Callable) -> void:
 	_post("/join_room", {"code": code.strip_edges().to_upper()}, cb)
 
-func heartbeat(code: String, cb := Callable()) -> void:
-	_post("/heartbeat", {"code": code}, cb)
+func heartbeat(code: String, cb := Callable(), players := -1) -> void:
+	var body := {"code": code}
+	if players >= 0:
+		body["players"] = players
+	_post("/heartbeat", body, cb)
 
 func close_room(code: String, cb := Callable()) -> void:
 	_post("/close_room", {"code": code}, cb)

@@ -116,6 +116,27 @@ def test_pool_stats():
     _ok("stats 计数", st["rooms"] == 3 and st["idle"] == 2 and st["busy"] == 1)
 
 
+def test_empty_room_reaped():
+    s = DirectoryStore(ttl=10**9, hb_timeout=10**9)
+    c = s.create("1.1.1.1", 7007, "dedicated", 4, now=1000, state="idle")
+    r = s.allocate(now=1001)
+    _ok("分配后 join 变 in_use", s.join(c, now=1002) is not None)
+    s.heartbeat(c, players=0, now=1003)
+    _ok("in_use 且 0 玩家：120s 内不回收", s.allocate(now=1122) is None)
+    r2 = s.allocate(now=1124)
+    _ok("0 玩家超 120s → 回 idle 可复用（码不变）", r2 is not None and r2["code"] == c)
+
+
+def test_players_reset_empty_timer():
+    s = DirectoryStore(ttl=10**9, hb_timeout=10**9)
+    c = s.create("1.1.1.1", 7007, "dedicated", 4, now=1000, state="idle")
+    s.allocate(now=1001)
+    s.join(c, now=1002)
+    s.heartbeat(c, players=0, now=1003)
+    s.heartbeat(c, players=2, now=1050)
+    _ok("有玩家后计时清零", s.allocate(now=1200) is None)
+
+
 def test_loopback_not_limited():
     from directory import Handler
     _ok("回环不限速", not Handler._should_limit("127.0.0.1") and not Handler._should_limit("::1"))
@@ -134,6 +155,8 @@ def main():
     test_pool_rotate_code()
     test_pool_stats()
     test_loopback_not_limited()
+    test_empty_room_reaped()
+    test_players_reset_empty_timer()
     total = _checks
     passed = _checks - _fail
     print("=== DIRECTORY RESULT: %d/%d passed%s ===" % (passed, total, " (FAILURES!)" if _fail else ""))
