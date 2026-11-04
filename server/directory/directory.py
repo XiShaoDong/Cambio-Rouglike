@@ -28,6 +28,7 @@ IDLE = "idle"               # 池实例：可被分配，不可加入
 RESERVED = "reserved"       # 已被某次创建占用，等玩家连入
 IN_USE = "in_use"           # 正常房间
 RESERVE_TIMEOUT = 30        # 预约超时（秒）：超时无人连入则回 idle（码不变）
+EMPTY_TIMEOUT = 120         # in_use 但 0 在线玩家超时（秒）→ 回 idle 复用
 DEFAULT_TTL = 1800          # 码 TTL（秒）= 30min：仅限制"用码加入"，与房间存活/重连无关
 DEFAULT_HB_TIMEOUT = 30     # 心跳超时（秒）：宿主停跳即视为失效
 DEFAULT_RATE = 10           # 每 IP 窗口内允许的请求数
@@ -37,10 +38,12 @@ RATE_WINDOW = 60            # 限速窗口（秒）
 class DirectoryStore:
     """内存房间目录（纯逻辑，可注入 now 便于单测；线程安全）。"""
 
-    def __init__(self, ttl=DEFAULT_TTL, hb_timeout=DEFAULT_HB_TIMEOUT, reserve_timeout=RESERVE_TIMEOUT):
+    def __init__(self, ttl=DEFAULT_TTL, hb_timeout=DEFAULT_HB_TIMEOUT, reserve_timeout=RESERVE_TIMEOUT,
+                 empty_timeout=EMPTY_TIMEOUT):
         self.ttl = ttl
         self.hb_timeout = hb_timeout
         self.reserve_timeout = reserve_timeout
+        self.empty_timeout = empty_timeout
         self._rooms = {}  # code -> {host, port, mode, max_players, created, last_seen}
         self._lock = threading.Lock()
 
@@ -62,6 +65,12 @@ class DirectoryStore:
             if r["state"] == RESERVED and now - r["reserved_at"] > self.reserve_timeout:
                 r["state"] = IDLE
                 r["reserved_at"] = 0
+            elif (r["state"] == IN_USE and r["empty_since"] > 0
+                  and now - r["empty_since"] > self.empty_timeout):
+                # 连接失败/全部掉线：占着 in_use 但没玩家 → 回池复用（码不变）
+                r["state"] = IDLE
+                r["reserved_at"] = 0
+                r["empty_since"] = 0
         return removed
 
     def create(self, host, port, mode, max_players, now=None, code=None, state=IN_USE):
@@ -86,6 +95,8 @@ class DirectoryStore:
                 "last_seen": now,
                 "reserved_at": 0,
                 "last_alloc": 0,
+                "players": 0,
+                "empty_since": 0,
             }
             return code
 
@@ -127,9 +138,10 @@ class DirectoryStore:
                 return None
             r["state"] = IN_USE
             r["reserved_at"] = 0
+            r["empty_since"] = 0
             return {"host": r["host"], "port": r["port"], "mode": r["mode"]}
 
-    def heartbeat(self, code, now=None):
+    def heartbeat(self, code, players=None, now=None):
         now = time.time() if now is None else now
         with self._lock:
             self.sweep(now)
@@ -138,6 +150,17 @@ class DirectoryStore:
                 return False
             r["last_seen"] = now
             r["created"] = now  # 心跳续期：只要宿主活着，码就不因 TTL 过期
+            if players is not None:
+                r["players"] = max(0, int(players))
+                if r["players"] == 0:
+                    if r["empty_since"] == 0:
+                        r["empty_since"] = now
+                else:
+                    r["empty_since"] = 0
+                    # 直连（重连）进来的房间可能仍是 idle：有玩家即视为占用，避免被再次分配。
+                    if r["state"] == IDLE:
+                        r["state"] = IN_USE
+                        r["reserved_at"] = 0
             return True
 
     def close(self, code):
@@ -241,7 +264,9 @@ class Handler(BaseHTTPRequestHandler):
             r = self.store.join(str(data.get("code", "")))
             self._json(r if r is not None else {"error": "ROOM_NOT_FOUND"})
         elif path == "/heartbeat":
-            ok = self.store.heartbeat(str(data.get("code", "")))
+            players = data.get("players")
+            players = None if players is None else int(players)
+            ok = self.store.heartbeat(str(data.get("code", "")), players=players)
             self._json({"ok": ok, "error": None if ok else "ROOM_NOT_FOUND"})
         elif path == "/close_room":
             self._json({"ok": self.store.close(str(data.get("code", "")))})
@@ -256,11 +281,13 @@ def main():
     ap.add_argument("--heartbeat-timeout", type=int, default=DEFAULT_HB_TIMEOUT)
     ap.add_argument("--rate", type=int, default=DEFAULT_RATE)
     ap.add_argument("--reserve-timeout", type=int, default=RESERVE_TIMEOUT)
+    ap.add_argument("--empty-timeout", type=int, default=EMPTY_TIMEOUT)
     ap.add_argument("--advertise-host", default="", help="同机部署时对外广播的公网 IP（源 IP 为回环时使用）")
     args = ap.parse_args()
 
     Handler.store = DirectoryStore(ttl=args.ttl, hb_timeout=args.heartbeat_timeout,
-                                   reserve_timeout=args.reserve_timeout)
+                                   reserve_timeout=args.reserve_timeout,
+                                   empty_timeout=args.empty_timeout)
     Handler.limiter = RateLimiter(limit=args.rate)
     Handler.advertise_host = args.advertise_host
     srv = ThreadingHTTPServer(("0.0.0.0", args.port), Handler)

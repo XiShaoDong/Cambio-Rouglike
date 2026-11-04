@@ -110,6 +110,7 @@ var state_revision := 0
 var action_history: Dictionary = {}
 var last_seen_revision := -1
 var _registered_token := ""
+var room_code := ""  # 当前房间短码（目录分配；由 server_main / 房主写入，随大厅快照下发）
 var local_account_id := ""  # P3a：本机持久账号 id（由客户端在注册时带上；空=匿名）
 var remote_looks: Dictionary = {}  # {seat: Vector3} 各玩家世界注视点（gaze target，纯表现层，不入快照）
 var remote_zoom: Dictionary = {}   # {seat: bool} 各玩家是否处于放大（眼睛小眼），纯表现层
@@ -2829,6 +2830,7 @@ func _lobby_snapshot(viewer_seat := -1) -> Dictionary:
 		"host_id": host_seat,
 		"room_host": host_seat,
 		"your_id": viewer_seat,
+		"room_code": room_code,
 		"min_players": KongRules.MIN_PLAYERS,
 		"max_players": KongRules.MAX_PLAYERS,
 		"match_limit": int(run_state.get("match_limit", KongRules.DEFAULT_MATCH_LIMIT)),

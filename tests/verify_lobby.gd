@@ -61,6 +61,10 @@ func _test_snapshot_fields() -> void:
 	_check("snapshot your_id", int(snap.get("your_id", -1)) == 1)
 	_check("snapshot room_host", int(snap.get("room_host", -1)) == 0)
 	_check("snapshot host_id == room_host", int(snap.get("host_id", -1)) == int(snap.get("room_host", -2)))
+	GameState.room_code = "K7X2Q9"
+	snap = GameState._lobby_snapshot(1)
+	_check("snapshot room_code（重连/加入者也能显示房间码）", str(snap.get("room_code", "")) == "K7X2Q9")
+	GameState.room_code = ""
 
 func _test_non_lobby_rejected() -> void:
 	_setup_two()

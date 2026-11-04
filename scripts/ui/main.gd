@@ -1495,6 +1495,7 @@ func _on_directory_host_started(_profile: Dictionary) -> void:
 		func(ok: bool, data: Dictionary):
 			if ok and data.has("code"):
 				room_code = str(data["code"])
+				GameState.room_code = room_code
 				_dir_hb_timer.start()
 				lobby.refresh_share()
 				_show_toast("房间码：%s（发给朋友）" % room_code)

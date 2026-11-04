@@ -1792,6 +1792,8 @@ func update_lobby(lobby: Dictionary) -> void:
 	var your_id: int = int(lobby.get("your_id", -1))
 	var is_host: bool = your_id == int(lobby.get("room_host", 0))
 	var entries: Array = lobby.get("players", [])
+	if not str(lobby.get("room_code", "")).is_empty():
+		main.room_code = str(lobby.get("room_code", ""))
 	var maxp := int(lobby.get("max_players", KongRules.MAX_PLAYERS))
 	_header_label.text = "KONG · LAN MVP" if _wide_active else "房间大厅"
 	if _header_room_code != null:
@@ -1871,6 +1873,9 @@ func _all_ready(lobby: Dictionary) -> bool:
 	return need >= 1
 
 func _share_text() -> String:
+	var snap_code := str(main.latest_lobby.get("room_code", ""))
+	if not snap_code.is_empty():
+		return snap_code
 	if not str(main.room_code).is_empty():
 		return str(main.room_code)
 	var port: int = main._entered_port()
