@@ -4,12 +4,12 @@ extends Control
 ## 每张牌有**固定槽位**（按 A..K 顺序），只在对应格出现（未出现则留空）。
 ## 纯展示层：数据来自快照 `discard_history`（公开信息）。红 Joker 入 ♥ 行、黑 Joker 入 ♠ 行。
 
-const CARD_SIZE := Vector2(46, 64)
-const STEP_FRAC := 0.62        # 相邻槽位间距（卡宽比例；越大越不遮挡）
-const ROW_GAP := 24.0          # 行间距
-const ARC := 6.0               # 扇形弧度（中点抬高）
+const CARD_SIZE := Vector2(64, 90)
+const STEP_FRAC := 0.94        # 相邻槽位间距（卡宽比例；越大越不遮挡）
+const ROW_GAP := 30.0          # 行间距
+const ARC := 8.0               # 扇形弧度（中点抬高）
 const TILT_DEG := 2.5          # 两端最大倾角
-const X0 := 46.0               # 行首（让开行标签）
+const X0 := 44.0               # 行首（让开行标签）
 const ROW_SUITS := ["♠", "♥", "♣", "♦"]
 const SUIT_LABEL := {"♠": "黑桃", "♥": "红桃", "♣": "梅花", "♦": "方片"}
 const RANK_ORDER := ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "JOKER"]
@@ -70,7 +70,7 @@ func _layout_row(suit: String, by_rank: Dictionary, y: float) -> float:
 	var label := Label.new()
 	label.text = suit
 	label.add_theme_color_override("font_color", UITheme.color("hud_text_muted"))
-	label.add_theme_font_size_override("font_size", 14)
+	label.add_theme_font_size_override("font_size", 16)
 	label.position = Vector2(0.0, y + CARD_SIZE.y * 0.5 - 8.0)
 	add_child(label)
 	var step := CARD_SIZE.x * STEP_FRAC

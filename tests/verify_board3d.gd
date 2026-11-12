@@ -26,6 +26,7 @@ func _run() -> void:
 	await _test_ready_click()
 	await _test_main_routing()
 	await _test_interactive_at()
+	await _test_board_no_hover_overlay()
 
 ## 3D 开局记忆：Ready 在提示板上；提示板与模态板同锚点（贴手牌上方），对准后准星可点到。
 func _test_ready_click() -> void:
@@ -293,6 +294,9 @@ func _test_main_routing() -> void:
 	var viewer: int = int(main.latest_state.get("viewer_id", 0))
 	var seat_pos: Vector3 = main.table3d.seat_world(viewer)
 	var anchor: Vector3 = Table3dLayout.board_depth_pos(seat_pos, float(cm.get("BOARD_DEPTH", 0.0)), float(cm.get("BOARD_TABLE_HALF", 0.0)))
+	var outward := Vector3(seat_pos.x, 0.0, seat_pos.z)
+	if outward.length_squared() > 0.000001:
+		anchor += outward.normalized() * float(cm.get("BOARD_FORWARD", 0.0))
 	var bp: Vector3 = main.board3d.global_position
 	var bh: float = main.board3d.world_size().y
 	_check("模态板 XZ 在手牌/座位深度锚点", anchor.length_squared() > 0.0001 and absf(bp.x - anchor.x) < 0.05 and absf(bp.z - anchor.z) < 0.05)
@@ -350,6 +354,32 @@ class KeyCatcher extends Control:
 		if event is InputEventKey:
 			events.append(event.keycode)
 
+
+## 看板拾取对象不应被牌桌 hover 叠灰（否则整块板 + 光锥/地面辉光都会被盖住）。
+func _test_board_no_hover_overlay() -> void:
+	# 不挂树：只测 _apply_hover 的守卫，避免 Table3dView._ready 去 bind 场景。
+	var view := Table3dView.new()
+	var area := Area3D.new()
+	area.set_meta("pick", {"kind": "board"})
+	var mesh := MeshInstance3D.new()
+	mesh.mesh = BoxMesh.new()
+	area.add_child(mesh)
+	add_child(area)
+	view.call("_apply_hover", area, true)
+	_check("看板 pick 不叠加 hover 材质", mesh.material_overlay == null)
+
+	var card_area := Area3D.new()
+	card_area.set_meta("pick", {"kind": "slot", "seat": 0, "slot": 0})
+	var card_mesh := MeshInstance3D.new()
+	card_mesh.mesh = BoxMesh.new()
+	card_area.add_child(card_mesh)
+	add_child(card_area)
+	view.call("_apply_hover", card_area, true)
+	_check("普通拾取对象仍显示 hover 材质", card_mesh.material_overlay != null)
+
+	area.queue_free()
+	card_area.queue_free()
+	view.queue_free()
 
 ## 手册页部分穿透：仅带 meta("board_interactive") 的控件处才"接管点击"。
 func _test_interactive_at() -> void:

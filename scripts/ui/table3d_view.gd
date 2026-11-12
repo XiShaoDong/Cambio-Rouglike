@@ -1458,9 +1458,12 @@ func update_noses(remote_nose: Dictionary, local_target: Vector3 = Vector3.ZERO)
 func _apply_hover(collider, on: bool) -> void:
 	if collider == null or not is_instance_valid(collider):
 		return
-	# 大牌（pending）只用于 hover 解释气泡，不显示虚线边框。
-	if collider.has_meta("pick") and str((collider.get_meta("pick") as Dictionary).get("kind", "")) == "pending":
-		return
+	if collider.has_meta("pick"):
+		var kind := str((collider.get_meta("pick") as Dictionary).get("kind", ""))
+		# 大牌（pending）只用于 hover 解释气泡，不显示虚线边框。
+		# 全息看板（board）不是牌桌对象：不要给它整块叠灰/描边（会连光锥、地面辉光一起被盖住）。
+		if kind == "pending" or kind == "board":
+			return
 	var parent = (collider as Node).get_parent()
 	if parent == null or not is_instance_valid(parent):
 		return

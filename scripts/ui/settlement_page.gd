@@ -3,8 +3,8 @@ extends Control
 ## 结算弹层：居中排名窗口 + 同步轮算分动画（Balatro 式）+ 冠军特效。
 ## 场景实体承载静态骨架（scenes/ui/settlement_page.tscn），脚本负责填动态排名行、主题样式、标题、动画。
 
-const ROW_H := 46
-const ROW_W := 520
+const ROW_H := 58
+const ROW_W := 760
 const FLIP_STEP := 0.35
 const ROUND_DELAY := 0.55
 const RESORT_DURATION := 0.35
@@ -41,25 +41,32 @@ func setup(model: Dictionary, is_host: bool, match_number: int,
 func _bind_ui(match_number: int, match_limit := 0) -> void:
 	var center: CenterContainer = get_node("Center")
 	var panel: PanelContainer = center.get_node("Panel")
-	panel.custom_minimum_size = Vector2(600, 0)
+	panel.custom_minimum_size = Vector2(840, 0)
 	panel.add_theme_stylebox_override("panel", _panel_style())
 	_title = get_node("Center/Panel/VBox/Title")
 	if match_limit > 0:
 		_title.text = "结算 · 第 %d / %d 局" % [match_number, match_limit]
 	else:
 		_title.text = "结算 · 第 %d 局" % match_number
-	_title.add_theme_font_size_override("font_size", 22)
+	_title.add_theme_font_size_override("font_size", 26)
+	_title.custom_minimum_size = Vector2(0, 36)
 	_title.add_theme_color_override("font_color", UITheme.color("accent_focus"))
+	var vbox: VBoxContainer = get_node("Center/Panel/VBox")
+	vbox.add_theme_constant_override("separation", 14)
 	_rank_area = get_node("Center/Panel/VBox/RankingArea")
 	_rank_area.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	_footer = get_node("Center/Panel/VBox/Footer")
+	_footer.custom_minimum_size = Vector2(ROW_W, 56)
 	var status_lbl: Label = get_node("Center/Panel/VBox/StatusLabel")
 	status_lbl.add_theme_color_override("font_color", UITheme.color("text_secondary"))
+	status_lbl.add_theme_font_size_override("font_size", 16)
 	var econ_lbl: Label = get_node("Center/Panel/VBox/EconomyLabel")
 	econ_lbl.add_theme_color_override("font_color", UITheme.color("currency"))
+	econ_lbl.add_theme_font_size_override("font_size", 16)
 	var series_title: Label = get_node_or_null("Center/Panel/VBox/SeriesBox/SeriesTitle")
 	if series_title != null:
 		series_title.add_theme_color_override("font_color", UITheme.color("currency"))
+		series_title.add_theme_font_size_override("font_size", 20)
 
 	var n: int = _model.layout_order.size()
 	_rank_area.custom_minimum_size = Vector2(ROW_W, n * ROW_H)
@@ -81,35 +88,40 @@ func _make_row(seat: int, index: int) -> Control:
 	bg.add_theme_stylebox_override("panel", UIStyle.row("normal"))
 	row.add_child(bg)
 
+	var row_margin := MarginContainer.new()
+	row_margin.name = "Margin"
+	row_margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	row_margin.add_theme_constant_override("margin_left", 16)
+	row_margin.add_theme_constant_override("margin_right", 16)
+	row.add_child(row_margin)
 	var hbox := HBoxContainer.new()
-	hbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	row.add_child(hbox)
+	row_margin.add_child(hbox)
 
 	var rank_lbl := Label.new()
-	rank_lbl.custom_minimum_size = Vector2(44, ROW_H)
+	rank_lbl.custom_minimum_size = Vector2(56, ROW_H)
 	rank_lbl.text = str(index + 1)
-	rank_lbl.add_theme_font_size_override("font_size", 18)
+	rank_lbl.add_theme_font_size_override("font_size", 22)
 	rank_lbl.add_theme_color_override("font_color", UITheme.color("text_secondary"))
 	rank_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	hbox.add_child(rank_lbl)
 
 	var name_lbl := Label.new()
-	name_lbl.custom_minimum_size = Vector2(130, ROW_H)
-	name_lbl.add_theme_font_size_override("font_size", 16)
+	name_lbl.custom_minimum_size = Vector2(200, ROW_H)
+	name_lbl.add_theme_font_size_override("font_size", 20)
 	name_lbl.add_theme_color_override("font_color", UITheme.color("text_primary"))
 	name_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	hbox.add_child(name_lbl)
 
 	var cards_box := HBoxContainer.new()
 	cards_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	cards_box.add_theme_constant_override("separation", 6)
+	cards_box.add_theme_constant_override("separation", 8)
 	cards_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hbox.add_child(cards_box)
 
 	var total_lbl := Label.new()
-	total_lbl.custom_minimum_size = Vector2(70, ROW_H)
+	total_lbl.custom_minimum_size = Vector2(90, ROW_H)
 	total_lbl.text = "0"
-	total_lbl.add_theme_font_size_override("font_size", 18)
+	total_lbl.add_theme_font_size_override("font_size", 22)
 	total_lbl.add_theme_color_override("font_color", UITheme.color("accent_focus"))
 	total_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	total_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -119,7 +131,7 @@ func _make_row(seat: int, index: int) -> Control:
 	return row
 
 func _panel_style() -> StyleBoxFlat:
-	return UIStyle.board(20, true)
+	return UIStyle.board(28, true)
 
 func _run_sequence() -> void:
 	for round in _model.rounds:
@@ -157,26 +169,26 @@ func _reveal_flip(seat: int, slot: int, flip: Dictionary, delay: float) -> void:
 
 func _make_card_chip(rank: String, suit: String) -> PanelContainer:
 	var chip := PanelContainer.new()
-	chip.custom_minimum_size = Vector2(30, 38)
-	chip.size = Vector2(30, 38)
+	chip.custom_minimum_size = Vector2(38, 50)
+	chip.size = Vector2(38, 50)
 	chip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var style := StyleBoxFlat.new()
 	style.bg_color = UITheme.color("card_face_bg")
 	style.border_color = UITheme.color("card_border")
 	style.set_border_width_all(1)
-	style.set_corner_radius_all(5)
-	style.set_content_margin_all(2)
+	style.set_corner_radius_all(6)
+	style.set_content_margin_all(3)
 	chip.add_theme_stylebox_override("panel", style)
 	var lbl := Label.new()
 	if rank == "JOKER":
 		lbl.text = "JK"
-		lbl.add_theme_font_size_override("font_size", 13)
+		lbl.add_theme_font_size_override("font_size", 16)
 		lbl.add_theme_color_override("font_color",
 			UITheme.color("card_rank_red") if suit == "red" else UITheme.color("card_rank_black"))
 	else:
 		lbl.text = "%s%s" % [rank, suit]
-		lbl.add_theme_font_size_override("font_size", 12)
+		lbl.add_theme_font_size_override("font_size", 15)
 		lbl.add_theme_color_override("font_color",
 			UITheme.color("card_rank_red") if suit in ["♥", "♦"] else UITheme.color("card_rank_black"))
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -234,7 +246,7 @@ func _show_series_summary(series: Dictionary) -> void:
 		var entry: Dictionary = ranking[index]
 		var row := Label.new()
 		row.text = "%d. %s　胜场 %d · 货币 %d" % [index + 1, str(entry.name), int(entry.wins), int(entry.currency)]
-		row.add_theme_font_size_override("font_size", 15)
+		row.add_theme_font_size_override("font_size", 16)
 		row.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		row.add_theme_color_override("font_color",
 			UITheme.color("accent_focus") if index == 0 else UITheme.color("text_secondary"))
@@ -273,6 +285,8 @@ func _show_footer() -> void:
 	if _is_host:
 		var exit := Button.new()
 		exit.text = "回到等待房间"
+		exit.custom_minimum_size = Vector2(240, 52)
+		exit.add_theme_font_size_override("font_size", 18)
 		exit.pressed.connect(func() -> void:
 			if _on_abort.is_valid():
 				_on_abort.call())
@@ -281,6 +295,7 @@ func _show_footer() -> void:
 	else:
 		var wait := Label.new()
 		wait.text = "系列赛结束 · 等待房主回到大厅…" if series_done else "等待进入商店…"
+		wait.add_theme_font_size_override("font_size", 16)
 		wait.add_theme_color_override("font_color", UITheme.color("text_secondary"))
 		box.add_child(wait)
 	status.visible = true

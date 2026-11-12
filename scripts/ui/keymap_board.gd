@@ -9,11 +9,12 @@ signal changed()
 
 const CAPTURE_TEXT := "按键中…"
 const RESERVED_TEXT := "保留键，不可绑定"
-const KEY_COL_W := 72.0
-const LABEL_COL_W := 70.0
-const DESC_COL_W := 180.0
-const STATUS_COL_W := 110.0
-const ROW_H := 38.0
+const KEY_COL_W := 90.0
+const LABEL_COL_W := 90.0
+const DESC_COL_W := 430.0
+const STATUS_COL_W := 170.0
+const ROW_H := 64.0
+const ROW_PAD := 14
 
 var _pending: Dictionary = {}
 var _baseline: Dictionary = {}
@@ -54,8 +55,9 @@ func setup(current_map: Dictionary, _reserved: Array = []) -> void:
 	_save_btn = Button.new()
 	_save_btn.name = "SaveButton"
 	_save_btn.text = "保存"
-	_save_btn.custom_minimum_size = Vector2(140, 40)
-	_save_btn.add_theme_font_size_override("font_size", 16)
+	_save_btn.custom_minimum_size = Vector2(200, 50)
+	_save_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_save_btn.add_theme_font_size_override("font_size", 18)
 	_save_btn.set_meta("board_interactive", true)
 	UIStyle.apply_primary(_save_btn)
 	_save_btn.disabled = true
@@ -63,7 +65,7 @@ func setup(current_map: Dictionary, _reserved: Array = []) -> void:
 	vb.add_child(_save_btn)
 	custom_minimum_size = vb.get_combined_minimum_size()
 
-func _make_header() -> HBoxContainer:
+func _make_header() -> Control:
 	var head := HBoxContainer.new()
 	head.name = "Header"
 	head.add_theme_constant_override("separation", 8)
@@ -73,14 +75,20 @@ func _make_header() -> HBoxContainer:
 	head.add_child(_head_cell("原始", KEY_COL_W))
 	head.add_child(_head_cell("新按键", KEY_COL_W))
 	head.add_child(_head_cell("状态", STATUS_COL_W))
-	return head
+	var margin := MarginContainer.new()
+	margin.name = "HeaderWrap"
+	margin.add_theme_constant_override("margin_left", ROW_PAD)
+	margin.add_theme_constant_override("margin_right", ROW_PAD)
+	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	margin.add_child(head)
+	return margin
 
 func _head_cell(text: String, width: float) -> Label:
 	var lbl := Label.new()
 	lbl.text = text
 	lbl.custom_minimum_size = Vector2(width, 0)
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	lbl.add_theme_font_size_override("font_size", 12)
+	lbl.add_theme_font_size_override("font_size", 14)
 	lbl.add_theme_color_override("font_color", UITheme.color("hud_text_muted"))
 	return lbl
 
@@ -95,16 +103,23 @@ func _make_row(id: String, def: Dictionary) -> PanelContainer:
 	_row_panels[id] = wrap
 	_row_states[id] = "normal"
 
+	var row_margin := MarginContainer.new()
+	row_margin.name = "RowMargin_" + id
+	row_margin.add_theme_constant_override("margin_left", ROW_PAD)
+	row_margin.add_theme_constant_override("margin_right", ROW_PAD)
+	row_margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	wrap.add_child(row_margin)
+
 	var row := HBoxContainer.new()
 	row.name = "Row_" + id
 	row.add_theme_constant_override("separation", 8)
 	row.mouse_filter = Control.MOUSE_FILTER_PASS
-	wrap.add_child(row)
+	row_margin.add_child(row)
 
 	var l := Label.new()
 	l.text = str(def.get("label", id))
 	l.custom_minimum_size = Vector2(LABEL_COL_W, 0)
-	l.add_theme_font_size_override("font_size", 14)
+	l.add_theme_font_size_override("font_size", 18)
 	l.add_theme_color_override("font_color", UITheme.color("text_primary"))
 	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -114,7 +129,7 @@ func _make_row(id: String, def: Dictionary) -> PanelContainer:
 	var d := Label.new()
 	d.text = str(def.get("desc", ""))
 	d.custom_minimum_size = Vector2(DESC_COL_W, 0)
-	d.add_theme_font_size_override("font_size", 12)
+	d.add_theme_font_size_override("font_size", 15)
 	d.add_theme_color_override("font_color", UITheme.color("hud_text_muted"))
 	d.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	d.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -123,9 +138,9 @@ func _make_row(id: String, def: Dictionary) -> PanelContainer:
 	row.add_child(d)
 
 	# 左：原始默认键（只读参考，变暗、不可点）
-	var dchip := KeyHintPanel.make_chip(OS.get_keycode_string(int(def.get("default", 0))), 13)
+	var dchip := KeyHintPanel.make_chip(OS.get_keycode_string(int(def.get("default", 0))), 16)
 	dchip.name = "Default"
-	dchip.custom_minimum_size = Vector2(KEY_COL_W, 26)
+	dchip.custom_minimum_size = Vector2(KEY_COL_W, 34)
 	dchip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	dchip.modulate = Color(1, 1, 1, 0.55)
 	var dkey: Label = dchip.get_node_or_null("Key")
@@ -137,8 +152,8 @@ func _make_row(id: String, def: Dictionary) -> PanelContainer:
 	var chip := Button.new()
 	chip.name = "Chip"
 	chip.text = OS.get_keycode_string(int(_pending.get(id, 0)))
-	chip.custom_minimum_size = Vector2(KEY_COL_W, 26)
-	chip.add_theme_font_size_override("font_size", 13)
+	chip.custom_minimum_size = Vector2(KEY_COL_W, 34)
+	chip.add_theme_font_size_override("font_size", 16)
 	chip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	chip.set_meta("board_interactive", true)
 	UIStyle.apply_chip_button(chip, false)
@@ -148,7 +163,7 @@ func _make_row(id: String, def: Dictionary) -> PanelContainer:
 	var status := Label.new()
 	status.name = "Status"
 	status.custom_minimum_size = Vector2(STATUS_COL_W, 0)
-	status.add_theme_font_size_override("font_size", 11)
+	status.add_theme_font_size_override("font_size", 13)
 	status.add_theme_color_override("font_color", UITheme.color("danger_text"))
 	status.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	status.size_flags_vertical = Control.SIZE_SHRINK_CENTER

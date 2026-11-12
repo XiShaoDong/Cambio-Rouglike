@@ -5,9 +5,9 @@ extends Control
 ## - Stats：弃牌堆出现过的牌，4 行花色扇形展开（`StatsBoard`）。
 ## 纯展示，无规则交互。Tab 打开手册页、S 打开 Stats 页、Esc 关闭。
 
-const COL_RANK := 72.0
-const COL_SCORE := 72.0
-const COL_POWER := 360.0
+const COL_RANK := 100.0
+const COL_SCORE := 100.0
+const COL_POWER := 720.0
 const TAB_MANUAL := 0
 const TAB_STATS := 1
 const TAB_KEYS := 2
@@ -102,8 +102,9 @@ func _build_grid() -> void:
 		_grid.remove_child(child)
 		child.queue_free()
 	_grid.columns = 3
+	_grid.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_grid.add_theme_constant_override("h_separation", 20)
-	_grid.add_theme_constant_override("v_separation", 4)
+	_grid.add_theme_constant_override("v_separation", 6)
 	_grid.add_child(_cell("牌", COL_RANK, true, true))
 	_grid.add_child(_cell("能力", COL_POWER, true, false))
 	_grid.add_child(_cell("分数", COL_SCORE, true, true))
@@ -116,15 +117,22 @@ func _build_stats() -> void:
 	var vbox: VBoxContainer = get_node("Center/Panel/VBox")
 	_stats = StatsBoard.new()
 	_stats.name = "Stats"
-	vbox.add_child(_stats)
+	var stats_wrap := CenterContainer.new()
+	stats_wrap.name = "StatsWrap"
+	stats_wrap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	stats_wrap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stats_wrap.add_child(_stats)
+	vbox.add_child(stats_wrap)
 	_stats.visible = false
 
 func _cell(text: String, width: float, header: bool, center: bool, muted := false) -> Label:
 	var lbl := Label.new()
 	lbl.text = text
 	lbl.custom_minimum_size = Vector2(width, 0)
+	lbl.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER if center else HORIZONTAL_ALIGNMENT_LEFT
-	lbl.add_theme_font_size_override("font_size", 16 if header else 14)
+	lbl.add_theme_font_size_override("font_size", 18 if header else 16)
 	var c := _muted_color() if header else (_muted_color() if muted else _text_color())
 	lbl.add_theme_color_override("font_color", c)
 	return lbl
@@ -170,7 +178,12 @@ func _build_keymap() -> void:
 	_keymap = KeymapBoard.new()
 	_keymap.name = "Keymap"
 	var vbox: VBoxContainer = get_node("Center/Panel/VBox")
-	vbox.add_child(_keymap)
+	var keys_wrap := CenterContainer.new()
+	keys_wrap.name = "KeymapWrap"
+	keys_wrap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	keys_wrap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	keys_wrap.add_child(_keymap)
+	vbox.add_child(keys_wrap)
 	_keymap.visible = false
 	_keymap.setup(KeybindModel.defaults(), KeybindModel.RESERVED)
 	_keymap.save_requested.connect(func(_m): open_confirm())

@@ -730,6 +730,7 @@ func _ensure_board() -> void:
 		board3d = Board3d.new()
 		board3d.name = "ModalBoard"
 		table3d.add_child(board3d)
+		board3d.set_ground_drop(BOARD_FLOAT_H)
 	if hint3d == null or not is_instance_valid(hint3d):
 		hint3d = Board3d.new()
 		hint3d.name = "HintBoard"
@@ -755,10 +756,14 @@ func _place_boards() -> void:
 	if hint3d != null and is_instance_valid(hint3d):
 		hint3d.global_position = _board_anchor_world(seat_pos, cam, hint3d.world_size().y)
 
-## 看板/提示板统一锚点：本机座位→桌心 BOARD_DEPTH 深度、悬浮桌面上方；无座位时回退相机→桌心连线。
+## 看板/提示板统一锚点：本机座位→桌心 BOARD_DEPTH 深度、再沿“桌心→本机座位”外推 BOARD_FORWARD
+## （靠近玩家/相机），并悬浮于桌面上方 BOARD_FLOAT_H；无座位时回退相机→桌心连线。
 func _board_anchor_world(seat_pos: Vector3, cam: Camera3D, board_h: float) -> Vector3:
 	if seat_pos.length_squared() > 0.0001:
 		var anchor := Table3dLayout.board_depth_pos(seat_pos, BOARD_DEPTH, BOARD_TABLE_HALF)
+		var outward := Vector3(seat_pos.x, 0.0, seat_pos.z)
+		if outward.length_squared() > 0.000001:
+			anchor += outward.normalized() * BOARD_FORWARD
 		return Vector3(anchor.x, Table3dLayout.TABLE_HEIGHT + BOARD_FLOAT_H + board_h * 0.5, anchor.z)
 	if cam != null:
 		var dir := Vector3(0.0, Table3dLayout.TABLE_HEIGHT, 0.0) - cam.global_position
@@ -1289,7 +1294,8 @@ const BOARD_DIST := 3.0        # 回退用：看板沿"相机→桌心"连线距
 ## 模态看板锚点（贴玩家、不靠后）：本机座位→桌心的 0..1 深度（用户 0-10 标度的 2/10）。
 const BOARD_DEPTH := 0.2
 const BOARD_TABLE_HALF := 3.8  # 牌桌半宽（scenes/ui/table3d.tscn 桌面 7.6）
-const BOARD_FLOAT_H := 2.1     # 看板底部距桌面的悬浮高度（抬高，避免贴桌面）
+const BOARD_FLOAT_H := 1.8     # 看板底部距桌面的悬浮高度（原 2.1 → 下移 0.30m）
+const BOARD_FORWARD := 0.35    # 沿“桌心→本机座位”方向外推，靠近玩家/相机（原 0 → +0.35m）
 
 const PEEK_GLOW_COLOR := Color("3ef0f7ff")  # 查看牌蓝色光晕
 const PEEK_GLOW_DURATION := 1.5

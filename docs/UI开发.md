@@ -192,7 +192,7 @@
 
 - 场景：`scenes/ui/{game_board, player_area, table3d, settlement_page, shop_panel, joker_transform_panel, manual_panel, relic_bar, card, audio_manager, hand_silhouette_2d, item_arm_hand_3d, *sandbox}.tscn`；教学 `scenes/tutorial/tutorial_3d.tscn`。
 - 资源：`assets/ui/slap_burst.svg`；卡牌 `assets/Cards/`、图集 `assets/TypeCards/`；3D 模型 `assets/3Dmodels/`、`assets/characters/source/Robot.blend`。
-- 着色器：`assets/shaders/board_holo.gdshader`、`assets/shaders/card_face_3d.gdshader`、`card_tilt.gdshader`、`table_surface.gdshader`、`bell_metal.gdshader`、`avatar_body.gdshader`、`crown_gold.gdshader`、`arm_overlay_3d.gdshader`、`deck_back_projection.gdshader`。
+- 着色器：`assets/shaders/board_holo.gdshader`、`assets/shaders/board_beam.gdshader`、`assets/shaders/card_face_3d.gdshader`、`card_tilt.gdshader`、`table_surface.gdshader`、`bell_metal.gdshader`、`avatar_body.gdshader`、`crown_gold.gdshader`、`arm_overlay_3d.gdshader`、`deck_back_projection.gdshader`。
 
 ---
 
@@ -413,9 +413,10 @@ $GODOT --headless --path . res://tests/verify_hint.tscn
 
 ### 9.3 3D 看板投影
 - `Board3d` 屏幕由 `QuadMesh` 换成 **24×16 细分 PlaneMesh**，顶点做轻微弧度。
-- 新增 `assets/shaders/board_holo.gdshader`：**圆角 SDF 发光边 + 轻微色差**；**无扫描线、无 4 根直边框**，避免移动视角时断线。
-- `set_frame_enabled` 控制发光边：模态看板开，常驻提示板关。
-- 第二批的光锥/漂浮/Tab/卡片额外阴影已回滚，不保留。
+- 新增 `assets/shaders/board_holo.gdshader`：**圆角 SDF 贴边发光 + 外发光壳 + 屏幕空间扫描线 + 轻微色差**；扫描线用 `FRAGCOORD.y`，移动视角时不会跟着面板歪斜/断线。
+- 新增 `assets/shaders/board_beam.gdshader`：看板下方交叉梯形光锥（加法混合）。
+- `Board3d` 视觉层挂 `Visual` 节点：背板投影、光锥、地面辉光、四角支架、`GPUParticles3D` 尘埃、漂浮（只动 `Visual`，根节点锚点/拾取不变；屏幕坐标换算用 `_screen.global_transform`）。
+- `set_frame_enabled` 控制发光边与全部增强层：模态看板开，常驻提示板关（只留按钮）。
 
 ### 9.4 Hover 状态
 - 新增 `scripts/ui/hover_state.gd`（纯函数）：`neutral/slap/action/valid/invalid/warning`。
@@ -437,8 +438,39 @@ $GODOT --headless --path . res://tests/verify_hint.tscn
 
 ### 9.8 未完成
 - 面板内部真实景深（分层 SubViewport / 3D 按钮）未做。
-- 光锥、尘埃、漂浮、真正 3D Tab 未保留。
+- 真正 3D Tab（带厚度/抬起）未做；当前只有扁平角标。
 - Web 客户端未做。
+
+
+### 9.9 2026-11-11 追加：看板全息增强 / 尺寸与排版
+
+#### 3D 看板全息增强
+- `board3d.gd` 新增 `Visual` 子节点承载视觉层：背板投影（软边径向暗块）、交叉光锥、地面辉光、四角 L 支架、18 粒 `GPUParticles3D` 尘埃；漂浮只动 `Visual`（±1cm，0.75 rad/s），根节点锚点与拾取盒不动。
+- `board_holo.gdshader`：保留圆角 SDF 贴边发光，新增外发光壳、屏幕空间扫描线（`FRAGCOORD.y`，转动视角不断线）、周期扫描带、色差 0.00035；`tint` alpha 0.96。
+- 新增 `assets/shaders/board_beam.gdshader`：上窄下宽梯形 + 两侧淡出 + 顶部亮/底部透明；两片交叉摆放近似体积光。
+- `set_frame_enabled(false)`（常驻提示板）同时关闭发光边与全部增强层；`set_shown` / `_sync_visible` 同步尘埃 `emitting` 与拾取盒。
+- `set_ground_drop(BOARD_FLOAT_H)` 让光锥/地面辉光对齐桌面；准星坐标换算用 `_screen.global_transform`，漂浮时点击映射仍准确。
+- 常驻提示板（Ready/条件按钮）不漂浮、不加光锥，保持只显示按钮。
+
+#### 看板锚点
+- `BOARD_FLOAT_H` `2.1 → 1.8`：整体 Y 下移 0.30m。
+- 新增 `BOARD_FORWARD` `0 → 0.35`：沿“桌心→本机座位”方向外推（靠近玩家/相机）。
+- seat0 示例（座位 `(0,0,2.4)`）：中心 X 0 / Y 4.001→3.701 / Z +2.28→+2.63；其他座位按座位径向旋转（seat1 X +0.35、seat2 Z -0.35、seat3 X -0.35），Y 统一 -0.30。
+- 提示板与模态板共用锚点，会一起移动。
+
+#### Hover 修复
+- `Table3dView._apply_hover` 跳过 `pick.kind == "board"`：看板不再被牌桌 hover 逻辑整块叠灰/描边（此前会连光锥、地面辉光一起被盖住）。
+- `Board3d.hit_viewport_coord` 把视口坐标夹到板内：拾取盒边缘命中仍归本板，不再掉回牌桌触发 hover。
+- 回归：`verify_board3d` 新增「看板 pick 不叠加 hover 材质」「普通拾取对象仍显示 hover 材质」。
+
+#### 尺寸与排版
+- 手册/Stats/按键板最小尺寸 `1000×795`，与商店板一致（`Board3d` wrap 后世界尺寸、锚点高度相同）；表格列 100/720/100，行高纵向均分，字号 18/16。
+- Stats：牌面 64×90、`STEP_FRAC 0.94`、`ROW_GAP 30`、`ARC 8`（约 890×450），行标签 16。
+- 按键：行高 64、列 90/90/430/170、行内左右 14px；字号 18/15/16/13；保存按钮 200×50。
+- 结算：面板 600→840、行 520×46→760×58、内边距 20→28、行内左右 16px；标题 26、名次/名字/总分 22/20/22、卡片 chip 38×50、状态/奖励 16、底部按钮 240×52。
+
+#### 验证
+- `verify_board3d` 72/72、`verify_manual` 74/74、`verify_keybind` 37/37、`verify_settlement` 40/40；受影响用例全部通过（上次全量 `--quick` 58/58）。
 
 ---
 
