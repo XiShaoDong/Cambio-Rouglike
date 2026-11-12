@@ -596,3 +596,33 @@ at: Board3d.detach_all (board3d.gd) ← _set_table3d(false)
 **修复**：回退分支改为中立——`set_eye_zoom(false)` / `set_talking(false)`，仍看向本机相机（カメラ方向不影响眼球）；有同步数据时继续用 `remote_zoom[seat]` / `remote_talk[seat]`。
 
 **诊断方法**：`verify_robot_avatar`「无同步席位不继承本机放大」「有同步席位只用自己的 zoom（本机放大不影响）」。
+
+## B50：看板边缘 hover 时整块看板 + 光锥/地面辉光被叠灰描边
+
+**现象**：3D 准星移到看板边缘（尤其手册/Stats 透明页或提示板拾取盒外扩区）时，整块看板变灰，连下方光锥、地面辉光一起被描出轮廓。
+
+**根因**：`Table3dView.update_hover` 把看板自身的 `Area3D`（`pick.kind="board"`）当普通牌桌拾取物；`_apply_hover` 收集 `Board3d` 根节点下**所有** `MeshInstance3D`（屏幕、光锥、地面辉光、四角支架）统一加 `material_overlay`，于是整块叠灰。边缘命中时 `Board3d.hit_viewport_coord` 因 UV 落到板外返回负坐标，`main._board_hit` 判定未命中、继续走牌桌 hover，正好命中看板拾取盒；手册/Stats 的“部分穿透”路径也会落到同一处。
+
+**修复**：① `_apply_hover` 遇到 `kind == "board"`（与 `pending` 一样）直接跳过，看板永不叠 hover 材质；② `Board3d.hit_viewport_coord` 把视口坐标夹到 `[0, size-1]`，拾取盒边缘命中也归本板，不再掉回牌桌。
+
+**诊断方法**：`verify_board3d` 新增「看板 pick 不叠加 hover 材质」「普通拾取对象仍显示 hover 材质」；全套 72/72。
+
+## B50：退出房间后再开教程，桌面出现在别的位置
+
+**现象**：加入过房间 → 退出主界面 → 开新手教程，有概率从上一局的相机视角渲染，桌面/座位看起来位移。
+
+**根因**：`scenes/ui/table3d.tscn` 的 `Camera3D` 没有 `current=true`。主对局退出 3D 时只 `set_active(false)`，Table3D 节点和相机仍留在主视口；教程再实例化第二个 Table3D 时，视口可能继续使用旧相机，教程桌面按旧相机位置渲染。
+
+**修复**：`TutorialView._ready` 挂载 Table3D 后 `camera.make_current()`；`main._set_table3d(true)` 进入 3D 时也重新 `make_current()`，保证主对局/教程各自接管视口。
+
+**诊断方法**：`verify_tutorial`「教程相机接管当前视口」（先放一个旧 Table3D，再开教程，当前相机必须是教程相机；去掉修复时该用例失败）。
+
+## B51：说话时机器人胳膊/腿大幅摆动
+
+**现象**：对局/教程中机器人说话，嘴巴动时手臂和腿也跟着明显摆动，幅度夸张。
+
+**根因**：`Robot.blend` 的 `jawOpen` 形状被导出到了整身网格（Arms 移动 4124 个顶点、Legs 3746、Body 1652）；`RobotAvatar._build` 收集所有含 `jawOpen` 的网格并设值，导致表情形变带动四肢与躯干。
+
+**修复**：`_jaw_targets` 只收集 **Face + Eyes**（保留眼睛跟随面部），`Arms/Legs/Body` 不再驱动。
+
+**诊断方法**：`verify_robot_avatar`「jawOpen 驱动 Face + Eyes（不带动手臂/腿）」。

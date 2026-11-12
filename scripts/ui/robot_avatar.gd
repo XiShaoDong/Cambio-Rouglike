@@ -130,8 +130,10 @@ func _build() -> void:
 		# 鼻根：由眼球网格 AABB 推出——两眼中间、眼球下方、靠近脸前（+Z 为脸朝向）。
 		var a: AABB = _eyes.mesh.get_aabb()
 		_nose_base_model = Vector3(0.0, a.position.y + a.size.y * 0.20, a.position.z + a.size.z * 0.70)
-	# 嘴（jawOpen）在下巴网格：收集所有含该形状的网格
-	for mesh_name in ["Face", "Body", "Arms", "Legs", "Eyes"]:
+	# 嘴（jawOpen）驱动 Face + Eyes：Eyes 的 jawOpen 让眼睛跟着面部一起动（保留原有观感）。
+	# Robot.blend 的 jawOpen 形状被导出到了整身网格；Arms/Legs/Body 不再驱动，
+	# 否则说话时胳膊和腿会被这个表情形变带着摆动（夸张）。
+	for mesh_name in ["Face", "Eyes"]:
 		var mi := _robot.get_node_or_null("Armature/Skeleton3D/" + mesh_name)
 		if mi != null and mi.mesh != null:
 			var ji := -1

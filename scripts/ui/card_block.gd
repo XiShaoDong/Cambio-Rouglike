@@ -87,6 +87,8 @@ var _glow_on := false
 var _flip_tween: Tween = null
 static var _anim_cfg: CardAnimationConfig = null
 var hover_anim_enabled := false
+## hover 抬起/倾斜幅度倍率（1=原幅度；教程里降到 0.2 减少 80%）。
+var hover_amp := 1.0
 var _hover_p := 0.0
 var _ray_local := Vector2.ZERO
 var _hover_tween: Tween = null
@@ -909,10 +911,11 @@ func _apply_hover_pose() -> void:
 	var c := CardAnimationMath.compose(
 		{"hover": _hover_p, "press": 0.0, "flip": 0.0, "land": 0.0},
 		_cfg().to_dict(), 0.0, _ray_local)
-	var rot: Vector3 = c["visual_rot_deg"]
+	var rot: Vector3 = c["visual_rot_deg"] * hover_amp
+	var pos: Vector3 = c["visual_pos"] * hover_amp
 	_visual.transform = Transform3D(
 		Basis.from_euler(Vector3(deg_to_rad(rot.x), deg_to_rad(rot.y), deg_to_rad(rot.z))),
-		c["visual_pos"])
+		pos)
 
 func _display_is_back() -> bool:
 	return _front_is_back if _reveal_p < 0.5 else _back_is_back

@@ -197,6 +197,10 @@ func _test_robot_avatar() -> void:
 	_check("reset_eyes 头回正", robot._skeleton.get_bone_global_pose(head_idx).basis.is_equal_approx(rest_head.basis))
 	# 说话：驱动 jawOpen（多正弦开合），停说归零
 	_check("存在 jawOpen 目标网格", not robot._jaw_targets.is_empty())
+	var jaw_names: Array = []
+	for pair in robot._jaw_targets:
+		jaw_names.append(str((pair[0] as Node).name))
+	_check("jawOpen 驱动 Face + Eyes（不带动手臂/腿）", jaw_names == ["Face", "Eyes"])
 	robot.set_talking(true)
 	var jaw_max := 0.0
 	for _i in 24:

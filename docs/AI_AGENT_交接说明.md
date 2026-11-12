@@ -112,7 +112,7 @@
 - **交互修复**：`Table3dView.render(..., ability_pending)` 在发起用能力后立即熄灭弃牌堆橙光；3D 中心准星改为常驻单点（不放大也显示）。
 - **验证**：`verify_card_tilt_math` 46/46、`verify_robot_avatar` 84/84、`verify_table3d` 62/62、`verify_table3d_interaction` 99/99、`verify_item_hand` 43/43、`verify_manual` 73/73；`tools/run_all_tests.sh --quick` **53/53**。
 - **文档**：本批设计/验收见 `docs/superpowers/specs/2026-10-30-card-tilt-2d-fake3d-design.md`；功能清单见 `docs/功能实现文档.md` 的 2026-10-30 批次。
-- **新手教程（2026-11-08，纯客户端本地时间线）**：主菜单「新手教程」→ `scenes/tutorial/tutorial_3d.tscn`（固定镜头 + 鼠标指针，2 人桌，预置回放 + 抽牌/替换/抢贴/Kongbaya 4 个真操作点）；`TutorialProgress` 持久化 `user://tutorial.cfg`；首局 5 条一次性轻提示。不改 `GameState`/协议/快照；测试 `verify_tutorial`。
+- **新手教程（2026-11-08，纯客户端本地时间线）**：主菜单「新手教程」→ `scenes/tutorial/tutorial_3d.tscn`（2 人桌、本地时间线）；`TutorialProgress` 持久化 `user://tutorial.cfg`；首局 5 条一次性轻提示。V2（正式准星/比赛/贴别人牌）见 §2.12。
 - **能力牌使用视觉（2026-11-08，3D + 表现层 RPC）**：点弃牌堆进入用能力后，`server_ability_start`/`receive_ability_start(seat)`（表现层 RPC，不入快照）让所有 3D 客户端立刻把 pending 大牌飞到弃牌堆并播落牌音：行动者看牌面、其他人看 `peek_hidden` 眼睛占位；`Table3dView.begin_ability_discard/clear_ability_discard` 覆盖 `render`（服务器 pending 仍在时不显示悬空大牌）。能力解析完成进入 slap（`slap_open`/pending 清空）时清除覆盖，弃牌顶显示真实牌面。只改 3D；规则/快照/2D 不变。测试 `verify_table3d`（70/70）、`verify_protocol`（53/53）。
 - **结算倒计时 + Sounds2 音效（2026-11-08，纯客户端展示层）**：普通/结算贴牌窗口都显示 3/2/1 倒计时（3 绿 `#87d9a1` / 2 黄 `#ffc857` / 1 红 `#ff6b6b`，条同色；普通窗口走空后保留 `SLAP OPEN`、只做视觉倒计时不播 countdown，结算文案 `SLAP SETTLE` 且播 countdown；正确贴牌后（含自贴，无 SLAP_EXCHANGE）短暂显示 `SLAP CLOSE` 1.5s），由 `settle_deadline_server_ms > 0` 判定（`HintHud.set_slap_state(state, window, settle)`）；`AudioManager` 新增 `card_place/card_slide(用 card-slide-8)/click(用 tech-click)/countdown/notification/slap_fail/slap_success/deal(用 card-shuffle，只播 1.8s)`（`assets/Sounds2/`，每事件 `GAIN_DB` 增益、池 6→10、countdown 独立播放器）；`main._sync_sfx_state` 接抽牌/倒计时/新局发牌 shuffle；Ready（2D/3D）、商店按钮、Q/J 交换·不交换等条件动作（`_on_action` 入口）接 `play_select`（tech-click），`card_exchange_animated` 接弃牌，`_show_private_reveal` 接贴牌成功失败（3D 看牌另补 `play_flip`），effect/bomb 接触发提示。**卡牌点击不再播 click 音**（`GameInteraction._play_select` 为空实现；UI 按钮仍保留）。不改规则/协议/快照；测试 `verify_audio_sfx`（28/28）、`verify_hint_hud`（79/79）。
 
@@ -126,6 +126,14 @@
 - **规则**：取自弃牌堆的 pending 可再次弃掉（`game_state._server_discard_draw` 放行 `source=discard`；仍禁止牌面能力；Joker 变换遗物按 R-11 保留）；`ActionModel.pending_discard_available` 两种来源 true；`main._on_pending_action` 仅 draw 进能力；弃掉后回弃牌顶、开贴牌窗口并换人。新增 `verify_discard_take_discard`。
 - **测试/设计**：`verify_hover_state` 24/24、`verify_card_tooltip` 30/30、`verify_board3d` 70/70、`--quick` 58/58；SVG `docs/superpowers/specs/2026-11-10-hud-unify-mockup-v2.svg`（F 商店 / G 默认卡牌 Info / H 投影看板 H1–H4）。
 - **未完成**：面板内部真实景深（分层 SubViewport/3D 按钮）、光锥/尘埃/真正 3D Tab、Web 客户端。
+
+### 2.12 2026-11-11 教程 V2（当前工作区，纯客户端）
+
+- **定位**：`scenes/tutorial/tutorial_3d.tscn` + `TutorialView`；本地时间线，不接网络/`GameState`。输入改为正式对局同款**鼠标捕获 + 屏幕中心准星**：移动鼠标自由环视，左键中心射线交互，`Esc` 暂停/释放鼠标；不强制移动镜头，目标用金色 glow + `TutorialPointer` 红色箭头提示。
+- **固定牌局**：玩家 `K K / 2 10`（下排开局翻转），阿岚 `Q Q Q Q`；抽 7 换 10 → 抽 9 弃掉 → 阿岚弃 2 → 贴牌比赛（阿岚手里也有 2，1.5s 后贴；玩家必须更快，失败提示并重试）→ 阿岚自己示范贴错（「我记得我也有一张 2 来着」）→ 玩家贴阿岚右下角的 Q 并选一张自己的牌交给她（SLAP_EXCHANGE）→ 阿岚 7 张结算。
+- **文件**：`tutorial_steps.gd`（固定牌序/比赛/交牌/动态结算）、`tutorial_controller.gd`（talk/interact/auto/summary + gift_slot）、`tutorial_text.gd`、`tutorial_overlay.gd`（进度/任务/对话/贴牌倒计时/暂停/完成）、`tutorial_view.gd`（准星/自由视角/比赛/自动演示/结算）、`tutorial_pointer.gd`（红色箭头）、`animalese_voice.gd`（逐字语音，`assets/animalese/`）。
+- **表现层修复**：教程 Table3D 相机 `make_current()`；主对局进 3D 也 `make_current()`（B50）；`RobotAvatar` 的 `jawOpen` 只驱动 `Face+Eyes`，`Arms/Legs/Body` 不驱动（B51，避免说话带动胳膊/腿）；教程卡牌 `hover_amp=0.2`（手牌 hover 摆幅 −80%）。
+- **测试**：`verify_tutorial` 140/140、`verify_robot_avatar` 87/87、`verify_table3d_interaction` 101/101。规则/协议/快照/服务器零改动。
 
 ## 3. 架构不变量（禁止无理由重构）
 
@@ -299,6 +307,8 @@ UI 层已拆分（main.gd 是组合根）：
 > **一键全量回归**：`tools/run_all_tests.sh`（编译检查 + 全部单进程/双实例/网络注入测试，汇总 PASS/FAIL；`--quick` 只跑单进程核心；`--include-hint` 连已知失败的 hint 一起跑；`GODOT=/path` 覆盖引擎路径）。
 
 > **2026-10-30 视觉批次**：`--quick` 全量 **53/53**；本批新增/更新的关键用例：`card_tilt` 46/46、`robot_avatar` 84/84、`table3d` 62/62、`table3d_interaction` 99/99、`item_hand` 43/43、`manual` 73/73。
+>
+> **2026-11-11 教程 V2**：`verify_tutorial` 140/140（固定牌序/中心准星命中/1.5s 贴牌比赛及重试/阿岚自动贴错/贴别人 Q/SLAP_EXCHANGE 交牌/动态结算/教程相机接管）；`verify_robot_avatar` 87/87（jawOpen 仅 Face+Eyes）；`verify_table3d_interaction` 101/101。
 
 ```bash
 # 编译检查

@@ -942,6 +942,8 @@ func _set_table3d(on: bool) -> void:
 			add_child(table3d)
 			move_child(table3d, 0)
 		table3d.set_active(true)
+		if table3d.camera != null:
+			table3d.camera.camera_node().make_current()
 		if _crosshair == null or not is_instance_valid(_crosshair):
 			_crosshair = Crosshair.new()
 			_crosshair.name = "Crosshair"

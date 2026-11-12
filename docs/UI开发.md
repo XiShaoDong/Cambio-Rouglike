@@ -171,11 +171,13 @@
 
 | 文件 | 职责 |
 | --- | --- |
-| `scenes/tutorial/tutorial_3d.tscn` / `scripts/tutorial/tutorial_view.gd` | 3D 教学局：固定镜头 + 本地时间线，**不接网络/GameState**。 |
-| `scripts/tutorial/tutorial_controller.gd` | 教学步骤机（回放 / 真操作校验 / 跳过 / 重来）。 |
-| `scripts/tutorial/tutorial_overlay.gd` | 引导层（进度、提示卡、动作按钮、继续、纠错 toast、角落菜单、总结页）。 |
-| `scripts/tutorial/tutorial_steps.gd` | 固定牌序与模拟快照（与 `HiddenInfo` 同形状，纯数据可复现）。 |
-| `scripts/tutorial/tutorial_text.gd` | 教学文案集中处。 |
+| `scenes/tutorial/tutorial_3d.tscn` / `scripts/tutorial/tutorial_view.gd` | 3D 教学局：正式对局同款鼠标捕获 + 中心准星、自由环视、红色箭头、贴牌比赛/贴别人牌；本地时间线，**不接网络/GameState**。 |
+| `scripts/tutorial/tutorial_controller.gd` | 教学步骤机（talk/interact/auto/summary；比赛/贴别人 Q/交牌 `gift_slot`；跳过/重来）。 |
+| `scripts/tutorial/tutorial_overlay.gd` | 引导层（进度、任务条、对话气泡、贴牌倒计时、纠错 toast、Esc 暂停菜单、完成卡）。 |
+| `scripts/tutorial/tutorial_steps.gd` | 固定牌序与各阶段快照（含阿岚的 2、贴牌比赛、贴别人牌、动态交牌/结算）。 |
+| `scripts/tutorial/tutorial_text.gd` | 教学文案集中处（含比赛/贴错/交牌）。 |
+| `scripts/tutorial/tutorial_pointer.gd` | 教程屏幕空间红色箭头（目标屏内悬停/屏外贴边；不移动相机）。 |
+| `scripts/tutorial/animalese_voice.gd` | 逐字语音（`assets/animalese/light`，跟随对话气泡字母播放）。 |
 
 ### 3.5 沙盒（独立场景，不影响对局）
 
@@ -438,3 +440,24 @@ $GODOT --headless --path . res://tests/verify_hint.tscn
 - 光锥、尘埃、漂浮、真正 3D Tab 未保留。
 - Web 客户端未做。
 
+---
+
+## 10. 2026-11-11 教程 V2（正式对局操作 + 贴牌比赛 / 贴别人牌）
+
+### 10.1 输入与镜头
+
+- `TutorialView` 使用正式对局同款**鼠标捕获 + 屏幕中心准星**：移动鼠标自由环视，左键按中心射线交互，`Esc` 暂停/释放鼠标。
+- 不再 `aim_at` / `lock_aim_at` 强制转镜头；目标只做金色 glow + `TutorialPointer` 红色箭头（屏内悬在目标上方、屏外贴边指向）。点错统一提示「请跟随提示」。
+- 大牌每次渲染前 `Table3dView.update_facing(current_player)`，并在 `_process` 每帧同步，保证竖立且朝向行动者。
+
+### 10.2 流程
+
+- 固定牌：玩家 `K K / 2 10`，阿岚 `Q Q Q Q`；开局先显示文字、牌仍背面，第一次点击/Enter 才 `reveal_slot_held` 翻开下排两张。
+- 抽 7 换 10 → 抽 9 弃 → 阿岚弃 2 → `slap_explain` → **贴牌比赛**：阿岚手里也有 2，1.5s 后自动贴；玩家必须更快，失败提示「只有最快翻开牌的人才可以成功贴牌哦，再试一次！」并重置重试。
+- 阿岚抽/弃 4 后自己贴她的 2（错）→ 罚到 6；`slap_other_setup` 换一张 Q 出去；`slap_other_tell` 提示右下角还有 Q；玩家贴她的 Q → `SLAP_EXCHANGE`；`slap_other_exchange` 玩家选自己的 slot0/1/3 交给她（`slap_gift`）；阿岚再贴错到 7 → 动态 `game_over_gift` 结算。
+- 教程卡牌 `hover_amp=0.2`；`RobotAvatar` 说话只驱动 `Face+Eyes`（`Arms/Legs/Body` 不驱动）。
+
+### 10.3 文件与测试
+
+- `scripts/tutorial/{tutorial_steps,tutorial_controller,tutorial_text,tutorial_overlay,tutorial_view,tutorial_pointer,animalese_voice}.gd`；`assets/animalese/light/`。
+- `verify_tutorial` **140/140**、`verify_robot_avatar` **87/87**、`verify_table3d_interaction` **101/101**。

@@ -65,6 +65,7 @@ var _viewer := 0
 var crown_ready := true   # 结算冠军音结束前先不显示皇冠
 var _sel_active := false           # 当前是否有"选择"上下文（决定 hover 边框红/绿/白）
 var _hover_state := ""             # UIStyle hover 状态（slap/action/valid/invalid/warning/neutral）
+var hover_amp := 1.0               # 卡牌 hover 抬起/倾斜幅度倍率（教程可调小）
 var _hover_slot := {}
 var _hover_ray_local := Vector2.ZERO
 var _avatar_dim_mat: StandardMaterial3D = null
@@ -630,6 +631,7 @@ func _render_seat(node: Node3D, p: Dictionary, face_all := true) -> void:
 		block.setup(display)
 		block.set_pick({"kind": "slot", "seat": int(p.id), "slot": i})
 		block.hover_anim_enabled = int(p.id) == _viewer
+		block.hover_amp = hover_amp
 		if not _card_blocks.has(int(p.id)):
 			_card_blocks[int(p.id)] = {}
 		_card_blocks[int(p.id)][i] = block
