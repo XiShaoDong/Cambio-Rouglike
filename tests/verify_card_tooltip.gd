@@ -31,7 +31,7 @@ func _test_text() -> void:
 	_check("Q 有交换说明", "选择是否交换" in CardAbilityText.text("Q"))
 	_check("Q 含约束", "不能对两个其他玩家生效" in CardAbilityText.text("Q"))
 	_check("Joker 显示名", CardAbilityText.text("JOKER").begins_with("Joker："))
-	_check("弃牌堆取得不可用能力", "只能替换" in CardAbilityText.text("9", "discard"))
+	_check("弃牌堆取得不可用牌面能力", "不能发动牌面能力" in CardAbilityText.text("9", "discard"))
 
 func _test_tooltip() -> void:
 	var tip := CardTooltip.new()
@@ -58,6 +58,14 @@ func _test_tooltip() -> void:
 	tip.show_with_note("K：无能力", "", Rect2(100, 100, 60, 80))
 	_check("note 空时隐藏", not tip.note_shown())
 	_check("note 文本清空", tip.note_text().is_empty())
+	# 状态气泡（E 区）
+	tip.show_state(HoverState.VALID, "翻看卡牌", "9 / 10：只能查看其他玩家的牌。", "点击查看，牌面仅自己可见。", Rect2(100, 100, 60, 80))
+	_check("状态气泡 VALID", tip.state() == HoverState.VALID and tip.title_text() == "翻看卡牌")
+	_check("状态气泡正文", tip.text() == "9 / 10：只能查看其他玩家的牌。")
+	_check("状态气泡固定宽度", is_equal_approx(tip.bubble_size().x, CardTooltip.FIXED_W))
+	_check("状态气泡 note", tip.state_note_text() == "点击查看，牌面仅自己可见。")
+	tip.show_state(HoverState.INVALID, "无法查看", "9 / 10 只能查看其他玩家的牌。", "", Rect2(100, 100, 60, 80))
+	_check("状态气泡 INVALID", tip.state() == HoverState.INVALID and tip.title_text() == "无法查看" and tip.state_note_text().is_empty())
 	tip.hide_tip()
 	_check("hide 双框同隐", not tip.is_shown() and not tip.note_shown() and not tip.visible)
 	tip.queue_free()

@@ -5,7 +5,7 @@ extends RefCounted
 
 static func ability(rank: String, source := "") -> String:
 	if source == "discard":
-		return "从弃牌堆取得：只能替换，不能发动能力"
+		return "从弃牌堆取得：不能发动牌面能力"
 	match rank:
 		"7", "8":
 			return "看自己一张牌"

@@ -7,10 +7,7 @@ extends Control
 
 const COL_RANK := 72.0
 const COL_SCORE := 72.0
-const COL_POWER := 300.0
-const TEXT := Color(0.10, 0.12, 0.16)
-const TEXT_MUTED := Color(0.32, 0.36, 0.42)
-const HEADER := Color(0.16, 0.20, 0.28)
+const COL_POWER := 360.0
 const TAB_MANUAL := 0
 const TAB_STATS := 1
 const TAB_KEYS := 2
@@ -34,15 +31,15 @@ func _ready() -> void:
 	_build_confirm()
 	set_tab(_tab)
 
+func _text_color() -> Color:
+	return UITheme.color("text_primary")
+
+func _muted_color() -> Color:
+	return UITheme.color("hud_text_muted")
+
 func _style_panel() -> void:
 	var panel: PanelContainer = get_node("Center/Panel")
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.90, 0.92, 0.96, 0.82)
-	style.set_corner_radius_all(16)
-	style.set_content_margin_all(24)
-	style.border_color = Color(1.0, 1.0, 1.0, 0.55)
-	style.set_border_width_all(2)
-	panel.add_theme_stylebox_override("panel", style)
+	panel.add_theme_stylebox_override("panel", UIStyle.board(20, true))
 
 func _build_tabs() -> void:
 	var vbox: VBoxContainer = get_node("Center/Panel/VBox")
@@ -83,35 +80,37 @@ func _build_tabs() -> void:
 	hint_right.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	bar.add_child(hint_right)
 	var hint: Label = get_node("Center/Panel/VBox/Hint")
-	hint.add_theme_color_override("font_color", TEXT_MUTED)
+	hint.add_theme_color_override("font_color", _muted_color())
 	hint.text = "Tab 手册 / S Stats / K 按键 / Q·E 切页 / Esc 关闭"
 
 func _tab_button(text: String) -> Button:
 	var btn := Button.new()
 	btn.text = text
 	btn.focus_mode = Control.FOCUS_NONE
-	btn.custom_minimum_size = Vector2(88.0, 0.0)
+	btn.custom_minimum_size = Vector2(96.0, 0.0)
 	btn.add_theme_font_size_override("font_size", 18)
+	UIStyle.apply_tab(btn, false)
 	btn.set_meta("board_interactive", true)
 	return btn
 
 func _build_grid() -> void:
 	var title: Label = get_node("Center/Panel/VBox/Title")
-	title.add_theme_color_override("font_color", HEADER)
+	title.add_theme_font_size_override("font_size", 22)
+	title.add_theme_color_override("font_color", _text_color())
 	_grid = get_node("Center/Panel/VBox/Grid")
 	for child in _grid.get_children():
 		_grid.remove_child(child)
 		child.queue_free()
 	_grid.columns = 3
-	_grid.add_theme_constant_override("h_separation", 28)
-	_grid.add_theme_constant_override("v_separation", 6)
+	_grid.add_theme_constant_override("h_separation", 20)
+	_grid.add_theme_constant_override("v_separation", 4)
 	_grid.add_child(_cell("牌", COL_RANK, true, true))
 	_grid.add_child(_cell("能力", COL_POWER, true, false))
 	_grid.add_child(_cell("分数", COL_SCORE, true, true))
 	for entry in ManualModel.rows():
 		_grid.add_child(_cell(str(entry.rank), COL_RANK, false, true))
-		_grid.add_child(_cell(str(entry.power), COL_POWER, false, false))
-		_grid.add_child(_cell(str(entry.score), COL_SCORE, false, true))
+		_grid.add_child(_cell(str(entry.power), COL_POWER, false, false, true))
+		_grid.add_child(_cell(str(entry.score), COL_SCORE, false, true, true))
 
 func _build_stats() -> void:
 	var vbox: VBoxContainer = get_node("Center/Panel/VBox")
@@ -120,13 +119,14 @@ func _build_stats() -> void:
 	vbox.add_child(_stats)
 	_stats.visible = false
 
-func _cell(text: String, width: float, header: bool, center: bool) -> Label:
+func _cell(text: String, width: float, header: bool, center: bool, muted := false) -> Label:
 	var lbl := Label.new()
 	lbl.text = text
 	lbl.custom_minimum_size = Vector2(width, 0)
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER if center else HORIZONTAL_ALIGNMENT_LEFT
-	lbl.add_theme_font_size_override("font_size", 20 if header else 18)
-	lbl.add_theme_color_override("font_color", HEADER if header else TEXT)
+	lbl.add_theme_font_size_override("font_size", 16 if header else 14)
+	var c := _muted_color() if header else (_muted_color() if muted else _text_color())
+	lbl.add_theme_color_override("font_color", c)
 	return lbl
 
 ## 切换页签（0=手册，1=Stats，2=按键）。
@@ -143,10 +143,13 @@ func set_tab(index: int) -> void:
 		title.text = "Stats · 弃牌堆" if _tab == TAB_STATS else ("按键映射" if _tab == TAB_KEYS else "手册")
 	if _tab_manual != null:
 		_tab_manual.disabled = _tab == TAB_MANUAL
+		UIStyle.apply_tab(_tab_manual, _tab == TAB_MANUAL)
 	if _tab_stats != null:
 		_tab_stats.disabled = _tab == TAB_STATS
+		UIStyle.apply_tab(_tab_stats, _tab == TAB_STATS)
 	if _tab_keys != null:
 		_tab_keys.disabled = _tab == TAB_KEYS
+		UIStyle.apply_tab(_tab_keys, _tab == TAB_KEYS)
 
 ## 填充 Stats 数据（弃牌历史）。
 func setup_stats(history: Array) -> void:
@@ -189,13 +192,7 @@ func _build_confirm() -> void:
 	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_confirm.add_child(center)
 	var panel := PanelContainer.new()
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.90, 0.92, 0.96, 0.97)
-	style.set_corner_radius_all(16)
-	style.set_content_margin_all(24)
-	style.border_color = Color(1, 1, 1, 0.6)
-	style.set_border_width_all(2)
-	panel.add_theme_stylebox_override("panel", style)
+	panel.add_theme_stylebox_override("panel", UIStyle.board(24, true))
 	center.add_child(panel)
 	var vb := VBoxContainer.new()
 	vb.add_theme_constant_override("separation", 16)
@@ -203,7 +200,7 @@ func _build_confirm() -> void:
 	var lbl := Label.new()
 	lbl.text = "确认保存当前按键映射？"
 	lbl.add_theme_font_size_override("font_size", 20)
-	lbl.add_theme_color_override("font_color", HEADER)
+	lbl.add_theme_color_override("font_color", _text_color())
 	vb.add_child(lbl)
 	var hb := HBoxContainer.new()
 	hb.add_theme_constant_override("separation", 16)
@@ -211,10 +208,11 @@ func _build_confirm() -> void:
 	vb.add_child(hb)
 	var ok := Button.new()
 	ok.name = "ConfirmOk"
-	ok.text = "确认"
+	ok.text = "保存"
 	ok.custom_minimum_size = Vector2(120, 44)
 	ok.add_theme_font_size_override("font_size", 20)
 	ok.set_meta("board_interactive", true)
+	UIStyle.apply_primary(ok)
 	ok.pressed.connect(on_confirm_save)
 	hb.add_child(ok)
 	var cancel := Button.new()
@@ -223,6 +221,7 @@ func _build_confirm() -> void:
 	cancel.custom_minimum_size = Vector2(120, 44)
 	cancel.add_theme_font_size_override("font_size", 20)
 	cancel.set_meta("board_interactive", true)
+	UIStyle.apply_secondary(cancel)
 	cancel.pressed.connect(on_confirm_cancel)
 	hb.add_child(cancel)
 	add_child(_confirm)

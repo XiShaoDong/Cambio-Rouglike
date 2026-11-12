@@ -11,7 +11,7 @@ const PANEL_WIDTH := 320.0
 var _card: CardTiltView
 var _face := true
 var _angle_label: Label
-var _title: Labelwo
+var _title: Label
 var _preset_status: Label
 var _sliders := {}
 var _demo := false

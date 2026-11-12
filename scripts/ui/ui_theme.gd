@@ -51,6 +51,20 @@ const TOKENS := {
 		"card_value": Color("4a5568"),
 		"card_shadow": Color(0, 0, 0, 0.35),
 		"relic_shield": Color("b07be0"),
+		# 3D HUD（深色玻璃）
+		"hud_surface": Color("22303f", 0.82),
+		"board_surface": Color("22303f", 0.96),
+		"hud_text_muted": Color("9aa8bd"),
+		"currency": Color("f6d77a"),
+		"danger_text": Color("ff9b9b"),
+		"danger_soft": Color("3a1f27"),
+		"hud_shadow": Color(0, 0, 0, 0.35),
+		"hover_neutral": Color("e9effa"),
+		"hover_slap": Color("7aa2ff"),
+		"hover_action": Color("7aa2ff"),
+		"hover_valid": Color("87d9a1"),
+		"hover_invalid": Color("ff7b7b"),
+		"hover_warning": Color("f6d77a"),
 	},
 	"dark-1": {
 		# Dark Slate + Royal Indigo（KONG LAN 房间/大厅视觉）
@@ -90,6 +104,20 @@ const TOKENS := {
 		"card_value": Color("A3ADC0"),
 		"card_shadow": Color(0, 0, 0, 0.35),
 		"relic_shield": Color("8294FF"),
+		# 3D HUD（深色玻璃）
+		"hud_surface": Color("1E2330", 0.82),
+		"board_surface": Color("1E2330", 0.96),
+		"hud_text_muted": Color("909AAD"),
+		"currency": Color("E8B86D"),
+		"danger_text": Color("E06A7A"),
+		"danger_soft": Color("3A1F27"),
+		"hud_shadow": Color(0, 0, 0, 0.32),
+		"hover_neutral": Color("F1F3F9"),
+		"hover_slap": Color("4C6FFF"),
+		"hover_action": Color("4C6FFF"),
+		"hover_valid": Color("53C99A"),
+		"hover_invalid": Color("C94F61"),
+		"hover_warning": Color("E8B86D"),
 	},
 	"light": {
 		# 背景层级（来自 docs/light_theme.css）
@@ -135,6 +163,20 @@ const TOKENS := {
 		"card_value": Color("8B8577"),
 		"card_shadow": Color(0.227, 0.212, 0.18, 0.15),
 		"relic_shield": Color("8a5bbf"),
+		# 3D HUD（浅色玻璃）
+		"hud_surface": Color("FFFDF8", 0.92),
+		"board_surface": Color("FFFDF8", 0.97),
+		"hud_text_muted": Color("8B8577"),
+		"currency": Color("D9A441"),
+		"danger_text": Color("C1604F"),
+		"danger_soft": Color("FBE3D8"),
+		"hud_shadow": Color(0.227, 0.212, 0.18, 0.18),
+		"hover_neutral": Color("3A362E"),
+		"hover_slap": Color("3D63D8"),
+		"hover_action": Color("3D63D8"),
+		"hover_valid": Color("7A9B6E"),
+		"hover_invalid": Color("C1604F"),
+		"hover_warning": Color("D9A441"),
 	},
 }
 

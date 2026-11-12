@@ -1,0 +1,1299 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1920 9200" width="1920" height="9200">
+<title>KONG 3D HUD 统一风格稿 v2（dark-1 · 1280×760 设计基准）</title>
+<style>
+/* ===== 令牌：名字与 scripts/ui/ui_theme.gd 的 TOKENS 完全一致 ===== */
+:root{
+  --bg_table:#151821; --bg_surface:#1E2330; --bg_surface_alt:#343B4F; --bg_elevated:#292F40; --bg_hover:#343B4F;
+  --border:#353C4D; --border_strong:#4A5368;
+  --text_primary:#F1F3F9; --text_secondary:#A3ADC0; --text_muted:#909AAD; --text_on_accent:#FFFFFF; --text_inverse:#151821;
+  --accent:#526BDE; --accent_hover:#657EF0; --accent_pressed:#4056BD; --accent_focus:#8294FF; --accent_soft:#252F52;
+  --success:#53C99A; --warning:#E8B86D; --danger:#C94F61; --danger_text:#E06A7A;
+  --currency:#E8B86D; --highlight_glow:#8294FF; --info:#8294FF;
+  --holo:#6FD3FF; --holo2:#8294FF; --hologram_tint:#6FD3FF;
+  --hover_neutral:#F1F3F9; --hover_slap:#4C6FFF; --hover_action:#4C6FFF; --hover_valid:#53C99A; --hover_invalid:#C94F61; --hover_warning:#E8B86D;
+  --info_surface:#1E2330; --info_title_neutral:#F1F3F9;
+  --card_rank_red:#F07882; --card_rank_black:#151821;
+  --hud_alpha:.82; --board_alpha:.96;
+}
+text{font-family:"PingFang SC","Noto Sans SC","Helvetica Neue",system-ui,sans-serif;fill:var(--text_primary)}
+.t2{fill:var(--text_secondary)} .tm{fill:var(--text_muted)} .ta{fill:var(--text_on_accent)}
+.td{fill:var(--danger_text)} .ts{fill:var(--success)} .tw{fill:var(--warning)} .tf{fill:var(--accent_focus)} .tc{fill:var(--currency)}
+.f10{font-size:10px}.f12{font-size:12px}.f13{font-size:13px}.f14{font-size:14px}.f16{font-size:16px}.f18{font-size:18px}.f20{font-size:20px}.f22{font-size:22px}.f24{font-size:24px}.f26{font-size:26px}.f28{font-size:28px}.f32{font-size:32px}
+.b{font-weight:600}
+.c{text-anchor:middle;dominant-baseline:central}
+.v{dominant-baseline:central}
+.e{text-anchor:end;dominant-baseline:central}
+.lbl{font-size:20px;fill:var(--text_muted);font-weight:600}
+.sub{font-size:14px;fill:var(--text_muted)}
+.mono{font-variant-numeric:tabular-nums}
+
+.panel{fill:var(--bg_surface);fill-opacity:var(--hud_alpha);stroke:var(--border_strong);stroke-width:1}
+.board{fill:var(--bg_surface);fill-opacity:var(--board_alpha);stroke:var(--border_strong);stroke-width:1}
+.pill{fill:var(--bg_surface);fill-opacity:var(--hud_alpha);stroke:var(--border_strong);stroke-width:2}
+.pill-warn{fill:var(--bg_surface);fill-opacity:var(--hud_alpha);stroke:var(--warning);stroke-width:2}
+.pill-over{fill:#3A1F27;fill-opacity:.94;stroke:var(--danger);stroke-width:2}
+.chip{fill:var(--bg_elevated);stroke:var(--border_strong);stroke-width:1}
+.chip-on{fill:var(--accent_soft);stroke:var(--accent_focus);stroke-width:1}
+.row{fill:var(--bg_elevated);fill-opacity:.55;stroke:var(--border);stroke-width:1}
+.row-hover{fill:var(--bg_hover);fill-opacity:.92;stroke:var(--border_strong);stroke-width:1}
+.row-cap{fill:var(--accent_soft);stroke:var(--accent_focus);stroke-width:2}
+.row-bad{fill:#3A1F27;fill-opacity:.72;stroke:var(--danger);stroke-width:2}
+.row-ok{fill:var(--bg_surface);fill-opacity:.86;stroke:var(--accent_focus);stroke-width:2}
+.tile{fill:var(--bg_elevated);fill-opacity:.7;stroke:var(--border);stroke-width:1}
+.div{stroke:var(--border);stroke-width:1}
+.note{font-size:14px;fill:var(--text_muted)}
+.tag{font-size:13px;fill:var(--text_muted)}
+
+.btn-p{fill:var(--accent);stroke:var(--accent_pressed);stroke-width:2}
+.btn-p-h{fill:var(--accent_hover);stroke:var(--accent_focus);stroke-width:3}
+.btn-p-d{fill:var(--accent_pressed);stroke:var(--accent_focus);stroke-width:2}
+.btn-prepared{fill:var(--accent_soft);stroke:var(--success);stroke-width:2}
+.btn-s{fill:var(--bg_elevated);stroke:var(--border_strong);stroke-width:1}
+.btn-s-h{fill:var(--bg_hover);stroke:var(--accent_focus);stroke-width:2}
+.btn-off{fill:var(--bg_elevated);stroke:var(--text_muted);stroke-width:2}
+/* E · Hover / Info 状态 */
+.hframe{fill:none;stroke-width:2.5;stroke-dasharray:7 5;stroke-linecap:round}
+.hframe-neutral{stroke:var(--hover_neutral)}
+.hframe-slap{stroke:var(--hover_slap)}
+.hframe-valid{stroke:var(--hover_valid)}
+.hframe-invalid{stroke:var(--hover_invalid)}
+.hframe-warning{stroke:var(--hover_warning)}
+.hframe-action{stroke:var(--hover_action)}
+.info{fill:var(--info_surface);fill-opacity:.96;stroke-width:2}
+.info-slap{stroke:var(--hover_slap)}
+.info-valid{stroke:var(--hover_valid)}
+.info-invalid{stroke:var(--hover_invalid)}
+.info-warning{stroke:var(--hover_warning)}
+.info-neutral{stroke:var(--hover_neutral)}
+.info-tint-slap{fill:var(--hover_slap);fill-opacity:.10}
+.info-tint-valid{fill:var(--hover_valid);fill-opacity:.10}
+.info-tint-invalid{fill:var(--hover_invalid);fill-opacity:.10}
+.info-tint-warning{fill:var(--hover_warning);fill-opacity:.12}
+.info-tint-neutral{fill:var(--hover_neutral);fill-opacity:.08}
+.info-bar-slap{fill:var(--hover_slap)}
+.info-bar-valid{fill:var(--hover_valid)}
+.info-bar-invalid{fill:var(--hover_invalid)}
+.info-bar-warning{fill:var(--hover_warning)}
+.info-bar-neutral{fill:var(--hover_neutral)}
+.holo-frame{fill:none;stroke:var(--holo);stroke-width:2;filter:url(#holoGlow)}
+.holo-line{stroke:var(--holo);stroke-opacity:.7;stroke-width:1}
+.holo-top{stroke:var(--holo);stroke-opacity:.55;stroke-width:1}
+.holo-corner{fill:none;stroke:var(--holo);stroke-width:2;stroke-linecap:round;filter:url(#holoGlow)}
+
+</style>
+
+<defs>
+  <radialGradient id="bgGrad" cx="50%" cy="55%" r="75%">
+    <stop offset="0" stop-color="#232b3a"/><stop offset="1" stop-color="#0f1219"/>
+  </radialGradient>
+  <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+    <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000" flood-opacity=".32"/>
+  </filter>
+  <clipPath id="clipA1"><rect width="1280" height="760" rx="16"/></clipPath>
+  <clipPath id="clipA2"><rect width="1280" height="760" rx="16"/></clipPath>
+  <symbol id="i-heart" viewBox="0 0 24 24" width="20" height="20"><path d="M12 21C5 15 2 11 2 7.5 2 4.5 4.3 3 6.5 3 8.6 3 10.8 4.2 12 6.2 13.2 4.2 15.4 3 17.5 3 19.7 3 22 4.5 22 7.5 22 11 19 15 12 21Z" fill="var(--danger)"/></symbol>
+  <symbol id="i-coin" viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="12" r="10" fill="var(--currency)"/><rect x="8.5" y="8.5" width="7" height="7" fill="var(--bg_surface)"/></symbol>
+  <symbol id="i-cards" viewBox="0 0 24 24" width="20" height="20"><rect x="3" y="5" width="12" height="16" rx="2" fill="none" stroke="var(--text_secondary)" stroke-width="1.8"/><rect x="8" y="2" width="12" height="16" rx="2" fill="var(--bg_surface)" stroke="var(--text_secondary)" stroke-width="1.8"/></symbol>
+  <rect id="cardBack" width="56" height="78" rx="6" fill="var(--bg_surface)" stroke="var(--accent_focus)" stroke-width="2"/>
+  <rect id="cardBackSm" width="38" height="54" rx="5" fill="var(--bg_surface)" stroke="var(--accent_focus)" stroke-width="1.5"/>
+  <clipPath id="mouseClip"><rect x="-9" y="-11" width="18" height="22" rx="9"/></clipPath>
+  <g id="mouse">
+    <rect x="-9" y="-11" width="18" height="22" rx="9" fill="none" stroke="var(--text_primary)" stroke-width="1.8"/>
+    <g clip-path="url(#mouseClip)"><rect x="0" y="-11" width="9" height="11" fill="var(--accent)"/></g>
+    <line x1="-9" y1="0" x2="9" y2="0" stroke="var(--text_primary)" stroke-width="1.8"/>
+    <rect x="-1.8" y="-8" width="3.6" height="6" rx="1.8" fill="var(--text_primary)"/>
+  </g>
+  <filter id="holoGlow" x="-30%" y="-30%" width="160%" height="160%">
+    <feGaussianBlur stdDeviation="4" result="blur"/>
+    <feMerge><feMergeNode in="blur"/><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+  <filter id="beamBlur" x="-50%" y="-50%" width="200%" height="200%">
+    <feGaussianBlur stdDeviation="14"/>
+  </filter>
+  <linearGradient id="beamGrad" x1="0" y1="1" x2="0" y2="0">
+    <stop offset="0" stop-color="#6FD3FF" stop-opacity=".30"/>
+    <stop offset=".55" stop-color="#8294FF" stop-opacity=".10"/>
+    <stop offset="1" stop-color="#8294FF" stop-opacity="0"/>
+  </linearGradient>
+  <pattern id="scan" width="6" height="4" patternUnits="userSpaceOnUse">
+    <rect width="6" height="1" fill="#FFFFFF" fill-opacity=".07"/>
+  </pattern>
+</defs>
+
+<rect width="1920" height="9200" fill="#0b0d12"/>
+<text x="40" y="44" class="f22 b">KONG 3D HUD 统一风格稿 v2</text>
+<text x="360" y="44" class="sub">dark-1 · 设计基准 1280×760（A 区不再用 1920×1080）· 四角边距 50 设计像素 = 75 屏幕像素 @1.5×</text>
+<text x="40" y="74" class="tag">与原稿的差异：A 拆真实状态；牌序 14 张；手册/Stats 按现有布局；按键页五态；补结算面板；补 E Hover/Info 状态；补 F 商店；补 G 默认卡牌 Info；补 H 投影 3D 看板；令牌名与 UITheme 对齐；对比度修正。</text>
+<text x="40" y="116" class="lbl">A · 局内总览（1280×760 设计坐标；右侧为状态校验）</text>
+
+<text x="40" y="140" class="sub">A1 · INITIAL_PEEK（开局记忆）</text>
+<g transform="translate(40,150)">
+<g clip-path="url(#clipA1)">
+
+  <rect width="1280" height="760" fill="url(#bgGrad)"/>
+  <ellipse cx="640" cy="430" rx="560" ry="240" fill="#182231" stroke="#2a3748" stroke-width="8"/>
+  <ellipse cx="640" cy="430" rx="500" ry="200" fill="#141c29" stroke="#212c3c" stroke-width="2"/>
+
+
+  <use href="#cardBackSm" x="552" y="220"/><use href="#cardBackSm" x="598" y="220"/><use href="#cardBackSm" x="644" y="220"/><use href="#cardBackSm" x="690" y="220"/>
+  <rect x="250" y="320" width="44" height="62" rx="5" fill="var(--bg_surface)" stroke="var(--accent_focus)" stroke-width="1.5"/><rect x="300" y="320" width="44" height="62" rx="5" fill="var(--bg_surface)" stroke="var(--accent_focus)" stroke-width="1.5"/>
+  <rect x="936" y="320" width="44" height="62" rx="5" fill="var(--bg_surface)" stroke="var(--accent_focus)" stroke-width="1.5"/><rect x="986" y="320" width="44" height="62" rx="5" fill="var(--bg_surface)" stroke="var(--accent_focus)" stroke-width="1.5"/>
+  <use href="#cardBack" x="590" y="520"/><use href="#cardBack" x="690" y="520"/>
+  <text x="618" y="616" class="c f12 tm">抽牌堆</text><text x="718" y="616" class="c f12 tm">弃牌堆</text>
+  <rect x="513" y="620" width="56" height="78" rx="6" fill="var(--bg_surface)" stroke="var(--accent_focus)" stroke-width="2"/><rect x="579" y="620" width="56" height="78" rx="6" fill="var(--bg_surface)" stroke="var(--accent_focus)" stroke-width="2"/><rect x="645" y="620" width="56" height="78" rx="6" fill="var(--bg_surface)" stroke="var(--accent_focus)" stroke-width="2"/><rect x="711" y="620" width="56" height="78" rx="6" fill="var(--bg_surface)" stroke="var(--accent_focus)" stroke-width="2"/>
+
+  <rect x="50" y="50" width="150" height="44" rx="12" class="panel"/>
+  <text x="125" y="72" class="c f22 b">回合 1/3</text>
+  <text x="640" y="108" class="c f18">记住底部的两张牌，然后点击 Ready</text>
+  <rect x="470" y="360" width="340" height="96" rx="12" class="btn-p" filter="url(#shadow)"/>
+  <text x="640" y="408" class="c f32 b ta">Ready（2/4）</text>
+<text x="50" y="493" class="f18 v">放大</text>
+<use href="#mouse" x="107" y="493"/><text x="50" y="531" class="f18 v">标记</text>
+<rect x="96" y="516" width="32" height="30" rx="6" class="chip"/><text x="112.0" y="531" class="c f14">D</text>
+<text x="50" y="569" class="f18 v">手册</text>
+<rect x="96" y="554" width="48" height="30" rx="6" class="chip"/><text x="120.0" y="569" class="c f14">Tab</text>
+<text x="50" y="607" class="f18 v">道具</text>
+<rect x="96" y="592" width="64" height="30" rx="6" class="chip"/><text x="128.0" y="607" class="c f14">Space</text>
+
+
+  <text x="50" y="648" class="f18 b v">牌序</text>
+  <rect x="94" y="634" width="50" height="26" rx="6" class="chip"/><text x="119" y="647" class="c f14">Shift</text>
+  <rect x="50" y="660" width="26" height="34" rx="4" fill="var(--text_primary)" stroke="var(--border)"/><text x="54" y="676" class="f10 b" style="fill:var(--card_rank_black)">Q</text>
+<rect x="68" y="660" width="26" height="34" rx="4" fill="var(--text_primary)" stroke="var(--border)"/><text x="72" y="676" class="f10 b" style="fill:var(--card_rank_black)">J</text>
+<rect x="86" y="660" width="26" height="34" rx="4" fill="var(--text_primary)" stroke="var(--border)"/><text x="90" y="676" class="f10 b" style="fill:var(--card_rank_black)">10</text>
+<rect x="104" y="660" width="26" height="34" rx="4" fill="var(--text_primary)" stroke="var(--border)"/><text x="108" y="676" class="f10 b" style="fill:var(--card_rank_black)">9</text>
+<rect x="122" y="660" width="26" height="34" rx="4" fill="var(--text_primary)" stroke="var(--border)"/><text x="126" y="676" class="f10 b" style="fill:var(--card_rank_black)">8</text>
+<rect x="140" y="660" width="26" height="34" rx="4" fill="var(--text_primary)" stroke="var(--border)"/><text x="144" y="676" class="f10 b" style="fill:var(--card_rank_black)">7</text>
+<rect x="158" y="660" width="26" height="34" rx="4" fill="var(--text_primary)" stroke="var(--border)"/><text x="162" y="676" class="f10 b" style="fill:var(--card_rank_black)">6</text>
+<rect x="176" y="660" width="26" height="34" rx="4" fill="var(--text_primary)" stroke="var(--border)"/><text x="180" y="676" class="f10 b" style="fill:var(--card_rank_black)">5</text>
+<rect x="194" y="660" width="26" height="34" rx="4" fill="var(--text_primary)" stroke="var(--border)"/><text x="198" y="676" class="f10 b" style="fill:var(--card_rank_black)">4</text>
+<rect x="212" y="660" width="26" height="34" rx="4" fill="var(--text_primary)" stroke="var(--border)"/><text x="216" y="676" class="f10 b" style="fill:var(--card_rank_black)">3</text>
+<rect x="230" y="660" width="26" height="34" rx="4" fill="var(--text_primary)" stroke="var(--border)"/><text x="234" y="676" class="f10 b" style="fill:var(--card_rank_black)">2</text>
+<rect x="248" y="660" width="26" height="34" rx="4" fill="var(--text_primary)" stroke="var(--border)"/><text x="252" y="676" class="f10 b" style="fill:var(--card_rank_black)">A</text>
+<rect x="266" y="660" width="26" height="34" rx="4" fill="var(--text_primary)" stroke="var(--border)"/><text x="270" y="676" class="f10 b" style="fill:var(--card_rank_red)">JK</text>
+<rect x="284" y="660" width="26" height="34" rx="4" fill="var(--text_primary)" stroke="var(--border)"/><text x="288" y="676" class="f10 b" style="fill:var(--card_rank_black)">K</text>
+
+  <line x1="50" y1="702" x2="310" y2="702" stroke="var(--text_primary)" stroke-opacity=".7" stroke-width="1"/>
+  <path d="M303 698 L310 702 L303 706" fill="none" stroke="var(--text_primary)" stroke-opacity=".7" stroke-width="1"/>
+
+
+  <rect x="980" y="654" width="250" height="56" rx="12" class="panel"/>
+  <use href="#i-heart" x="1000" y="672"/><text x="1026" y="682" class="f18 b v">3</text>
+  <use href="#i-coin" x="1070" y="672"/><text x="1096" y="682" class="f18 b v">12</text>
+  <use href="#i-cards" x="1160" y="672"/><text x="1186" y="682" class="f18 b v">4</text>
+
+</g>
+<rect width="1280" height="760" rx="16" fill="none" stroke="#2a3140" stroke-width="2"/>
+</g>
+
+<g transform="translate(1360,170)">
+<text x="0" y="0" class="f18 b">A1 状态校验</text>
+
+<text x="0" y="34" class="tag">阶段：INITIAL_PEEK</text>
+
+<text x="0" y="60" class="tag">可见：hint、Ready、四角 HUD</text>
+
+<text x="0" y="86" class="tag">不可见：倒计时、SLAP、本局效果</text>
+
+<text x="0" y="112" class="tag">Ready 文案带人数：Ready（2/4）</text>
+
+<text x="0" y="138" class="tag">准星状态见 B 区；A1 为排版示意</text>
+
+<text x="0" y="178" class="f16 b">左下角</text>
+
+<text x="0" y="204" class="tag">按键提示 + 牌序不加外框，保持紧凑</text>
+
+<text x="0" y="230" class="tag">顺序：放大 / 标记 / 手册 / 道具 / 牌序</text>
+
+<text x="0" y="256" class="tag">牌序真实：Q J 10 9 8 7 6 5 4 3 2 A Joker K</text>
+
+<text x="0" y="282" class="tag">仅 chip 有底色；整块 mouse_filter=IGNORE</text>
+
+  <text x="0" y="308" class="tag">牌序卡片复用结算页浅色小牌面：叠放、忽略花色</text>
+
+</g>
+
+<text x="40" y="950" class="sub">A2 · Q_DECISION（回合中：倒计时 + hint + SLAP + 条件按钮）</text>
+<g transform="translate(40,960)">
+<g clip-path="url(#clipA2)">
+
+  <rect width="1280" height="760" fill="url(#bgGrad)"/>
+  <ellipse cx="640" cy="430" rx="560" ry="240" fill="#182231" stroke="#2a3748" stroke-width="8"/>
+  <ellipse cx="640" cy="430" rx="500" ry="200" fill="#141c29" stroke="#212c3c" stroke-width="2"/>
+
+
+  <use href="#cardBackSm" x="552" y="220"/><use href="#cardBackSm" x="598" y="220"/><use href="#cardBackSm" x="644" y="220"/><use href="#cardBackSm" x="690" y="220"/>
+  <rect x="250" y="320" width="44" height="62" rx="5" fill="var(--bg_surface)" stroke="var(--accent_focus)" stroke-width="1.5"/><rect x="300" y="320" width="44" height="62" rx="5" fill="var(--bg_surface)" stroke="var(--accent_focus)" stroke-width="1.5"/>
+  <rect x="936" y="320" width="44" height="62" rx="5" fill="var(--bg_surface)" stroke="var(--accent_focus)" stroke-width="1.5"/><rect x="986" y="320" width="44" height="62" rx="5" fill="var(--bg_surface)" stroke="var(--accent_focus)" stroke-width="1.5"/>
+  <use href="#cardBack" x="590" y="520"/><rect x="690" y="520" width="56" height="78" rx="6" fill="var(--text_primary)" stroke="var(--border)"/><text x="718" y="560" class="c f22 b" style="fill:var(--text_inverse)">7</text>
+  <text x="618" y="616" class="c f12 tm">抽牌堆</text><text x="718" y="616" class="c f12 tm">弃牌堆</text>
+  <rect x="513" y="620" width="56" height="78" rx="6" fill="var(--bg_surface)" stroke="var(--accent_focus)" stroke-width="2"/><rect x="579" y="620" width="56" height="78" rx="6" fill="var(--bg_surface)" stroke="var(--accent_focus)" stroke-width="2"/><rect x="645" y="620" width="56" height="78" rx="6" fill="var(--bg_surface)" stroke="var(--accent_focus)" stroke-width="2"/><rect x="711" y="620" width="56" height="78" rx="6" fill="var(--bg_surface)" stroke="var(--accent_focus)" stroke-width="2"/>
+
+  <rect x="50" y="50" width="150" height="44" rx="12" class="panel"/>
+  <text x="125" y="72" class="c f22 b">回合 2/3</text>
+  <rect x="565" y="50" width="150" height="48" rx="24" class="pill" filter="url(#shadow)"/>
+  <text x="640" y="74" class="c f26 b mono">24</text>
+  <text x="640" y="130" class="c f18">选择一张手牌，与弃牌交换</text>
+  <text x="640" y="170" class="c f16 b" style="fill:var(--success);letter-spacing:2px">SLAP OPEN</text>
+  <rect x="510" y="186" width="260" height="8" rx="4" fill="#fff" fill-opacity=".14"/>
+  <rect x="510" y="186" width="182" height="8" rx="4" fill="var(--success)"/>
+  <rect x="930" y="50" width="300" height="110" rx="12" class="panel"/>
+  <text x="948" y="74" class="f14 tm v">本局效果</text>
+  <rect x="948" y="88" width="40" height="56" rx="5" fill="var(--text_primary)" stroke="var(--border)"/>
+  <text x="968" y="116" class="c f18 b" style="fill:var(--text_inverse)">6</text>
+  <text x="1000" y="98" class="f18 b v">6 · 顺时针传递</text>
+  <text x="1000" y="124" class="f14 t2 v">打出 6 时顺时针传递一张牌；</text>
+  <text x="1000" y="146" class="f14 t2 v">抽到红 Joker 可使用能力触发</text>
+<text x="50" y="493" class="f18 v">放大</text>
+<use href="#mouse" x="107" y="493"/><text x="50" y="531" class="f18 v">标记</text>
+<rect x="96" y="516" width="32" height="30" rx="6" class="chip"/><text x="112.0" y="531" class="c f14">D</text>
+<text x="50" y="569" class="f18 v">手册</text>
+<rect x="96" y="554" width="48" height="30" rx="6" class="chip"/><text x="120.0" y="569" class="c f14">Tab</text>
+<text x="50" y="607" class="f18 v">道具</text>
+<rect x="96" y="592" width="64" height="30" rx="6" class="chip"/><text x="128.0" y="607" class="c f14">Space</text>
+
+
+  <text x="50" y="648" class="f18 b v">牌序</text>
+  <rect x="94" y="634" width="50" height="26" rx="6" class="chip"/><text x="119" y="647" class="c f14">Shift</text>
+  <rect x="50" y="660" width="26" height="34" rx="4" fill="var(--text_primary)" stroke="var(--border)"/><text x="54" y="676" class="f10 b" style="fill:var(--card_rank_black)">Q</text>
+<rect x="68" y="660" width="26" height="34" rx="4" fill="var(--text_primary)" stroke="var(--border)"/><text x="72" y="676" class="f10 b" style="fill:var(--card_rank_black)">J</text>
+<rect x="86" y="660" width="26" height="34" rx="4" fill="var(--text_primary)" stroke="var(--border)"/><text x="90" y="676" class="f10 b" style="fill:var(--card_rank_black)">10</text>
+<rect x="104" y="660" width="26" height="34" rx="4" fill="var(--text_primary)" stroke="var(--border)"/><text x="108" y="676" class="f10 b" style="fill:var(--card_rank_black)">9</text>
+<rect x="122" y="660" width="26" height="34" rx="4" fill="var(--text_primary)" stroke="var(--border)"/><text x="126" y="676" class="f10 b" style="fill:var(--card_rank_black)">8</text>
+<rect x="140" y="660" width="26" height="34" rx="4" fill="var(--text_primary)" stroke="var(--border)"/><text x="144" y="676" class="f10 b" style="fill:var(--card_rank_black)">7</text>
+<rect x="158" y="660" width="26" height="34" rx="4" fill="var(--text_primary)" stroke="var(--border)"/><text x="162" y="676" class="f10 b" style="fill:var(--card_rank_black)">6</text>
+<rect x="176" y="660" width="26" height="34" rx="4" fill="var(--text_primary)" stroke="var(--border)"/><text x="180" y="676" class="f10 b" style="fill:var(--card_rank_black)">5</text>
+<rect x="194" y="660" width="26" height="34" rx="4" fill="var(--text_primary)" stroke="var(--border)"/><text x="198" y="676" class="f10 b" style="fill:var(--card_rank_black)">4</text>
+<rect x="212" y="660" width="26" height="34" rx="4" fill="var(--text_primary)" stroke="var(--border)"/><text x="216" y="676" class="f10 b" style="fill:var(--card_rank_black)">3</text>
+<rect x="230" y="660" width="26" height="34" rx="4" fill="var(--text_primary)" stroke="var(--border)"/><text x="234" y="676" class="f10 b" style="fill:var(--card_rank_black)">2</text>
+<rect x="248" y="660" width="26" height="34" rx="4" fill="var(--text_primary)" stroke="var(--border)"/><text x="252" y="676" class="f10 b" style="fill:var(--card_rank_black)">A</text>
+<rect x="266" y="660" width="26" height="34" rx="4" fill="var(--text_primary)" stroke="var(--border)"/><text x="270" y="676" class="f10 b" style="fill:var(--card_rank_red)">JK</text>
+<rect x="284" y="660" width="26" height="34" rx="4" fill="var(--text_primary)" stroke="var(--border)"/><text x="288" y="676" class="f10 b" style="fill:var(--card_rank_black)">K</text>
+
+  <line x1="50" y1="702" x2="310" y2="702" stroke="var(--text_primary)" stroke-opacity=".7" stroke-width="1"/>
+  <path d="M303 698 L310 702 L303 706" fill="none" stroke="var(--text_primary)" stroke-opacity=".7" stroke-width="1"/>
+
+
+  <rect x="980" y="654" width="250" height="56" rx="12" class="panel"/>
+  <use href="#i-heart" x="1000" y="672"/><text x="1026" y="682" class="f18 b v">3</text>
+  <use href="#i-coin" x="1070" y="672"/><text x="1096" y="682" class="f18 b v">12</text>
+  <use href="#i-cards" x="1160" y="672"/><text x="1186" y="682" class="f18 b v">4</text>
+
+  <circle cx="640" cy="380" r="9" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="2"/><circle cx="640" cy="380" r="2.5" fill="#fff" fill-opacity=".85"/>
+  <rect x="412" y="420" width="220" height="58" rx="12" class="btn-s"/><text x="522" y="449" class="c f22 b">Q：不交换</text>
+  <rect x="648" y="420" width="220" height="58" rx="12" class="btn-p"/><text x="758" y="449" class="c f22 b ta">Q：交换</text>
+</g>
+<rect width="1280" height="760" rx="16" fill="none" stroke="#2a3140" stroke-width="2"/>
+</g>
+
+<g transform="translate(1360,980)">
+<text x="0" y="0" class="f18 b">A2 状态校验</text>
+
+<text x="0" y="34" class="tag">阶段：Q_DECISION</text>
+
+<text x="0" y="60" class="tag">可见：倒计时、hint、SLAP OPEN、条件按钮</text>
+
+<text x="0" y="86" class="tag">不可见：Ready（仅 INITIAL_PEEK）</text>
+
+<text x="0" y="112" class="tag">本局效果已 dock 到右上</text>
+
+<text x="0" y="138" class="tag">效果说明可换行，面板高度自适应</text>
+
+<text x="0" y="178" class="f16 b">3D 提示板</text>
+
+<text x="0" y="204" class="tag">按钮尺寸 210×58，宽内容自适应</text>
+
+<text x="0" y="230" class="tag">准星在屏幕中心；看板位置由相机决定</text>
+
+<text x="0" y="256" class="tag">主/次分工待产品确认：建议交换=主、不交换=次</text>
+
+</g>
+
+<text x="40" y="1760" class="lbl">B · 组件状态与令牌（dark-1）</text>
+<g transform="translate(0,1780)">
+<rect width="1920" height="1250" fill="#151821" stroke="#2a3140" stroke-width="2"/>
+
+<text x="60" y="80" class="sub">倒计时胶囊：正常 / 警告 / 超时</text>
+<rect x="60" y="100" width="150" height="48" rx="24" class="pill"/><text x="135" y="124" class="c f26 b mono">24</text>
+
+<rect x="230" y="100" width="150" height="48" rx="24" class="pill-warn"/><text x="305" y="124" class="c f26 b mono tw">9</text>
+
+<rect x="400" y="100" width="150" height="48" rx="24" class="pill-over"/><text x="475" y="124" class="c f26 b mono td">0</text>
+
+<text x="135" y="170" class="c sub">正常（&gt;10s）</text>
+<text x="305" y="170" class="c sub">警告（≤10s）</text>
+<text x="475" y="170" class="c sub">超时（≤0s）</text>
+
+<text x="60" y="196" class="tag">0.4s 会显示 0 但仍是警告色；建议 &lt;1s 切超时或显示 0.4。</text>
+
+
+<text x="620" y="80" class="sub">SLAP：OPEN / CLOSE / SETTLE（同一组件三帧）</text>
+<text x="760" y="116" class="c f16 b" style="fill:var(--success);letter-spacing:2px">SLAP OPEN</text>
+
+<rect x="630" y="134" width="260" height="8" rx="4" fill="#fff" fill-opacity=".14"/><rect x="630" y="134" width="182" height="8" rx="4" fill="var(--success)"/>
+<text x="760" y="170" class="c tag">OPEN：3 绿，条走空</text>
+
+<text x="1060" y="116" class="c f16 b" style="fill:var(--danger);letter-spacing:2px">SLAP CLOSE</text>
+
+<rect x="930" y="134" width="260" height="8" rx="4" fill="#fff" fill-opacity=".08"/>
+<text x="1060" y="170" class="c tag">CLOSE：2 红，无条但保留条高</text>
+
+<text x="1370" y="100" class="c f13 tm" style="letter-spacing:1px">SLAP SETTLE</text>
+
+<text x="1370" y="130" class="c f24 b ts">3</text>
+
+<rect x="1300" y="146" width="140" height="8" rx="4" fill="#fff" fill-opacity=".14"/><rect x="1300" y="146" width="140" height="8" rx="4" fill="var(--success)"/>
+<text x="1370" y="170" class="c tag">3s</text>
+
+<text x="1570" y="100" class="c f13 tm" style="letter-spacing:1px">SLAP SETTLE</text>
+
+<text x="1570" y="130" class="c f24 b tw">2</text>
+
+<rect x="1500" y="146" width="140" height="8" rx="4" fill="#fff" fill-opacity=".14"/><rect x="1500" y="146" width="93" height="8" rx="4" fill="var(--warning)"/>
+<text x="1570" y="170" class="c tag">2s</text>
+
+<text x="1770" y="100" class="c f13 tm" style="letter-spacing:1px">SLAP SETTLE</text>
+
+<text x="1770" y="130" class="c f24 b td">1</text>
+
+<rect x="1700" y="146" width="140" height="8" rx="4" fill="#fff" fill-opacity=".14"/><rect x="1700" y="146" width="47" height="8" rx="4" fill="var(--danger)"/>
+<text x="1770" y="170" class="c tag">1s</text>
+
+<text x="620" y="196" class="tag">SETTLE 不是三个独立组件：3→2→1 三帧；标签统一在上，数字+条承载状态色。</text>
+
+
+<text x="60" y="230" class="sub">主按钮 Ready：默认 / hover / 按下 / 已准备 / 禁用（文字使用 text_on_accent）</text>
+<rect x="60" y="250" width="230" height="68" rx="12" class="btn-p"/><text x="175" y="284" class="c f24 b ta">Ready（2/4）</text>
+
+<rect x="310" y="250" width="230" height="68" rx="12" class="btn-p-h"/><text x="425" y="284" class="c f24 b ta">Ready（2/4）</text>
+
+<rect x="560" y="250" width="230" height="68" rx="12" class="btn-p-d"/><text x="675" y="284" class="c f24 b ta">Ready（2/4）</text>
+
+<rect x="810" y="250" width="230" height="68" rx="12" class="btn-prepared"/><text x="925" y="284" class="c f24 b ts">已准备（3/4）</text>
+
+<rect x="1060" y="250" width="230" height="68" rx="12" class="btn-off"/><text x="1175" y="284" class="c f24 b tm">等待开局</text>
+
+<text x="175" y="340" class="c sub">默认</text>
+<text x="425" y="340" class="c sub">hover</text>
+<text x="675" y="340" class="c sub">按下</text>
+<text x="925" y="340" class="c sub">已准备（等待他人）</text>
+<text x="1175" y="340" class="c sub">禁用</text>
+
+<text x="60" y="366" class="tag">已准备是正向状态，不是禁用灰；hover 不再用纯白描边。</text>
+
+
+<text x="60" y="400" class="sub">条件动作：主 + 次按钮（按内容自适应宽度，最小 210）</text>
+<rect x="60" y="420" width="220" height="58" rx="12" class="btn-s"/><text x="170" y="449" class="c f22 b">Q：不交换</text>
+
+<rect x="300" y="420" width="220" height="58" rx="12" class="btn-p"/><text x="410" y="449" class="c f22 b ta">Q：交换</text>
+
+<rect x="540" y="420" width="220" height="58" rx="12" class="btn-s-h"/><text x="650" y="449" class="c f22 b">变换 Joker</text>
+
+<rect x="780" y="420" width="300" height="58" rx="12" class="btn-s"/><text x="930" y="449" class="c f22 b">使用能力：顺时针传递</text>
+
+<rect x="1100" y="420" width="220" height="58" rx="12" class="btn-off"/><text x="1210" y="449" class="c f22 b tm">J：交换</text>
+
+<text x="170" y="500" class="c sub">次</text>
+<text x="410" y="500" class="c sub">主</text>
+<text x="650" y="500" class="c sub">次 hover</text>
+<text x="930" y="500" class="c sub">长文案自适应</text>
+<text x="1210" y="500" class="c sub">不可用</text>
+
+<text x="60" y="526" class="tag">当前代码两者同权；本稿建议交换=主、不交换=次，Joker/6 能力=次。需产品确认。</text>
+
+
+<text x="60" y="560" class="sub">按键 chip：默认 / 激活 / 鼠标 / Q·E</text>
+<rect x="60" y="580" width="64" height="30" rx="6" class="chip"/><text x="92" y="595" class="c f14">Space</text>
+
+<rect x="134" y="580" width="32" height="30" rx="6" class="chip"/><text x="150" y="595" class="c f14">D</text>
+
+<rect x="176" y="580" width="56" height="26" rx="6" class="chip"/><text x="204" y="593" class="c f14">Shift</text>
+
+<rect x="242" y="580" width="56" height="26" rx="6" class="chip-on"/><text x="270" y="593" class="c f14 tf">Shift</text>
+
+<use href="#mouse" x="330" y="595"/>
+<rect x="360" y="578" width="56" height="30" rx="6" class="chip"/><text x="388" y="593" class="c f14">Q ◀</text>
+
+<rect x="426" y="578" width="56" height="30" rx="6" class="chip"/><text x="454" y="593" class="c f14">E ▶</text>
+
+
+<text x="700" y="560" class="sub">卡牌悬停气泡 + 第二框</text>
+<rect x="700" y="580" width="340" height="74" rx="12" class="board"/>
+<text x="718" y="604" class="f16 b v">能力名称</text>
+
+<text x="718" y="630" class="f14 t2 v">能力说明文字，最多两行；按宽度自动换行。</text>
+
+<rect x="700" y="662" width="340" height="38" rx="12" class="board" style="fill:var(--accent_soft);stroke:var(--accent_focus)"/>
+<text x="870" y="681" class="c f14 tf">点击弃牌堆以触发能力</text>
+
+
+<text x="1120" y="560" class="sub">准星：普通 / 可点 / 禁用</text>
+<circle cx="1160" cy="600" r="9" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="2"/><circle cx="1160" cy="600" r="2.5" fill="#fff" fill-opacity=".85"/>
+<circle cx="1240" cy="600" r="10" fill="none" stroke="var(--highlight_glow)" stroke-width="3"/><circle cx="1240" cy="600" r="3" fill="var(--highlight_glow)"/>
+<circle cx="1320" cy="600" r="9" fill="none" stroke="var(--text_muted)" stroke-opacity=".55" stroke-width="2"/><circle cx="1320" cy="600" r="2.5" fill="var(--text_muted)" fill-opacity=".7"/>
+<text x="1160" y="636" class="c tag">普通</text>
+<text x="1240" y="636" class="c tag">可点=金色</text>
+<text x="1320" y="636" class="c tag">禁用</text>
+
+<text x="700" y="720" class="tag">能力框与提示框同一 surface；第二框用 accent_soft 区分，不再用 .78 半透明。</text>
+
+
+<text x="60" y="750" class="sub">令牌色板（与 UITheme.TOKENS 同名，dark-1）</text>
+<rect x="60" y="770" width="100" height="44" rx="8" fill="#151821" style="stroke:var(--border_strong)"/><text x="110" y="834" class="c t2 f10">bg_table</text>
+<text x="110" y="850" class="c tm f10">151821</text>
+<rect x="170" y="770" width="100" height="44" rx="8" fill="#1E2330" style="stroke:var(--border_strong)"/><text x="220" y="834" class="c t2 f10">bg_surface</text>
+<text x="220" y="850" class="c tm f10">1E2330</text>
+<rect x="280" y="770" width="100" height="44" rx="8" fill="#292F40" style="stroke:var(--border_strong)"/><text x="330" y="834" class="c t2 f10">bg_elevated</text>
+<text x="330" y="850" class="c tm f10">292F40</text>
+<rect x="390" y="770" width="100" height="44" rx="8" fill="#343B4F" style="stroke:var(--border_strong)"/><text x="440" y="834" class="c t2 f10">bg_hover</text>
+<text x="440" y="850" class="c tm f10">343B4F</text>
+<rect x="500" y="770" width="100" height="44" rx="8" fill="#353C4D" style="stroke:var(--border_strong)"/><text x="550" y="834" class="c t2 f10">border</text>
+<text x="550" y="850" class="c tm f10">353C4D</text>
+<rect x="610" y="770" width="100" height="44" rx="8" fill="#4A5368" style="stroke:var(--border_strong)"/><text x="660" y="834" class="c t2 f10">border_strong</text>
+<text x="660" y="850" class="c tm f10">4A5368</text>
+<rect x="720" y="770" width="100" height="44" rx="8" fill="#F1F3F9" style=""/><text x="770" y="834" class="c t2 f10">text_primary</text>
+<text x="770" y="850" class="c tm f10">F1F3F9</text>
+<rect x="830" y="770" width="100" height="44" rx="8" fill="#A3ADC0" style=""/><text x="880" y="834" class="c t2 f10">text_secondary</text>
+<text x="880" y="850" class="c tm f10">A3ADC0</text>
+<rect x="60" y="880" width="100" height="44" rx="8" fill="#909AAD" style=""/><text x="110" y="944" class="c t2 f10">text_muted</text>
+<text x="110" y="960" class="c tm f10">909AAD</text>
+<rect x="170" y="880" width="100" height="44" rx="8" fill="#526BDE" style=""/><text x="220" y="944" class="c t2 f10">accent</text>
+<text x="220" y="960" class="c tm f10">526BDE</text>
+<rect x="280" y="880" width="100" height="44" rx="8" fill="#657EF0" style=""/><text x="330" y="944" class="c t2 f10">accent_hover</text>
+<text x="330" y="960" class="c tm f10">657EF0</text>
+<rect x="390" y="880" width="100" height="44" rx="8" fill="#4056BD" style=""/><text x="440" y="944" class="c t2 f10">accent_pressed</text>
+<text x="440" y="960" class="c tm f10">4056BD</text>
+<rect x="500" y="880" width="100" height="44" rx="8" fill="#8294FF" style=""/><text x="550" y="944" class="c t2 f10">accent_focus</text>
+<text x="550" y="960" class="c tm f10">8294FF</text>
+<rect x="610" y="880" width="100" height="44" rx="8" fill="#53C99A" style=""/><text x="660" y="944" class="c t2 f10">success</text>
+<text x="660" y="960" class="c tm f10">53C99A</text>
+<rect x="720" y="880" width="100" height="44" rx="8" fill="#E8B86D" style=""/><text x="770" y="944" class="c t2 f10">warning</text>
+<text x="770" y="960" class="c tm f10">E8B86D</text>
+<rect x="830" y="880" width="100" height="44" rx="8" fill="#C94F61" style=""/><text x="880" y="944" class="c t2 f10">danger</text>
+<text x="880" y="960" class="c tm f10">C94F61</text>
+<text x="60" y="1000" class="f14 t2">新增 / 补齐：</text>
+<rect x="60" y="1014" width="100" height="40" rx="8" fill="#252F52" style="stroke:var(--accent_focus)"/><text x="110" y="1076" class="c t2 f10">accent_soft</text>
+<text x="110" y="1092" class="c tm f10">252F52</text>
+<rect x="170" y="1014" width="100" height="40" rx="8" fill="#FFFFFF" style=""/><text x="220" y="1076" class="c t2 f10">text_on_accent</text>
+<text x="220" y="1092" class="c tm f10">FFFFFF</text>
+<rect x="280" y="1014" width="100" height="40" rx="8" fill="#E8B86D" style=""/><text x="330" y="1076" class="c t2 f10">currency</text>
+<text x="330" y="1092" class="c tm f10">E8B86D</text>
+<rect x="390" y="1014" width="100" height="40" rx="8" fill="#E06A7A" style=""/><text x="440" y="1076" class="c t2 f10">danger_text</text>
+<text x="440" y="1092" class="c tm f10">E06A7A</text>
+<rect x="500" y="1014" width="100" height="40" rx="8" fill="#8294FF" style=""/><text x="550" y="1076" class="c t2 f10">highlight_glow</text>
+<text x="550" y="1092" class="c tm f10">8294FF</text>
+
+
+<g transform="translate(1100,750)">
+<text x="0" y="0" class="f16 b">形状 / 字号 / 间距 / 透明度</text>
+
+<text x="0" y="34" class="t2 f14">圆角   chip 6 · HUD 面板 12 · 看板 16 · 胶囊 24</text>
+
+<text x="0" y="62" class="t2 f14">描边   面板/chip 1px · 按钮/胶囊 2px · 聚焦 3px</text>
+
+<text x="0" y="90" class="t2 f14">字号   14 / 16 / 18 / 22 / 28 · 大按钮 24 / 32</text>
+
+<text x="0" y="118" class="t2 f14">间距   4 / 8 / 12 / 16 / 24 · 四角边距 50 设计（75 屏幕）</text>
+
+<text x="0" y="146" class="t2 f14">透明度 HUD .82 · 看板 .96（原 .78 / .94 偏透）</text>
+
+<text x="0" y="174" class="t2 f14">状态色只用于状态；货币用 currency，不复用 warning</text>
+
+<text x="0" y="202" class="t2 f14">按钮文字一律用 text_on_accent（dark-1 = 白）</text>
+
+<text x="0" y="230" class="t2 f14">动效   警告脉冲 1.0s · SLAP 线性 · hover 120ms · dock 800ms</text>
+
+<text x="0" y="258" class="t2 f14">主题   dark / dark-1 / light 三套都要定义 hud_*</text>
+
+<text x="0" y="298" class="f16 b">对比度</text>
+
+<text x="0" y="326" class="tag">text_muted #909AAD on bg_elevated = 4.71:1（原 #707B90 = 3.13:1）</text>
+
+<text x="0" y="352" class="tag">danger_text #E06A7A on bg_surface = 4.87:1（原 danger = 3.57:1）</text>
+
+<text x="0" y="378" class="tag">text_on_accent #FFFFFF on accent = 4.65:1；深色字仅 3.81:1，勿用</text>
+
+<text x="0" y="418" class="f16 b">实现备注</text>
+
+<text x="0" y="446" class="tag">Godot 无背景模糊：用 StyleBoxFlat + shadow + 内高光代替。</text>
+
+<text x="0" y="472" class="tag">装饰 HUD 递归 mouse_filter=IGNORE，交互控件除外。</text>
+
+<text x="0" y="498" class="tag">StyleBox 按主题/状态缓存复用，避免每帧新建。</text>
+
+</g>
+</g>
+
+
+<text x="40" y="3085" class="lbl">C · 全息看板（手册 14 行表格 · Stats 四行扇形 · 按键五态 · 保存确认）</text>
+<g transform="translate(0,3105)">
+<rect width="1920" height="1120" fill="#151821" stroke="#2a3140" stroke-width="2"/>
+
+<g transform="translate(40,40)">
+  <rect width="600" height="640" rx="16" class="board"/>
+  <text x="300" y="42" class="c f22 b">手册</text>
+  <rect x="24" y="68" width="56" height="36" rx="6" class="chip"/><text x="52" y="86" class="c f14">Q ◀</text>
+<rect x="520" y="68" width="56" height="36" rx="6" class="chip"/><text x="548" y="86" class="c f14">E ▶</text>
+<rect x="148" y="68" width="96" height="36" rx="8" class="chip-on"/><text x="196" y="86" class="c f18 b">手册</text>
+<text x="300" y="86" class="c f18 t2">Stats</text>
+<text x="404" y="86" class="c f18 t2">按键</text>
+<line x1="24" y1="124" x2="576" y2="124" class="div"/>
+  <text x="44" y="150" class="f13 tm">牌</text>
+<text x="120" y="150" class="f13 tm">能力</text>
+<text x="550" y="150" class="e f13 tm">分数</text>
+
+  <rect x="24" y="162" width="552" height="28" rx="6" fill="var(--bg_elevated)" fill-opacity=".35"/><text x="44" y="180" class="v b f14">A</text>
+<text x="120" y="180" class="v t2 f14">—</text>
+<text x="550" y="180" class="e v t2 f14">1</text>
+<text x="44" y="210" class="v b f14">2</text>
+<text x="120" y="210" class="v t2 f14">—</text>
+<text x="550" y="210" class="e v t2 f14">2</text>
+<rect x="24" y="222" width="552" height="28" rx="6" fill="var(--bg_elevated)" fill-opacity=".35"/><text x="44" y="240" class="v b f14">3</text>
+<text x="120" y="240" class="v t2 f14">—</text>
+<text x="550" y="240" class="e v t2 f14">3</text>
+<text x="44" y="270" class="v b f14">4</text>
+<text x="120" y="270" class="v t2 f14">—</text>
+<text x="550" y="270" class="e v t2 f14">4</text>
+<rect x="24" y="282" width="552" height="28" rx="6" fill="var(--bg_elevated)" fill-opacity=".35"/><text x="44" y="300" class="v b f14">5</text>
+<text x="120" y="300" class="v t2 f14">—</text>
+<text x="550" y="300" class="e v t2 f14">5</text>
+<text x="44" y="330" class="v b f14">6</text>
+<text x="120" y="330" class="v t2 f14">—</text>
+<text x="550" y="330" class="e v t2 f14">6</text>
+<rect x="24" y="342" width="552" height="28" rx="6" fill="var(--bg_elevated)" fill-opacity=".35"/><text x="44" y="360" class="v b f14">7</text>
+<text x="120" y="360" class="v t2 f14">看自己一张牌</text>
+<text x="550" y="360" class="e v t2 f14">7</text>
+<text x="44" y="390" class="v b f14">8</text>
+<text x="120" y="390" class="v t2 f14">看自己一张牌</text>
+<text x="550" y="390" class="e v t2 f14">8</text>
+<rect x="24" y="402" width="552" height="28" rx="6" fill="var(--bg_elevated)" fill-opacity=".35"/><text x="44" y="420" class="v b f14">9</text>
+<text x="120" y="420" class="v t2 f14">看别人一张牌</text>
+<text x="550" y="420" class="e v t2 f14">9</text>
+<text x="44" y="450" class="v b f14">10</text>
+<text x="120" y="450" class="v t2 f14">看别人一张牌</text>
+<text x="550" y="450" class="e v t2 f14">10</text>
+<rect x="24" y="462" width="552" height="28" rx="6" fill="var(--bg_elevated)" fill-opacity=".35"/><text x="44" y="480" class="v b f14">J</text>
+<text x="120" y="480" class="v t2 f14">盲换：与自己一张牌交换</text>
+<text x="550" y="480" class="e v t2 f14">10</text>
+<text x="44" y="510" class="v b f14">Q</text>
+<text x="120" y="510" class="v t2 f14">看别人一张，再看自己一张决定交换</text>
+<text x="550" y="510" class="e v t2 f14">10</text>
+<rect x="24" y="522" width="552" height="28" rx="6" fill="var(--bg_elevated)" fill-opacity=".35"/><text x="44" y="540" class="v b f14">K</text>
+<text x="120" y="540" class="v t2 f14">—</text>
+<text x="550" y="540" class="e v t2 f14">-1</text>
+<text x="44" y="570" class="v b f14">Joker</text>
+<text x="120" y="570" class="v t2 f14">—</text>
+<text x="550" y="570" class="e v t2 f14">0</text>
+
+  <text x="300" y="612" class="c f14 tm">Tab 手册 / S Stats / K 按键 / Q·E 切页 / Esc 关闭</text>
+</g>
+
+
+<g transform="translate(660,40)">
+  <rect width="600" height="640" rx="16" class="board"/>
+  <text x="300" y="42" class="c f22 b">Stats</text>
+  <rect x="24" y="68" width="56" height="36" rx="6" class="chip"/><text x="52" y="86" class="c f14">Q ◀</text>
+<rect x="520" y="68" width="56" height="36" rx="6" class="chip"/><text x="548" y="86" class="c f14">E ▶</text>
+<text x="196" y="86" class="c f18 t2">手册</text>
+<rect x="252" y="68" width="96" height="36" rx="8" class="chip-on"/><text x="300" y="86" class="c f18 b">Stats</text>
+<text x="404" y="86" class="c f18 t2">按键</text>
+<line x1="24" y1="124" x2="576" y2="124" class="div"/>
+  <text x="300" y="160" class="c f18 b">弃牌堆</text>
+  <text x="300" y="186" class="c f13 tm">4 行花色 × 14 固定槽位（A..K + Joker）；未出现留空</text>
+  <g fill="none" stroke="var(--border)" stroke-opacity=".45" stroke-width="1"><rect x="88" y="220" width="42" height="58" rx="5"/><rect x="114" y="220" width="42" height="58" rx="5"/><rect x="140" y="220" width="42" height="58" rx="5"/><rect x="166" y="220" width="42" height="58" rx="5"/><rect x="192" y="220" width="42" height="58" rx="5"/><rect x="218" y="220" width="42" height="58" rx="5"/><rect x="244" y="220" width="42" height="58" rx="5"/><rect x="270" y="220" width="42" height="58" rx="5"/><rect x="296" y="220" width="42" height="58" rx="5"/><rect x="322" y="220" width="42" height="58" rx="5"/><rect x="348" y="220" width="42" height="58" rx="5"/><rect x="374" y="220" width="42" height="58" rx="5"/><rect x="400" y="220" width="42" height="58" rx="5"/><rect x="426" y="220" width="42" height="58" rx="5"/><rect x="88" y="300" width="42" height="58" rx="5"/><rect x="114" y="300" width="42" height="58" rx="5"/><rect x="140" y="300" width="42" height="58" rx="5"/><rect x="166" y="300" width="42" height="58" rx="5"/><rect x="192" y="300" width="42" height="58" rx="5"/><rect x="218" y="300" width="42" height="58" rx="5"/><rect x="244" y="300" width="42" height="58" rx="5"/><rect x="270" y="300" width="42" height="58" rx="5"/><rect x="296" y="300" width="42" height="58" rx="5"/><rect x="322" y="300" width="42" height="58" rx="5"/><rect x="348" y="300" width="42" height="58" rx="5"/><rect x="374" y="300" width="42" height="58" rx="5"/><rect x="400" y="300" width="42" height="58" rx="5"/><rect x="426" y="300" width="42" height="58" rx="5"/><rect x="88" y="380" width="42" height="58" rx="5"/><rect x="114" y="380" width="42" height="58" rx="5"/><rect x="140" y="380" width="42" height="58" rx="5"/><rect x="166" y="380" width="42" height="58" rx="5"/><rect x="192" y="380" width="42" height="58" rx="5"/><rect x="218" y="380" width="42" height="58" rx="5"/><rect x="244" y="380" width="42" height="58" rx="5"/><rect x="270" y="380" width="42" height="58" rx="5"/><rect x="296" y="380" width="42" height="58" rx="5"/><rect x="322" y="380" width="42" height="58" rx="5"/><rect x="348" y="380" width="42" height="58" rx="5"/><rect x="374" y="380" width="42" height="58" rx="5"/><rect x="400" y="380" width="42" height="58" rx="5"/><rect x="426" y="380" width="42" height="58" rx="5"/><rect x="88" y="460" width="42" height="58" rx="5"/><rect x="114" y="460" width="42" height="58" rx="5"/><rect x="140" y="460" width="42" height="58" rx="5"/><rect x="166" y="460" width="42" height="58" rx="5"/><rect x="192" y="460" width="42" height="58" rx="5"/><rect x="218" y="460" width="42" height="58" rx="5"/><rect x="244" y="460" width="42" height="58" rx="5"/><rect x="270" y="460" width="42" height="58" rx="5"/><rect x="296" y="460" width="42" height="58" rx="5"/><rect x="322" y="460" width="42" height="58" rx="5"/><rect x="348" y="460" width="42" height="58" rx="5"/><rect x="374" y="460" width="42" height="58" rx="5"/><rect x="400" y="460" width="42" height="58" rx="5"/><rect x="426" y="460" width="42" height="58" rx="5"/></g>
+  <text x="24" y="254" class="v f14 tm">♠</text><text x="24" y="334" class="v f14 tm">♥</text><text x="24" y="414" class="v f14 tm">♣</text><text x="24" y="494" class="v f14 tm">♦</text>
+  <rect x="88" y="220" width="42" height="58" rx="5" fill="var(--text_primary)" stroke="var(--border)"/><text x="95" y="242" class="f12 b" style="fill:var(--card_rank_black)">A</text>
+<rect x="244" y="220" width="42" height="58" rx="5" fill="var(--text_primary)" stroke="var(--border)"/><text x="251" y="242" class="f12 b" style="fill:var(--card_rank_black)">7</text>
+<rect x="400" y="220" width="42" height="58" rx="5" fill="var(--text_primary)" stroke="var(--border)"/><text x="407" y="242" class="f12 b" style="fill:var(--card_rank_black)">K</text>
+<rect x="426" y="220" width="42" height="58" rx="5" fill="var(--text_primary)" stroke="var(--border)"/><text x="447" y="250" class="c f12 b" style="fill:var(--card_rank_black)">JK</text>
+<rect x="114" y="300" width="42" height="58" rx="5" fill="var(--text_primary)" stroke="var(--border)"/><text x="121" y="322" class="f12 b" style="fill:var(--card_rank_red)">2</text>
+<rect x="374" y="300" width="42" height="58" rx="5" fill="var(--text_primary)" stroke="var(--border)"/><text x="381" y="322" class="f12 b" style="fill:var(--card_rank_red)">Q</text>
+<rect x="426" y="300" width="42" height="58" rx="5" fill="var(--text_primary)" stroke="var(--border)"/><text x="447" y="330" class="c f12 b" style="fill:var(--card_rank_red)">JK</text>
+<rect x="192" y="380" width="42" height="58" rx="5" fill="var(--text_primary)" stroke="var(--border)"/><text x="199" y="402" class="f12 b" style="fill:var(--card_rank_black)">5</text>
+<rect x="296" y="460" width="42" height="58" rx="5" fill="var(--text_primary)" stroke="var(--border)"/><text x="303" y="482" class="f12 b" style="fill:var(--card_rank_red)">9</text>
+
+  <text x="300" y="560" class="c f14 tm">当前 StatsBoard 不显示计数；如需「共 N 张」是新增数据/文案。</text>
+  <text x="300" y="612" class="c f14 tm">Tab 手册 / S Stats / K 按键 / Q·E 切页 / Esc 关闭</text>
+</g>
+
+
+<g transform="translate(1280,40)">
+  <rect width="600" height="640" rx="16" class="board"/>
+  <text x="300" y="42" class="c f22 b">按键绑定</text>
+  <rect x="24" y="68" width="56" height="36" rx="6" class="chip"/><text x="52" y="86" class="c f14">Q ◀</text>
+<rect x="520" y="68" width="56" height="36" rx="6" class="chip"/><text x="548" y="86" class="c f14">E ▶</text>
+<text x="196" y="86" class="c f18 t2">手册</text>
+<text x="300" y="86" class="c f18 t2">Stats</text>
+<rect x="356" y="68" width="96" height="36" rx="8" class="chip-on"/><text x="404" y="86" class="c f18 b">按键</text>
+<line x1="24" y1="124" x2="576" y2="124" class="div"/>
+  <text x="44" y="150" class="f13 tm">动作</text>
+<text x="120" y="150" class="f13 tm">说明</text>
+<text x="300" y="150" class="c f13 tm">原始</text>
+<text x="404" y="150" class="c f13 tm">新按键</text>
+<text x="500" y="150" class="c f13 tm">状态</text>
+
+  <rect x="24" y="162" width="552" height="38" rx="8" class="row"/><text x="44" y="181" class="f16 v">手册</text>
+<text x="120" y="181" class="f13 v tm">开/关 手册页</text>
+<rect x="270" y="168" width="60" height="26" rx="6" class="chip"/><text x="300" y="181" class="c f13">Tab</text>
+<rect x="374" y="168" width="60" height="26" rx="6" class="chip" style=""/><text x="404" y="181" class="c f13">Tab</text>
+<text x="500" y="181" class="v f12"></text>
+<rect x="24" y="206" width="552" height="38" rx="8" class="row-hover"/><text x="44" y="225" class="f16 v">Stats</text>
+<text x="120" y="225" class="f13 v tm">开/关 Stats 页</text>
+<rect x="270" y="212" width="60" height="26" rx="6" class="chip"/><text x="300" y="225" class="c f13">S</text>
+<rect x="374" y="212" width="60" height="26" rx="6" class="chip" style=""/><text x="404" y="225" class="c f13">S</text>
+<text x="500" y="225" class="v f12"></text>
+<rect x="24" y="250" width="552" height="38" rx="8" class="row-cap"/><text x="44" y="269" class="f16 v">按键映射</text>
+<text x="120" y="269" class="f13 v tm">开/关 按键映射页</text>
+<rect x="270" y="256" width="60" height="26" rx="6" class="chip"/><text x="300" y="269" class="c f13">K</text>
+<rect x="374" y="256" width="60" height="26" rx="6" class="chip-on" style=""/><text x="404" y="269" class="c f13" style="fill:var(--accent_focus)">按键中…</text>
+<text x="500" y="269" class="v f12" style="fill:var(--accent_focus)">捕获中</text>
+<rect x="24" y="294" width="552" height="38" rx="8" class="row-bad"/><text x="44" y="313" class="f16 v">说话</text>
+<text x="120" y="313" class="f13 v tm">按住/切换 说话</text>
+<rect x="270" y="300" width="60" height="26" rx="6" class="chip"/><text x="300" y="313" class="c f13">M</text>
+<rect x="374" y="300" width="60" height="26" rx="6" class="chip" style="stroke:var(--danger)"/><text x="404" y="313" class="c f13" style="fill:var(--danger_text)">空格</text>
+<text x="500" y="313" class="v f12" style="fill:var(--danger_text)">保留键</text>
+<rect x="24" y="338" width="552" height="38" rx="8" class="row-ok"/><text x="44" y="357" class="f16 v">放大</text>
+<text x="120" y="357" class="f13 v tm">按住 拉近视场</text>
+<rect x="270" y="344" width="60" height="26" rx="6" class="chip"/><text x="300" y="357" class="c f13">Meta</text>
+<rect x="374" y="344" width="60" height="26" rx="6" class="chip" style="stroke:var(--accent_focus)"/><text x="404" y="357" class="c f13">M</text>
+<text x="500" y="357" class="v f12" style="fill:var(--accent_focus)">已自动交换</text>
+<rect x="24" y="382" width="552" height="38" rx="8" class="row"/><text x="44" y="401" class="f16 v">切换 3D</text>
+<text x="120" y="401" class="f13 v tm">2D / 3D 桌面切换</text>
+<rect x="270" y="388" width="60" height="26" rx="6" class="chip"/><text x="300" y="401" class="c f13">V</text>
+<rect x="374" y="388" width="60" height="26" rx="6" class="chip" style=""/><text x="404" y="401" class="c f13">V</text>
+<text x="500" y="401" class="v f12"></text>
+
+  <text x="24" y="470" class="f13 td">冲突在捕获时立即自动交换；保留键拒绝是独立状态。</text>
+  <rect x="280" y="492" width="140" height="40" rx="10" class="btn-off"/><text x="350" y="512" class="c f16 b tm">保存（无改动）</text>
+  <rect x="436" y="492" width="140" height="40" rx="10" class="btn-p"/><text x="506" y="512" class="c f16 b ta">保存（有改动）</text>
+  <text x="300" y="570" class="c f13 tm">无改动时保存禁用；点击一行后按新键，Esc 取消捕获。</text>
+  <text x="300" y="612" class="c f14 tm">Tab 手册 / S Stats / K 按键 / Q·E 切页 / Esc 关闭</text>
+</g>
+
+
+<g transform="translate(40,720)">
+  <rect width="600" height="300" rx="16" fill="#0b0d12"/>
+  <rect width="600" height="300" rx="16" fill="#000" fill-opacity=".55"/>
+  <rect x="90" y="58" width="420" height="184" rx="16" class="board"/>
+  <text x="300" y="100" class="c f22 b">保存按键设置？</text>
+  <text x="300" y="136" class="c f16 t2">将覆盖当前的按键映射</text>
+  <rect x="120" y="170" width="160" height="48" rx="10" class="btn-s"/><text x="200" y="194" class="c f18 b">取消</text>
+  <rect x="320" y="170" width="160" height="48" rx="10" class="btn-p"/><text x="400" y="194" class="c f18 b ta">保存</text>
+  <text x="300" y="246" class="c f13 tm">Esc 取消 · Enter 确认</text>
+</g>
+
+<g transform="translate(680,760)">
+  <text x="0" y="0" class="f18 b">C 区实现备注</text>
+
+  <text x="0" y="34" class="tag">手册是 14 行 × 3 列表格（牌 / 能力 / 分数），不是 12 卡格。</text>
+
+  <text x="0" y="60" class="tag">Stats 是 4 行花色 × 14 固定槽位；当前不显示计数。</text>
+
+  <text x="0" y="86" class="tag">按键页 5 列：动作 / 说明 / 原始 / 新按键 / 状态。</text>
+
+  <text x="0" y="112" class="tag">冲突在捕获时自动交换；保留键拒绝有独立状态。</text>
+
+  <text x="0" y="138" class="tag">保存确认浮层实际用全屏遮罩，不只 600×300。</text>
+
+  <text x="0" y="164" class="tag">看板底板 .96；HUD .82；Tab 固定 96 宽，Q/E chip 固定。</text>
+
+  <text x="0" y="190" class="tag">light 主题需单独定义 hud_*，不要复用深色玻璃。</text>
+
+  <text x="0" y="230" class="f16 b">落地顺序</text>
+
+  <text x="0" y="258" class="tag">1. UITheme 增 hud_* 令牌（三主题）</text>
+
+  <text x="0" y="284" class="tag">2. UIStyle 工厂：panel / board / chip / pill / btn / row / tab</text>
+
+  <text x="0" y="310" class="tag">3. 替换 HintHud / KeyHintPanel / CardOrderPanel / PlayerStatPanel</text>
+
+  <text x="0" y="336" class="tag">4. 替换 TurnEffectPanel / ManualPanel / StatsBoard / KeymapBoard</text>
+
+  <text x="0" y="362" class="tag">5. 更新 verify_hint_hud / verify_keybind / verify_stat_panel 断言</text>
+
+</g>
+</g>
+
+
+<text x="40" y="4280" class="lbl">D · 结算面板（居中排名 · 逐张翻牌 · 实时重排 · 冠军）</text>
+<g transform="translate(0,4300)">
+<rect width="1920" height="900" fill="#151821" stroke="#2a3140" stroke-width="2"/>
+
+<g transform="translate(40,80)">
+  <rect width="1280" height="720" rx="16" fill="#0b0d12"/>
+  <ellipse cx="640" cy="380" rx="540" ry="220" fill="#141c29" stroke="#212c3c" stroke-width="2" opacity=".55"/>
+  <rect x="340" y="80" width="600" height="560" rx="16" class="board" filter="url(#shadow)"/>
+  <text x="640" y="120" class="c f22 b tf">结算 · 第 2 / 3 局</text>
+  <text x="640" y="146" class="c f13 tm">同步轮算分 · 逐张翻牌 · 实时重排</text>
+  <rect x="380" y="170" width="520" height="46" rx="8" fill="var(--accent_soft)" stroke="var(--accent_focus)" stroke-width="2"/><text x="400" y="193" class="f18 b" style="fill:var(--accent_focus)">1</text>
+<text x="440" y="193" class="f16 b" style="fill:var(--currency)">★ 阿岚</text>
+<rect x="560" y="174" width="30" height="38" rx="5" fill="var(--text_primary)" stroke="var(--border)"/><text x="564" y="190" class="f11 b" style="fill:var(--card_rank_black)">A</text>
+<text x="586" y="206" class="e f10 b" style="fill:var(--card_rank_black)">♠</text>
+<rect x="598" y="174" width="30" height="38" rx="5" fill="var(--text_primary)" stroke="var(--border)"/><text x="602" y="190" class="f11 b" style="fill:var(--card_rank_red)">2</text>
+<text x="624" y="206" class="e f10 b" style="fill:var(--card_rank_red)">♥</text>
+<rect x="636" y="174" width="30" height="38" rx="5" fill="var(--text_primary)" stroke="var(--border)"/><text x="640" y="190" class="f11 b" style="fill:var(--card_rank_red)">2</text>
+<text x="662" y="206" class="e f10 b" style="fill:var(--card_rank_red)">♦</text>
+<rect x="674" y="174" width="30" height="38" rx="5" fill="var(--text_primary)" stroke="var(--border)"/><text x="689" y="197" class="c f13 b" style="fill:var(--card_rank_black)">JK</text>
+<text x="880" y="193" class="e f18 b" style="fill:var(--accent_focus)">5</text>
+
+  <rect x="380" y="222" width="520" height="46" rx="8" class="row"/><text x="400" y="245" class="f18 b" style="fill:var(--text_secondary)">2</text>
+<text x="440" y="245" class="f16">小北</text>
+<rect x="560" y="226" width="30" height="38" rx="5" fill="var(--text_primary)" stroke="var(--border)"/><text x="564" y="242" class="f11 b" style="fill:var(--card_rank_black)">K</text>
+<text x="586" y="258" class="e f10 b" style="fill:var(--card_rank_black)">♣</text>
+<rect x="598" y="226" width="30" height="38" rx="5" fill="var(--text_primary)" stroke="var(--border)"/><text x="602" y="242" class="f11 b" style="fill:var(--card_rank_red)">5</text>
+<text x="624" y="258" class="e f10 b" style="fill:var(--card_rank_red)">♦</text>
+<rect x="636" y="226" width="30" height="38" rx="5" fill="var(--text_primary)" stroke="var(--border)"/><text x="640" y="242" class="f11 b" style="fill:var(--card_rank_red)">2</text>
+<text x="662" y="258" class="e f10 b" style="fill:var(--card_rank_red)">♥</text>
+<rect x="674" y="226" width="30" height="38" rx="5" fill="var(--text_primary)" stroke="var(--border)"/><text x="678" y="242" class="f11 b" style="fill:var(--card_rank_black)">A</text>
+<text x="700" y="258" class="e f10 b" style="fill:var(--card_rank_black)">♠</text>
+<text x="880" y="245" class="e f18 b" style="fill:var(--accent_focus)">7</text>
+
+  <rect x="380" y="274" width="520" height="46" rx="8" class="row"/><text x="400" y="297" class="f18 b" style="fill:var(--text_secondary)">3</text>
+<text x="440" y="297" class="f16">Momo</text>
+<rect x="560" y="278" width="30" height="38" rx="5" fill="var(--text_primary)" stroke="var(--border)"/><text x="564" y="294" class="f11 b" style="fill:var(--card_rank_black)">Q</text>
+<text x="586" y="310" class="e f10 b" style="fill:var(--card_rank_black)">♠</text>
+<rect x="598" y="278" width="30" height="38" rx="5" fill="var(--text_primary)" stroke="var(--border)"/><text x="602" y="294" class="f11 b" style="fill:var(--card_rank_red)">A</text>
+<text x="624" y="310" class="e f10 b" style="fill:var(--card_rank_red)">♥</text>
+<rect x="636" y="278" width="30" height="38" rx="5" fill="var(--text_primary)" stroke="var(--border)"/><text x="640" y="294" class="f11 b" style="fill:var(--card_rank_black)">A</text>
+<text x="662" y="310" class="e f10 b" style="fill:var(--card_rank_black)">♣</text>
+<rect x="674" y="278" width="30" height="38" rx="5" fill="var(--text_primary)" stroke="var(--border)"/><text x="689" y="301" class="c f13 b" style="fill:var(--card_rank_red)">JK</text>
+<text x="880" y="297" class="e f18 b" style="fill:var(--accent_focus)">12</text>
+
+  <rect x="380" y="326" width="520" height="46" rx="8" class="row"/><text x="400" y="349" class="f18 b" style="fill:var(--text_secondary)">4</text>
+<text x="440" y="349" class="f16">阿杰</text>
+<rect x="560" y="330" width="30" height="38" rx="5" fill="var(--text_primary)" stroke="var(--border)"/><text x="564" y="346" class="f11 b" style="fill:var(--card_rank_black)">10</text>
+<text x="586" y="362" class="e f10 b" style="fill:var(--card_rank_black)">♠</text>
+<rect x="598" y="330" width="30" height="38" rx="5" fill="var(--text_primary)" stroke="var(--border)"/><text x="602" y="346" class="f11 b" style="fill:var(--card_rank_red)">5</text>
+<text x="624" y="362" class="e f10 b" style="fill:var(--card_rank_red)">♥</text>
+<rect x="636" y="330" width="30" height="38" rx="5" fill="var(--text_primary)" stroke="var(--border)"/><text x="640" y="346" class="f11 b" style="fill:var(--card_rank_black)">2</text>
+<text x="662" y="362" class="e f10 b" style="fill:var(--card_rank_black)">♣</text>
+<rect x="674" y="330" width="30" height="38" rx="5" fill="var(--text_primary)" stroke="var(--border)"/><text x="678" y="346" class="f11 b" style="fill:var(--card_rank_red)">A</text>
+<text x="700" y="362" class="e f10 b" style="fill:var(--card_rank_red)">♦</text>
+<text x="880" y="349" class="e f18 b" style="fill:var(--accent_focus)">18</text>
+
+  <line x1="400" y1="402" x2="880" y2="402" class="div"/>
+  <rect x="570" y="438" width="140" height="40" rx="10" class="btn-s"/><text x="640" y="458" class="c f16 b">回到等待房间</text>
+  <text x="640" y="508" class="c f14 t2">即将进入商店…</text>
+  <text x="640" y="540" class="c f13 tc">本局奖励：阿岚 +3　小北 -1♥</text>
+  <text x="640" y="570" class="c f13 tm">系列赛结束：显示总排名 / 胜场 / 货币</text>
+  <text x="640" y="600" class="c f13 tm">非房主：等待进入商店…</text>
+</g>
+
+<g transform="translate(1360,120)">
+  <text x="0" y="0" class="f18 b">D 结算面板</text>
+
+  <text x="0" y="34" class="tag">居中 600×560；排名行 520×46；卡片 30×38。</text>
+
+  <text x="0" y="60" class="tag">逐张翻牌 0.35s/张；每轮 0.55s 后重排 0.35s。</text>
+
+  <text x="0" y="86" class="tag">冠军：★ + 金色闪烁 6 次；名称在行首。</text>
+
+  <text x="0" y="112" class="tag">系列赛结束：SeriesBox 总排名；奖励：EconomyLabel。</text>
+
+  <line x1="0" y1="140" x2="520" y2="140" class="div"/>
+  <text x="0" y="170" class="f16 b">Joker 文本规范</text>
+
+  <rect x="0" y="196" width="30" height="38" rx="5" fill="var(--text_primary)" stroke="var(--border)"/><text x="15" y="219" class="c f13 b" style="fill:var(--card_rank_black)">JK</text>
+
+  <rect x="40" y="196" width="30" height="38" rx="5" fill="var(--text_primary)" stroke="var(--border)"/><text x="55" y="219" class="c f13 b" style="fill:var(--card_rank_red)">JK</text>
+
+  <text x="15" y="252" class="c f12 t2">black</text>
+
+  <text x="55" y="252" class="c f12 t2">red</text>
+
+  <text x="0" y="286" class="t2 f14">black Joker → JK（card_rank_black）</text>
+
+  <text x="0" y="312" class="t2 f14">red Joker → JK（card_rank_red）</text>
+
+  <text x="0" y="338" class="tag">禁止：JOKERblack / JOKERred / Joker♠</text>
+
+  <text x="0" y="364" class="tag">当前实现是纯文本 rank+suit；结算行建议改成浅色小牌面 chip，</text>
+
+  <text x="0" y="390" class="tag">否则黑色字在深色面板上不可读。</text>
+
+  <line x1="0" y1="418" x2="520" y2="418" class="div"/>
+  <text x="0" y="448" class="f16 b">实现点</text>
+
+  <text x="0" y="482" class="tag">settlement_page.gd:_reveal_flip 里替换 rank+suit 拼串。</text>
+
+  <text x="0" y="508" class="tag">total 动画 / 逐张翻牌 / 重排逻辑不变。</text>
+
+  <text x="0" y="534" class="tag">卡片颜色用 card_rank_black / card_rank_red。</text>
+
+</g>
+</g>
+
+
+<text x="40" y="5260" class="lbl">E · Hover / Info 状态（统一状态色 + 信息框变体）</text>
+<g transform="translate(0,5280)">
+<rect width="1920" height="1000" fill="#151821" stroke="#2a3140" stroke-width="2"/>
+
+<!-- 1 SLAP -->
+<g transform="translate(40,60)">
+  <rect width="600" height="300" rx="16" class="panel"/>
+  <text x="20" y="28" class="f16 b">1 · 贴牌 SLAP · hover_slap</text>
+
+  <text x="20" y="50" class="tag">仅 slap_open 且卡牌可尝试贴牌时</text>
+
+  <rect x="50" y="78" width="80" height="112" rx="6" fill="var(--text_primary)" stroke="var(--border)"/>
+  <text x="60" y="102" class="f18 b" style="fill:var(--card_rank_black)">9</text>
+  <text x="112" y="174" class="e f16 b" style="fill:var(--card_rank_black)">♠</text>
+  <rect x="42" y="70" width="96" height="128" rx="10" class="hframe hframe-slap"/>
+  <rect x="180" y="78" width="360" height="98" rx="12" class="info info-slap" filter="url(#shadow)"/><rect x="183" y="81" width="354" height="92" rx="10" class="info-tint-slap"/><rect x="194" y="94" width="4" height="66" rx="2" class="info-bar-slap"/><text x="210" y="106" class="f16 b" style="fill:var(--hover_slap)">贴牌</text>
+<text x="210" y="130" class="f13 t2">点击这张牌尝试贴牌。</text>
+<text x="210" y="150" class="f13 t2">不预判对错，结果由服务器判定。</text>
+<text x="210" y="166" class="f12 tm">深蓝框 = 贴牌目标</text>
+
+</g>
+
+<!-- 2 Ability valid -->
+<g transform="translate(660,60)">
+  <rect width="600" height="300" rx="16" class="panel"/>
+  <text x="20" y="28" class="f16 b">2 · 能力合法目标 · hover_valid</text>
+
+  <text x="20" y="50" class="tag">9 / 10：查看其他玩家；7 / 8：查看自己</text>
+
+  <rect x="50" y="78" width="80" height="112" rx="6" fill="var(--bg_surface)" stroke="var(--accent_focus)" stroke-width="2"/>
+  <text x="90" y="134" class="c f22 b tf">?</text>
+  <rect x="42" y="70" width="96" height="128" rx="10" class="hframe hframe-valid"/>
+  <rect x="180" y="78" width="360" height="98" rx="12" class="info info-valid" filter="url(#shadow)"/><rect x="183" y="81" width="354" height="92" rx="10" class="info-tint-valid"/><rect x="194" y="94" width="4" height="66" rx="2" class="info-bar-valid"/><text x="210" y="106" class="f16 b" style="fill:var(--hover_valid)">翻看卡牌</text>
+<text x="210" y="130" class="f13 t2">9 / 10：只能查看其他玩家的牌。</text>
+<text x="210" y="150" class="f13 t2">牌面仅自己可见。</text>
+<text x="210" y="166" class="f12 tm">绿框 = 可查看目标</text>
+
+</g>
+
+<!-- 3 Ability invalid -->
+<g transform="translate(40,380)">
+  <rect width="600" height="300" rx="16" class="panel"/>
+  <text x="20" y="28" class="f16 b">3 · 能力非法目标 · hover_invalid</text>
+
+  <text x="20" y="50" class="tag">9 / 10 选自己；7 / 8 选敌方</text>
+
+  <rect x="50" y="78" width="80" height="112" rx="6" fill="var(--text_primary)" stroke="var(--border)"/>
+  <text x="60" y="102" class="f18 b" style="fill:var(--card_rank_red)">7</text>
+  <text x="112" y="174" class="e f16 b" style="fill:var(--card_rank_red)">♥</text>
+  <rect x="42" y="70" width="96" height="128" rx="10" class="hframe hframe-invalid"/>
+  <rect x="180" y="78" width="360" height="98" rx="12" class="info info-invalid" filter="url(#shadow)"/><rect x="183" y="81" width="354" height="92" rx="10" class="info-tint-invalid"/><rect x="194" y="94" width="4" height="66" rx="2" class="info-bar-invalid"/><text x="210" y="106" class="f16 b" style="fill:var(--hover_invalid)">无法查看</text>
+<text x="210" y="130" class="f13 t2">9 / 10 只能查看其他玩家的牌。</text>
+<text x="210" y="150" class="f13 t2">请改选其他玩家的一张牌。</text>
+<text x="210" y="166" class="f12 tm">红框 = 目标不合法</text>
+
+</g>
+
+<!-- 4 Draw discard warning -->
+<g transform="translate(660,380)">
+  <rect width="600" height="300" rx="16" class="panel"/>
+  <text x="20" y="28" class="f16 b">4 · 抽牌阶弃牌提醒 · hover_warning</text>
+
+  <text x="20" y="50" class="tag">TURN_DRAW + 当前玩家 + 弃牌堆非空</text>
+
+  <rect x="50" y="78" width="80" height="112" rx="6" fill="var(--text_primary)" stroke="var(--border)"/>
+  <text x="60" y="102" class="f18 b" style="fill:var(--card_rank_black)">7</text>
+  <text x="112" y="174" class="e f16 b" style="fill:var(--card_rank_black)">♣</text>
+  <rect x="42" y="70" width="96" height="128" rx="10" class="hframe hframe-warning"/>
+  <rect x="180" y="78" width="360" height="98" rx="12" class="info info-warning" filter="url(#shadow)"/><rect x="183" y="81" width="354" height="92" rx="10" class="info-tint-warning"/><rect x="194" y="94" width="4" height="66" rx="2" class="info-bar-warning"/><text x="210" y="106" class="f16 b" style="fill:var(--hover_warning)">注意</text>
+<text x="210" y="130" class="f13 t2">抽取弃牌堆的牌只用于交换，</text>
+<text x="210" y="150" class="f13 t2">无法使用其能力。</text>
+<text x="210" y="166" class="f12 tm">仍可取走此牌用于替换</text>
+
+</g>
+
+<!-- Notes -->
+<g transform="translate(1300,60)">
+  <text x="0" y="0" class="f18 b">状态映射</text>
+
+  <rect x="0" y="26" width="14" height="14" rx="3" fill="var(--hover_slap)"/><text x="24" y="38" class="t2 f14">hover_slap · 贴牌窗口 + 可贴卡 →「贴牌」</text>
+
+  <rect x="0" y="56" width="14" height="14" rx="3" fill="var(--hover_valid)"/><text x="24" y="68" class="t2 f14">hover_valid · 能力合法目标 →「翻看卡牌」</text>
+
+  <rect x="0" y="86" width="14" height="14" rx="3" fill="var(--hover_invalid)"/><text x="24" y="98" class="t2 f14">hover_invalid · 能力非法目标 →「无法查看」</text>
+
+  <rect x="0" y="116" width="14" height="14" rx="3" fill="var(--hover_warning)"/><text x="24" y="128" class="t2 f14">hover_warning · 抽牌阶 hover 弃牌堆 →「注意」</text>
+
+  <rect x="0" y="146" width="14" height="14" rx="3" fill="var(--hover_neutral)"/><text x="24" y="158" class="t2 f14">hover_neutral · 无上下文 → 保留牌面能力/不弹 info</text>
+
+
+  <text x="0" y="206" class="f16 b">Q 两阶段</text>
+
+  <text x="0" y="234" class="tag">Q 第一步：敌方绿 / 自己红</text>
+
+  <text x="0" y="260" class="tag">Q 第二步：自己绿 / 敌方红</text>
+
+  <text x="0" y="286" class="tag">J / 道具暂不纳入本批；后续可复用同一状态机</text>
+
+
+  <text x="0" y="330" class="f16 b">统一令牌</text>
+
+  <rect x="0" y="350" width="96" height="36" rx="8" fill="var(--hover_neutral)" stroke="var(--border_strong)"/><text x="48" y="394" class="c f10 t2">hover_neutral</text>
+
+  <rect x="106" y="350" width="96" height="36" rx="8" fill="var(--hover_slap)"/><text x="154" y="394" class="c f10 t2">hover_slap</text>
+
+  <rect x="212" y="350" width="96" height="36" rx="8" fill="var(--hover_valid)"/><text x="260" y="394" class="c f10 t2">hover_valid</text>
+
+  <rect x="318" y="350" width="96" height="36" rx="8" fill="var(--hover_invalid)"/><text x="366" y="394" class="c f10 t2">hover_invalid</text>
+
+  <rect x="424" y="350" width="96" height="36" rx="8" fill="var(--hover_warning)"/><text x="472" y="394" class="c f10 t2">hover_warning</text>
+
+
+  <text x="0" y="450" class="f16 b">实现映射</text>
+
+  <text x="0" y="478" class="tag">UIStyle.hover_color(state) → CardBlock 虚线框</text>
+
+  <text x="0" y="504" class="tag">UIStyle.info_box(state) → CardTooltip / HoverInfo</text>
+
+  <text x="0" y="530" class="tag">info 标题用状态色，正文用 text_secondary；左侧 4px 状态条</text>
+
+  <text x="0" y="570" class="tag">规则：贴牌框不预判对错，只表示可点击尝试；</text>
+
+  <text x="0" y="596" class="tag">对错与罚牌仍由服务器判定。</text>
+
+  <text x="0" y="636" class="tag">下一步：把状态机接到 7/8、9/10、Q、slap_open 与抽牌阶弃牌。</text>
+
+
+  <text x="0" y="700" class="f16 b">能力文案（绿 / 红）</text>
+
+  <text x="0" y="728" class="tag">7/8    绿：翻看卡牌 · 只能看自己   红：无法查看 · 只能看自己</text>
+
+  <text x="0" y="754" class="tag">9/10   绿：翻看卡牌 · 只能看其他玩家   红：无法查看 · 只能看其他玩家</text>
+
+  <text x="0" y="780" class="tag">Q①     绿：翻看卡牌 · 先选其他玩家       红：无法查看 · 第一步只选其他玩家</text>
+
+  <text x="0" y="806" class="tag">Q②     绿：翻看卡牌 · 再选自己           红：无法查看 · 第二步只选自己</text>
+
+  <text x="0" y="844" class="tag">peek_any（饰品赋予）沿用绿框：自己/其他玩家都可看。</text>
+
+</g>
+</g>
+
+
+<text x="40" y="6340" class="lbl">F · 商店（道具 / 遗物 / 购买 / 锁定 / 刷新 / 结束商店）</text>
+<g transform="translate(0,6360)">
+<rect width="1920" height="1000" fill="#151821" stroke="#2a3140" stroke-width="2"/>
+
+<g transform="translate(40,80)">
+  <rect width="1280" height="760" rx="16" fill="#0b0d12"/>
+  <rect width="1280" height="760" rx="16" fill="#000" fill-opacity=".45"/>
+  <rect x="140" y="30" width="1000" height="700" rx="16" class="board" filter="url(#shadow)"/>
+
+  <!-- Header -->
+  <text x="172" y="64" class="f22 b">商店</text>
+
+  <text x="172" y="88" class="f13 tm">SHOP · 道具与遗物</text>
+
+
+  <!-- Cards -->
+  <text x="640" y="112" class="c f14 tm">道具卡</text>
+
+  <rect x="301" y="128" width="160" height="280" rx="12" class="panel"/><rect x="326" y="140" width="110" height="150" rx="10" fill="var(--bg_elevated)" stroke="var(--accent_focus)" stroke-width="1.5"/><text x="381" y="208" class="c f36 b tf">换</text>
+<text x="381" y="242" class="c f12 tm">道具</text>
+<text x="381" y="312" class="c f14 b">交换</text>
+<text x="381" y="332" class="c f15 b tc">$3</text>
+<rect x="311" y="340" width="140" height="30" rx="8" class="btn-p"/><text x="381" y="355" class="c f13 b ta">购买</text>
+<rect x="311" y="376" width="140" height="26" rx="7" class="btn-s"/><text x="381" y="389" class="c f12 b ">锁定</text>
+
+  <rect x="297" y="124" width="168" height="288" rx="14" class="hframe hframe-action"/>
+  <rect x="477" y="128" width="160" height="280" rx="12" class="panel"/><rect x="502" y="140" width="110" height="150" rx="10" fill="var(--bg_elevated)" stroke="var(--accent_focus)" stroke-width="1.5"/><text x="557" y="208" class="c f36 b tf">视</text>
+<text x="557" y="242" class="c f12 tm">道具</text>
+<rect x="561" y="148" width="64" height="22" rx="6" class="chip-on"/><text x="593" y="159" class="c f11 tf">已锁定</text>
+<text x="557" y="312" class="c f14 b">视野</text>
+<text x="557" y="332" class="c f15 b tc">$5</text>
+<rect x="487" y="340" width="140" height="30" rx="8" class="btn-off"/><text x="557" y="355" class="c f13 b tm">已锁定</text>
+<rect x="487" y="376" width="140" height="26" rx="7" class="btn-s-h"/><text x="557" y="389" class="c f12 b tf">解锁</text>
+
+  <rect x="653" y="128" width="160" height="280" rx="12" class="panel"/><rect x="678" y="140" width="110" height="150" rx="10" fill="var(--bg_elevated)" stroke="var(--accent_focus)" stroke-width="1.5"/><text x="733" y="208" class="c f36 b tf">盾</text>
+<text x="733" y="242" class="c f12 tm">道具</text>
+<text x="733" y="312" class="c f14 b">护盾</text>
+<text x="733" y="332" class="c f15 b tc">$8</text>
+<rect x="663" y="340" width="140" height="30" rx="8" class="btn-off"/><text x="733" y="355" class="c f13 b tm">货币不足</text>
+<rect x="663" y="376" width="140" height="26" rx="7" class="btn-s"/><text x="733" y="389" class="c f12 b ">锁定</text>
+
+  <rect x="829" y="128" width="150" height="36" rx="8" class="btn-s"/>
+  <text x="904" y="147" class="c f13 b">⟳ 刷新卡牌</text>
+
+
+  <line x1="172" y1="428" x2="1108" y2="428" class="div"/>
+
+  <!-- Relics -->
+  <text x="640" y="452" class="c f14 tm">遗物</text>
+
+  <rect x="351" y="468" width="190" height="170" rx="12" class="panel"/><circle cx="446" cy="504" r="24" fill="var(--accent_soft)" stroke="var(--accent_focus)" stroke-width="1.5"/><text x="446" y="505" class="c f20 b tf">盾</text>
+<text x="446" y="546" class="c f16 b">护盾</text>
+<text x="446" y="566" class="c f16 b tc">$6</text>
+<rect x="361" y="576" width="170" height="28" rx="8" class="btn-p"/><text x="446" y="590" class="c f12 b ta">购买</text>
+<rect x="361" y="610" width="170" height="24" rx="6" class="btn-s"/><text x="446" y="622" class="c f11 b ">锁定</text>
+
+  <rect x="557" y="468" width="190" height="170" rx="12" class="panel"/><circle cx="652" cy="504" r="24" fill="var(--accent_soft)" stroke="var(--accent_focus)" stroke-width="1.5"/><text x="652" y="505" class="c f20 b tf">丑</text>
+<text x="652" y="546" class="c f16 b">小丑</text>
+<text x="652" y="566" class="c f16 b tc">$8</text>
+<rect x="567" y="576" width="170" height="28" rx="8" class="btn-off"/><text x="652" y="590" class="c f12 b tm">已拥有</text>
+<rect x="567" y="610" width="170" height="24" rx="6" class="btn-s"/><text x="652" y="622" class="c f11 b ">锁定</text>
+
+  <rect x="763" y="468" width="150" height="36" rx="8" class="btn-s"/>
+  <text x="838" y="487" class="c f13 b">⟳ 刷新遗物</text>
+
+
+  <line x1="172" y1="650" x2="1108" y2="650" class="div"/>
+  <use href="#i-coin" x="176" y="670"/><text x="202" y="681" class="f18 b v">12</text>
+
+  <text x="250" y="681" class="f13 tm v">本店货币</text>
+  <rect x="820" y="660" width="148" height="36" rx="10" class="btn-p"/>
+  <text x="894" y="679" class="c f15 b ta">结束商店</text>
+
+</g>
+
+<!-- Right notes -->
+<g transform="translate(1360,90)">
+  <text x="0" y="0" class="f18 b">F 商店</text>
+
+  <text x="0" y="34" class="tag">整个面板 = board .96；道具/遗物槽 = panel；分类标题 hud_text_muted。</text>
+
+  <text x="0" y="60" class="tag">可购买：购买主按钮；锁定：secondary chip / 解锁 accent。</text>
+
+  <text x="0" y="86" class="tag">货币不足 / 已拥有 / 已满 / 已买卡：购买按钮 disabled + 状态文案。</text>
+
+  <text x="0" y="112" class="tag">刷新按钮是 secondary，不抢购买主按钮。</text>
+
+  <text x="0" y="138" class="tag">价格用 currency；货币只在左下角显示。</text>
+
+
+  <text x="0" y="186" class="f16 b">悬停详情</text>
+
+  <rect x="0" y="214" width="360" height="98" rx="12" class="info info-slap" filter="url(#shadow)"/><rect x="3" y="217" width="354" height="92" rx="10" class="info-tint-slap"/><rect x="14" y="230" width="4" height="66" rx="2" class="info-bar-slap"/><text x="30" y="242" class="f16 b" style="fill:var(--hover_slap)">交换</text>
+<text x="30" y="266" class="f13 t2">与一名玩家交换一张手牌。</text>
+<text x="30" y="286" class="f13 t2">价格 $3 · 可购买。</text>
+<text x="30" y="302" class="f12 tm">深蓝 = 可交互槽位</text>
+
+  <text x="0" y="334" class="tag">hover_action = hover_slap 同色（深蓝），语义=可点击槽位。</text>
+
+  <text x="0" y="360" class="tag">信息框复用 E 区的 info 变体；商店槽位只用 neutral / action。</text>
+
+
+  <text x="0" y="410" class="f16 b">状态清单</text>
+
+  <text x="0" y="438" class="tag">可购买 → 购买(primary) + 锁定(secondary)</text>
+
+  <text x="0" y="464" class="tag">已锁定 → 购买 disabled「已锁定」+ 解锁(accent) + 角标</text>
+
+  <text x="0" y="490" class="tag">货币不足 / 已拥有 / 已满 / 已买卡 → 购买 disabled + 文案</text>
+
+  <text x="0" y="516" class="tag">空槽 / 商店已结束 → 全 disabled</text>
+
+  <text x="0" y="542" class="tag">刷新 → secondary；结束商店 → primary 固定底部右侧</text>
+
+
+  <text x="0" y="592" class="f16 b">实现映射</text>
+
+  <text x="0" y="620" class="tag">UIStyle.board() → Panel；UIStyle.panel() → 槽位/货币 chip</text>
+
+  <text x="0" y="646" class="tag">UIStyle.apply_primary/secondary/chip → 购买/刷新/锁定</text>
+
+  <text x="0" y="672" class="tag">ItemCardView / RelicIcon 只换底板与文字色，不改内容数据</text>
+
+  <text x="0" y="698" class="tag">hover 详情接 E 的 info_box，不改购买逻辑</text>
+
+</g>
+</g>
+
+
+<text x="40" y="7420" class="lbl">G · 默认卡牌 Info（新格式：点数标题 / 能力正文 / 触发 note）</text>
+<g transform="translate(0,7440)">
+<rect width="1920" height="600" fill="#151821" stroke="#2a3140" stroke-width="2"/>
+<g transform="translate(40,80)">
+  <rect width="1280" height="440" rx="16" fill="#0b0d12"/>
+  <ellipse cx="640" cy="230" rx="520" ry="170" fill="#141c29" stroke="#212c3c" stroke-width="2" opacity=".5"/>
+  <text x="80" y="60" class="f16 b">默认卡牌 info（neutral）</text>
+
+  <text x="80" y="84" class="tag">非贴牌/能力目标/弃牌提醒时，仍使用统一 info 框</text>
+
+  <rect x="180" y="140" width="110" height="154" rx="6" fill="var(--text_primary)" stroke="var(--border)"/>
+  <text x="194" y="170" class="f22 b" style="fill:var(--card_rank_red)">9</text>
+  <text x="268" y="274" class="e f18 b" style="fill:var(--card_rank_red)">♥</text>
+  <rect x="172" y="132" width="126" height="170" rx="10" class="hframe hframe-neutral"/>
+  <rect x="360" y="140" width="360" height="98" rx="12" class="info info-neutral" filter="url(#shadow)"/><rect x="363" y="143" width="354" height="92" rx="10" class="info-tint-neutral"/><rect x="374" y="156" width="4" height="66" rx="2" class="info-bar-neutral"/><text x="390" y="168" class="f16 b" style="fill:var(--hover_neutral)">9</text>
+<text x="390" y="192" class="f13 t2">看别人一张牌</text>
+<text x="390" y="228" class="f12 tm">能力牌 · 抽到后可点击弃牌堆触发。</text>
+
+</g>
+<g transform="translate(1360,120)">
+  <text x="0" y="0" class="f18 b">G 默认卡牌 Info</text>
+
+  <text x="0" y="34" class="tag">标题 = 牌面点数；正文 = 能力；note = 来源/触发提示。</text>
+
+  <text x="0" y="60" class="tag">状态 = neutral：白框/白状态条，不抢贴牌/能力/警告色。</text>
+
+  <text x="0" y="86" class="tag">无能力牌：标题=点数，正文「无能力」，不显示触发 note。</text>
+
+  <text x="0" y="112" class="tag">从弃牌堆取得：正文注明不能发动牌面能力。</text>
+
+  <text x="0" y="138" class="tag">7/8、9/10、Q、J 同一结构；Q 正文写明两阶段。</text>
+
+  <text x="0" y="164" class="tag">实现：CardTooltip.show_state(NEUTRAL, title, body, note)。</text>
+
+  <text x="0" y="210" class="f16 b">示例文案</text>
+
+  <text x="0" y="238" class="t2 f14">9♥  → 标题「9」/ 正文「看别人一张牌」</text>
+
+  <text x="0" y="264" class="t2 f14">7♣  → 标题「7」/ 正文「看自己一张牌」</text>
+
+  <text x="0" y="290" class="t2 f14">Q♦  → 标题「Q」/ 正文「查看两张牌，并选择是否交换…」</text>
+
+  <text x="0" y="316" class="t2 f14">K♠  → 标题「K」/ 正文「无能力」</text>
+
+</g>
+</g>
+
+
+<text x="40" y="8130" class="lbl">H · 投影 3D 看板效果（商店 / 结算 / TAB）</text>
+<g transform="translate(0,8150)">
+<rect width="1920" height="1000" fill="#151821" stroke="#2a3140" stroke-width="2"/>
+<rect x="40" y="60" width="560" height="470" rx="14" fill="#10141c" stroke="#2a3140" stroke-width="1"/><text x="60" y="84" class="f13 tm">H1 · 商店投影</text>
+<ellipse cx="320" cy="502" rx="190" ry="22" fill="var(--holo)" opacity=".13" filter="url(#beamBlur)"/><polygon points="320,500 120,390 520,390" fill="url(#beamGrad)" opacity=".7" filter="url(#beamBlur)"/><g transform="translate(320,280) rotate(-1.6) translate(-320,-280)"><rect x="68" y="100" width="520" height="340" rx="14" fill="#05070b" opacity=".55"/><rect x="60" y="90" width="520" height="340" rx="14" fill="var(--bg_surface)" fill-opacity=".88" stroke="var(--border_strong)" stroke-width="1"/><rect x="58" y="88" width="524" height="344" rx="16" class="holo-frame"/><line x1="80" y1="94" x2="540" y2="94" class="holo-top"/><rect x="60" y="90" width="520" height="340" rx="14" fill="url(#scan)" opacity=".55" pointer-events="none"/><path d="M64 110 L64 96 L78 96" class="holo-corner"/><path d="M576 110 L576 96 L562 96" class="holo-corner"/><path d="M64 410 L64 424 L78 424" class="holo-corner"/><path d="M576 410 L576 424 L562 424" class="holo-corner"/><text x="320" y="122" class="c f18 b">商店</text>
+<text x="320" y="140" class="c f9 tm">SHOP · 道具与遗物</text>
+<rect x="113" y="163" width="90" height="130" rx="9" fill="#05070b" opacity=".45"/><rect x="110" y="160" width="90" height="130" rx="9" fill="var(--bg_elevated)" stroke="var(--accent_focus)" stroke-width="1"/><text x="155" y="208" class="c f20 b tf">换</text>
+<text x="155" y="244" class="c f10 b">交换</text>
+<text x="155" y="260" class="c f10 b tc">$3</text>
+<rect x="120" y="270" width="70" height="14" rx="4" class="btn-p"/><text x="155" y="278" class="c f8 ta">购买</text>
+<rect x="223" y="163" width="90" height="130" rx="9" fill="#05070b" opacity=".45"/><rect x="220" y="160" width="90" height="130" rx="9" fill="var(--bg_elevated)" stroke="var(--accent_focus)" stroke-width="1"/><text x="265" y="208" class="c f20 b tf">视</text>
+<text x="265" y="244" class="c f10 b">视野</text>
+<text x="265" y="260" class="c f10 b tc">$5</text>
+<rect x="230" y="270" width="70" height="14" rx="4" class="btn-p"/><text x="265" y="278" class="c f8 ta">购买</text>
+<rect x="333" y="163" width="90" height="130" rx="9" fill="#05070b" opacity=".45"/><rect x="330" y="160" width="90" height="130" rx="9" fill="var(--bg_elevated)" stroke="var(--accent_focus)" stroke-width="1"/><text x="375" y="208" class="c f20 b tf">盾</text>
+<text x="375" y="244" class="c f10 b">护盾</text>
+<text x="375" y="260" class="c f10 b tc">$8</text>
+<rect x="340" y="270" width="70" height="14" rx="4" class="btn-p"/><text x="375" y="278" class="c f8 ta">购买</text>
+<rect x="440" y="160" width="92" height="26" rx="6" class="btn-s"/><text x="486" y="174" class="c f8">⟳ 刷新卡牌</text>
+<rect x="120" y="312" width="130" height="50" rx="8" class="panel"/><circle cx="150" cy="337" r="14" fill="var(--accent_soft)" stroke="var(--accent_focus)"/><text x="150" y="338" class="c f11 b tf">盾</text>
+<text x="172" y="330" class="f10 b">护盾</text>
+<text x="172" y="346" class="f10 b tc">$6</text>
+<rect x="265" y="312" width="130" height="50" rx="8" class="panel"/><circle cx="295" cy="337" r="14" fill="var(--accent_soft)" stroke="var(--accent_focus)"/><text x="295" y="338" class="c f11 b tf">丑</text>
+<text x="317" y="330" class="f10 b">小丑</text>
+<text x="317" y="346" class="f10 b tc">$8</text>
+<rect x="440" y="312" width="92" height="26" rx="6" class="btn-s"/><text x="486" y="326" class="c f8">⟳ 刷新遗物</text>
+<rect x="420" y="378" width="112" height="26" rx="7" class="btn-p"/><text x="476" y="392" class="c f9 b ta">结束商店</text>
+</g><circle cx="80" cy="180" r="1.5" fill="var(--holo)" opacity=".5"/><circle cx="560" cy="230" r="1.2" fill="var(--holo)" opacity=".5"/><circle cx="110" cy="450" r="1.1" fill="var(--holo)" opacity=".5"/><circle cx="540" cy="470" r="1.6" fill="var(--holo)" opacity=".5"/><circle cx="340" cy="114" r="1.0" fill="var(--holo)" opacity=".5"/><circle cx="400" cy="480" r="1.2" fill="var(--holo)" opacity=".5"/>
+<rect x="680" y="60" width="560" height="470" rx="14" fill="#10141c" stroke="#2a3140" stroke-width="1"/><text x="700" y="84" class="f13 tm">H2 · 结算投影</text>
+<ellipse cx="960" cy="502" rx="190" ry="22" fill="var(--holo)" opacity=".13" filter="url(#beamBlur)"/><polygon points="960,500 760,390 1160,390" fill="url(#beamGrad)" opacity=".7" filter="url(#beamBlur)"/><g transform="translate(960,280) rotate(-1.6) translate(-960,-280)"><rect x="708" y="100" width="520" height="340" rx="14" fill="#05070b" opacity=".55"/><rect x="700" y="90" width="520" height="340" rx="14" fill="var(--bg_surface)" fill-opacity=".88" stroke="var(--border_strong)" stroke-width="1"/><rect x="698" y="88" width="524" height="344" rx="16" class="holo-frame"/><line x1="720" y1="94" x2="1180" y2="94" class="holo-top"/><rect x="700" y="90" width="520" height="340" rx="14" fill="url(#scan)" opacity=".55" pointer-events="none"/><path d="M704 110 L704 96 L718 96" class="holo-corner"/><path d="M1216 110 L1216 96 L1202 96" class="holo-corner"/><path d="M704 410 L704 424 L718 424" class="holo-corner"/><path d="M1216 410 L1216 424 L1202 424" class="holo-corner"/><text x="960" y="120" class="c f18 b">结算 · 第 2 / 3 局</text>
+<text x="960" y="138" class="c f9 tm">同步轮算分 · 逐张翻牌 · 实时重排</text>
+<rect x="718" y="154" width="444" height="42" rx="7" fill="var(--accent_soft)" stroke="var(--accent_focus)" stroke-width="2"/><text x="736" y="176" class="f13 b" style="fill:var(--accent_focus)">1</text>
+<text x="766" y="176" class="f12 b" style="fill:var(--currency)">★ 阿岚</text>
+<rect x="870" y="160" width="26" height="30" rx="4" fill="var(--text_primary)" stroke="var(--border)"/><text x="883" y="176" class="c f8 b" style="fill:var(--card_rank_black)">A</text>
+<rect x="904" y="160" width="26" height="30" rx="4" fill="var(--text_primary)" stroke="var(--border)"/><text x="917" y="176" class="c f8 b" style="fill:var(--card_rank_black)">2</text>
+<rect x="938" y="160" width="26" height="30" rx="4" fill="var(--text_primary)" stroke="var(--border)"/><text x="951" y="176" class="c f8 b" style="fill:var(--card_rank_red)">JK</text>
+<rect x="972" y="160" width="26" height="30" rx="4" fill="var(--text_primary)" stroke="var(--border)"/><text x="985" y="176" class="c f8 b" style="fill:var(--card_rank_black)">K</text>
+<text x="1146" y="176" class="e f13 b" style="fill:var(--accent_focus)">5</text>
+<rect x="718" y="204" width="444" height="42" rx="7" fill="var(--bg_elevated)" stroke="var(--border)" stroke-width="1"/><text x="736" y="226" class="f13 b" style="fill:var(--text_secondary)">2</text>
+<text x="766" y="226" class="f12 b">小北</text>
+<rect x="870" y="210" width="26" height="30" rx="4" fill="var(--text_primary)" stroke="var(--border)"/><text x="883" y="226" class="c f8 b" style="fill:var(--card_rank_black)">A</text>
+<rect x="904" y="210" width="26" height="30" rx="4" fill="var(--text_primary)" stroke="var(--border)"/><text x="917" y="226" class="c f8 b" style="fill:var(--card_rank_black)">2</text>
+<rect x="938" y="210" width="26" height="30" rx="4" fill="var(--text_primary)" stroke="var(--border)"/><text x="951" y="226" class="c f8 b" style="fill:var(--card_rank_red)">JK</text>
+<rect x="972" y="210" width="26" height="30" rx="4" fill="var(--text_primary)" stroke="var(--border)"/><text x="985" y="226" class="c f8 b" style="fill:var(--card_rank_black)">K</text>
+<text x="1146" y="226" class="e f13 b" style="fill:var(--accent_focus)">7</text>
+<rect x="718" y="254" width="444" height="42" rx="7" fill="var(--bg_elevated)" stroke="var(--border)" stroke-width="1"/><text x="736" y="276" class="f13 b" style="fill:var(--text_secondary)">3</text>
+<text x="766" y="276" class="f12 b">Momo</text>
+<rect x="870" y="260" width="26" height="30" rx="4" fill="var(--text_primary)" stroke="var(--border)"/><text x="883" y="276" class="c f8 b" style="fill:var(--card_rank_black)">A</text>
+<rect x="904" y="260" width="26" height="30" rx="4" fill="var(--text_primary)" stroke="var(--border)"/><text x="917" y="276" class="c f8 b" style="fill:var(--card_rank_black)">2</text>
+<rect x="938" y="260" width="26" height="30" rx="4" fill="var(--text_primary)" stroke="var(--border)"/><text x="951" y="276" class="c f8 b" style="fill:var(--card_rank_red)">JK</text>
+<rect x="972" y="260" width="26" height="30" rx="4" fill="var(--text_primary)" stroke="var(--border)"/><text x="985" y="276" class="c f8 b" style="fill:var(--card_rank_black)">K</text>
+<text x="1146" y="276" class="e f13 b" style="fill:var(--accent_focus)">12</text>
+<text x="960" y="324" class="c f10" style="fill:var(--text_secondary)">回到等待房间</text>
+<rect x="898" y="342" width="124" height="26" rx="7" class="btn-s"/><text x="960" y="356" class="c f9 b">回到等待房间</text>
+</g><circle cx="720" cy="180" r="1.5" fill="var(--holo)" opacity=".5"/><circle cx="1200" cy="230" r="1.2" fill="var(--holo)" opacity=".5"/><circle cx="750" cy="450" r="1.1" fill="var(--holo)" opacity=".5"/><circle cx="1180" cy="470" r="1.6" fill="var(--holo)" opacity=".5"/><circle cx="980" cy="114" r="1.0" fill="var(--holo)" opacity=".5"/><circle cx="1040" cy="480" r="1.2" fill="var(--holo)" opacity=".5"/>
+<rect x="1320" y="60" width="560" height="470" rx="14" fill="#10141c" stroke="#2a3140" stroke-width="1"/><text x="1340" y="84" class="f13 tm">H3 · 手册 / TAB 投影</text>
+<ellipse cx="1600" cy="502" rx="190" ry="22" fill="var(--holo)" opacity=".13" filter="url(#beamBlur)"/><polygon points="1600,500 1400,390 1800,390" fill="url(#beamGrad)" opacity=".7" filter="url(#beamBlur)"/><g transform="translate(1600,280) rotate(-1.6) translate(-1600,-280)"><rect x="1348" y="100" width="520" height="340" rx="14" fill="#05070b" opacity=".55"/><rect x="1340" y="90" width="520" height="340" rx="14" fill="var(--bg_surface)" fill-opacity=".88" stroke="var(--border_strong)" stroke-width="1"/><rect x="1338" y="88" width="524" height="344" rx="16" class="holo-frame"/><line x1="1360" y1="94" x2="1820" y2="94" class="holo-top"/><rect x="1340" y="90" width="520" height="340" rx="14" fill="url(#scan)" opacity=".55" pointer-events="none"/><path d="M1344 110 L1344 96 L1358 96" class="holo-corner"/><path d="M1856 110 L1856 96 L1842 96" class="holo-corner"/><path d="M1344 410 L1344 424 L1358 424" class="holo-corner"/><path d="M1856 410 L1856 424 L1842 424" class="holo-corner"/><text x="1600" y="118" class="c f18 b">手册</text>
+<rect x="1350" y="136" width="46" height="24" rx="5" class="chip"/><text x="1373" y="148" class="c f8">Q ◀</text>
+<rect x="1804" y="136" width="46" height="24" rx="5" class="chip"/><text x="1827" y="148" class="c f8">E ▶</text>
+<rect x="1460" y="140" width="70" height="26" rx="6" fill="#05070b" opacity=".5"/><rect x="1458" y="136" width="70" height="26" rx="6" class="chip-on"/><text x="1493" y="149" class="c f10 b tf">手册</text>
+<text x="1569" y="149" class="c f9 t2">Stats</text>
+<text x="1645" y="149" class="c f9 t2">按键</text>
+<line x1="1350" y1="172" x2="1810" y2="172" class="div"/><rect x="1393" y="195" width="108" height="78" rx="7" fill="#05070b" opacity=".4"/><rect x="1390" y="192" width="108" height="78" rx="7" fill="var(--bg_elevated)" stroke="var(--border)" stroke-width="1"/><text x="1444" y="230" class="c f16 b">7</text>
+<text x="1444" y="252" class="c f8 tm">能力说明</text>
+<rect x="1538" y="195" width="108" height="78" rx="7" fill="#05070b" opacity=".4"/><rect x="1535" y="192" width="108" height="78" rx="7" fill="var(--bg_elevated)" stroke="var(--border)" stroke-width="1"/><text x="1589" y="230" class="c f16 b">9</text>
+<text x="1589" y="252" class="c f8 tm">能力说明</text>
+<rect x="1683" y="195" width="108" height="78" rx="7" fill="#05070b" opacity=".4"/><rect x="1680" y="192" width="108" height="78" rx="7" fill="var(--bg_elevated)" stroke="var(--border)" stroke-width="1"/><text x="1734" y="230" class="c f16 b">Q</text>
+<text x="1734" y="252" class="c f8 tm">能力说明</text>
+<rect x="1393" y="287" width="108" height="78" rx="7" fill="#05070b" opacity=".4"/><rect x="1390" y="284" width="108" height="78" rx="7" fill="var(--bg_elevated)" stroke="var(--border)" stroke-width="1"/><text x="1444" y="322" class="c f16 b">K</text>
+<text x="1444" y="344" class="c f8 tm">能力说明</text>
+<rect x="1538" y="287" width="108" height="78" rx="7" fill="#05070b" opacity=".4"/><rect x="1535" y="284" width="108" height="78" rx="7" fill="var(--bg_elevated)" stroke="var(--border)" stroke-width="1"/><text x="1589" y="322" class="c f16 b">J</text>
+<text x="1589" y="344" class="c f8 tm">能力说明</text>
+<rect x="1683" y="287" width="108" height="78" rx="7" fill="#05070b" opacity=".4"/><rect x="1680" y="284" width="108" height="78" rx="7" fill="var(--bg_elevated)" stroke="var(--border)" stroke-width="1"/><text x="1734" y="322" class="c f16 b">A</text>
+<text x="1734" y="344" class="c f8 tm">能力说明</text>
+<text x="1600" y="380" class="c f9 tm">Tab 手册 / S Stats / K 按键 / Q·E 切页</text>
+</g><circle cx="1360" cy="180" r="1.5" fill="var(--holo)" opacity=".5"/><circle cx="1840" cy="230" r="1.2" fill="var(--holo)" opacity=".5"/><circle cx="1390" cy="450" r="1.1" fill="var(--holo)" opacity=".5"/><circle cx="1820" cy="470" r="1.6" fill="var(--holo)" opacity=".5"/><circle cx="1620" cy="114" r="1.0" fill="var(--holo)" opacity=".5"/><circle cx="1680" cy="480" r="1.2" fill="var(--holo)" opacity=".5"/>
+
+<g transform="translate(40,570)">
+  <text x="0" y="0" class="f16 b">投影层</text>
+
+  <text x="0" y="30" class="tag">扫描线 / 边缘渐隐 / 轻微 RGB 色差 / 极轻弧形</text>
+
+  <text x="0" y="56" class="tag">内容仍由 SubViewport 渲染，文字保持清晰</text>
+
+  <text x="0" y="82" class="tag">HUD 不透明度与看板 .96 不变，只加全息叠加</text>
+
+</g>
+<g transform="translate(680,570)">
+  <text x="0" y="0" class="f16 b">空间层</text>
+
+  <text x="0" y="30" class="tag">3D 边框 + 四角支架 + 背板厚度</text>
+
+  <text x="0" y="56" class="tag">桌面光锥 + 地面辉光 + 少量尘埃</text>
+
+  <text x="0" y="82" class="tag">缓慢漂浮 + 入场扫描显现</text>
+
+</g>
+<g transform="translate(1320,570)">
+  <text x="0" y="0" class="f16 b">内容层 / 实现</text>
+
+  <text x="0" y="30" class="tag">Tab 抬起/投影、卡片阴影与微倾斜</text>
+
+  <text x="0" y="56" class="tag">落点：Board3d ShaderMaterial + 3D bezel + 光锥 mesh</text>
+
+  <text x="0" y="82" class="tag">Web Compatibility：只用 unshaded/additive，避免后处理</text>
+
+  <text x="0" y="108" class="tag">拾取盒保持平面，视觉弯曲不影响输入</text>
+
+</g>
+<g transform="translate(40,700)">
+  <text x="0" y="0" class="f16 b">动效建议</text>
+
+  <text x="0" y="30" class="tag">打开面板：0.25s 扫描从中心展开 + 边缘亮起</text>
+
+  <text x="0" y="56" class="tag">切换 Tab：光带扫过 + 新页 0.15s 上浮</text>
+
+  <text x="0" y="82" class="tag">hover 卡片：前倾 2-4° + 阴影加深；不改变文字位置</text>
+
+  <text x="0" y="108" class="tag">漂浮：幅度 1-2cm、周期 4-6s；避免影响阅读</text>
+
+</g>
+
+<g transform="translate(40,820)">
+  <text x="0" y="0" class="f14 b">H4 · 常驻提示板：Ready / 交换 / 不交换</text>
+
+  <rect x="80" y="22" width="920" height="112" rx="14" fill="var(--holo)" fill-opacity=".035" stroke="var(--holo)" stroke-opacity=".22" stroke-dasharray="6 5"/>
+  <text x="96" y="42" class="f10 tm">常驻提示板（透明，不挡牌桌）</text>
+  <polygon points="540,150 340,112 740,112" fill="url(#beamGrad)" opacity=".45" filter="url(#beamBlur)"/>
+  <rect x="124" y="65" width="240" height="64" rx="12" fill="#05070b" opacity=".55"/><rect x="120" y="63" width="240" height="64" rx="12" fill="var(--accent_pressed)"/><rect x="120" y="58" width="240" height="64" rx="12" fill="var(--accent)" stroke="var(--accent_focus)" stroke-width="2"/><rect x="122" y="60" width="236" height="60" rx="10" fill="none" stroke="var(--holo)" stroke-opacity=".22"/><line x1="134" y1="61" x2="346" y2="61" stroke="#FFFFFF" stroke-opacity=".18" stroke-width="1"/><text x="240.0" y="90.0" class="c f18 b ta">Ready（2/4）</text>
+
+  <rect x="404" y="71" width="170" height="52" rx="12" fill="#05070b" opacity=".55"/><rect x="400" y="69" width="170" height="52" rx="12" fill="var(--bg_hover)"/><rect x="400" y="64" width="170" height="52" rx="12" fill="var(--bg_elevated)" stroke="var(--border_strong)" stroke-width="2"/><rect x="402" y="66" width="166" height="48" rx="10" fill="none" stroke="var(--holo)" stroke-opacity=".22"/><line x1="414" y1="67" x2="556" y2="67" stroke="#FFFFFF" stroke-opacity=".18" stroke-width="1"/><text x="485.0" y="90.0" class="c f13 b">Q：不交换</text>
+
+  <rect x="592" y="71" width="170" height="52" rx="12" fill="#05070b" opacity=".55"/><rect x="588" y="69" width="170" height="52" rx="12" fill="var(--accent_pressed)"/><rect x="588" y="64" width="170" height="52" rx="12" fill="var(--accent)" stroke="var(--accent_focus)" stroke-width="2"/><rect x="590" y="66" width="166" height="48" rx="10" fill="none" stroke="var(--holo)" stroke-opacity=".22"/><line x1="602" y1="67" x2="744" y2="67" stroke="#FFFFFF" stroke-opacity=".18" stroke-width="1"/><text x="673.0" y="90.0" class="c f13 b ta">Q：交换</text>
+
+  <rect x="780" y="71" width="170" height="52" rx="12" fill="#05070b" opacity=".55"/><rect x="776" y="69" width="170" height="52" rx="12" fill="var(--bg_hover)"/><rect x="776" y="64" width="170" height="52" rx="12" fill="var(--bg_elevated)" stroke="var(--border_strong)" stroke-width="2"/><rect x="778" y="66" width="166" height="48" rx="10" fill="none" stroke="var(--holo)" stroke-opacity=".22"/><line x1="790" y1="67" x2="932" y2="67" stroke="#FFFFFF" stroke-opacity=".18" stroke-width="1"/><text x="861.0" y="90.0" class="c f13 b">变换 Joker</text>
+
+</g>
+<g transform="translate(1060,820)">
+  <text x="0" y="0" class="f16 b">按钮材质</text>
+
+  <text x="0" y="30" class="tag">Ready / 交换 = 主按钮；不交换 / 变换 = 次按钮</text>
+
+  <text x="0" y="56" class="tag">主：accent 面 + accent_focus 边 + 底部侧壁 + 顶部高光</text>
+
+  <text x="0" y="82" class="tag">次：玻璃面 + border_strong 边；hover 前倾 2° / 提亮</text>
+
+  <text x="0" y="108" class="tag">禁用：降透明 + 灰字；不做整块底板，只加投影/光锥</text>
+
+</g>
+</g>
+
+<text x="40" y="9170" class="tag">本稿为设计稿；落地见 UITheme hud_* 令牌 + UIStyle / Hover 状态机。底图仅为示意，不代表真实牌桌透视。</text>
+</svg>

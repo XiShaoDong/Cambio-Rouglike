@@ -1,26 +1,28 @@
 class_name KeymapBoard
 extends Control
-## 按键映射页内容（3D 全息看板第三页）：每行左右两格——左=原始默认键（只读参考），
-## 右=你绑定的新键（可点重绑）；底部保存按钮。
+## 按键映射页内容（3D 全息看板第三页）：五列 + 行状态。
+## 左=原始默认键（只读），右=可点重绑的新键；底部保存按钮。
 ## 纯展示 + 本地待保存状态；真正落盘由 ManualPanel/main 驱动。
-## 可交互控件（左键 chip / 保存按钮）带 meta("board_interactive")，供 Board3d 部分穿透判定。
 
 signal save_requested(new_map: Dictionary)
 signal changed()
 
 const CAPTURE_TEXT := "按键中…"
 const RESERVED_TEXT := "保留键，不可绑定"
-const ERR_COLOR := Color(0.82, 0.24, 0.24)
-const KEY_COL_W := 112.0       # 单格宽（新按键列 / 原始列同宽）
-const LABEL_COL_W := 96.0
-const DESC_COL_W := 280.0
+const KEY_COL_W := 72.0
+const LABEL_COL_W := 70.0
+const DESC_COL_W := 180.0
+const STATUS_COL_W := 110.0
+const ROW_H := 38.0
 
 var _pending: Dictionary = {}
 var _baseline: Dictionary = {}
 var _capturing := ""
-var _chip_btns := {}       # id -> Button（左：可重绑的新键）
-var _default_chips := {}   # id -> PanelContainer（右：只读原始键）
+var _chip_btns := {}       # id -> Button（新键）
+var _default_chips := {}   # id -> PanelContainer（只读原始键）
 var _status := {}          # id -> Label
+var _row_panels := {}      # id -> PanelContainer
+var _row_states := {}      # id -> normal/hover/capture/bad/ok
 var _save_btn: Button = null
 
 func _ready() -> void:
@@ -30,7 +32,6 @@ func _ready() -> void:
 func _on_changed() -> void:
 	set_save_enabled(has_changes())
 
-## 用当前映射重建所有行 + 保存按钮（打开页时调用；同时重置待保存状态）。
 func setup(current_map: Dictionary, _reserved: Array = []) -> void:
 	_baseline = current_map.duplicate()
 	_pending = current_map.duplicate()
@@ -38,6 +39,8 @@ func setup(current_map: Dictionary, _reserved: Array = []) -> void:
 	_chip_btns.clear()
 	_default_chips.clear()
 	_status.clear()
+	_row_panels.clear()
+	_row_states.clear()
 	for c in get_children():
 		remove_child(c)
 		c.queue_free()
@@ -51,86 +54,129 @@ func setup(current_map: Dictionary, _reserved: Array = []) -> void:
 	_save_btn = Button.new()
 	_save_btn.name = "SaveButton"
 	_save_btn.text = "保存"
-	_save_btn.custom_minimum_size = Vector2(0, 40)
-	_save_btn.add_theme_font_size_override("font_size", 20)
+	_save_btn.custom_minimum_size = Vector2(140, 40)
+	_save_btn.add_theme_font_size_override("font_size", 16)
 	_save_btn.set_meta("board_interactive", true)
+	UIStyle.apply_primary(_save_btn)
 	_save_btn.disabled = true
 	_save_btn.pressed.connect(func(): save_requested.emit(pending_map()))
 	vb.add_child(_save_btn)
 	custom_minimum_size = vb.get_combined_minimum_size()
 
-## 表头：左「原始」右「新按键」，与数据行的两格对齐。
 func _make_header() -> HBoxContainer:
 	var head := HBoxContainer.new()
 	head.name = "Header"
-	head.add_theme_constant_override("separation", 10)
+	head.add_theme_constant_override("separation", 8)
 	var pad := Control.new()
-	pad.custom_minimum_size = Vector2(LABEL_COL_W + 10.0 + DESC_COL_W, 0)
+	pad.custom_minimum_size = Vector2(LABEL_COL_W + 8.0 + DESC_COL_W, 0)
 	head.add_child(pad)
-	head.add_child(_head_cell("原始"))
-	head.add_child(_head_cell("新按键"))
+	head.add_child(_head_cell("原始", KEY_COL_W))
+	head.add_child(_head_cell("新按键", KEY_COL_W))
+	head.add_child(_head_cell("状态", STATUS_COL_W))
 	return head
 
-func _head_cell(text: String) -> Label:
+func _head_cell(text: String, width: float) -> Label:
 	var lbl := Label.new()
 	lbl.text = text
-	lbl.custom_minimum_size = Vector2(KEY_COL_W, 0)
+	lbl.custom_minimum_size = Vector2(width, 0)
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	lbl.add_theme_font_size_override("font_size", 15)
-	lbl.add_theme_color_override("font_color", KeyHintPanel.chip_text_color())
+	lbl.add_theme_font_size_override("font_size", 12)
+	lbl.add_theme_color_override("font_color", UITheme.color("hud_text_muted"))
 	return lbl
 
-func _make_row(id: String, def: Dictionary) -> HBoxContainer:
+func _make_row(id: String, def: Dictionary) -> PanelContainer:
+	var wrap := PanelContainer.new()
+	wrap.name = "RowPanel_" + id
+	wrap.custom_minimum_size = Vector2(0, ROW_H)
+	wrap.mouse_filter = Control.MOUSE_FILTER_PASS
+	wrap.add_theme_stylebox_override("panel", UIStyle.row("normal"))
+	wrap.mouse_entered.connect(_on_row_hover.bind(id, true))
+	wrap.mouse_exited.connect(_on_row_hover.bind(id, false))
+	_row_panels[id] = wrap
+	_row_states[id] = "normal"
+
 	var row := HBoxContainer.new()
 	row.name = "Row_" + id
-	row.add_theme_constant_override("separation", 10)
+	row.add_theme_constant_override("separation", 8)
+	row.mouse_filter = Control.MOUSE_FILTER_PASS
+	wrap.add_child(row)
+
 	var l := Label.new()
 	l.text = str(def.get("label", id))
 	l.custom_minimum_size = Vector2(LABEL_COL_W, 0)
-	l.add_theme_font_size_override("font_size", 18)
+	l.add_theme_font_size_override("font_size", 14)
+	l.add_theme_color_override("font_color", UITheme.color("text_primary"))
+	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(l)
+
 	var d := Label.new()
 	d.text = str(def.get("desc", ""))
 	d.custom_minimum_size = Vector2(DESC_COL_W, 0)
-	d.add_theme_font_size_override("font_size", 15)
+	d.add_theme_font_size_override("font_size", 12)
+	d.add_theme_color_override("font_color", UITheme.color("hud_text_muted"))
+	d.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	d.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	d.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	d.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(d)
+
 	# 左：原始默认键（只读参考，变暗、不可点）
-	var dchip := KeyHintPanel.make_chip(OS.get_keycode_string(int(def.get("default", 0))), 16)
+	var dchip := KeyHintPanel.make_chip(OS.get_keycode_string(int(def.get("default", 0))), 13)
 	dchip.name = "Default"
-	dchip.custom_minimum_size = Vector2(KEY_COL_W, 32)
+	dchip.custom_minimum_size = Vector2(KEY_COL_W, 26)
 	dchip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	dchip.modulate = Color(1, 1, 1, 0.55)
 	var dkey: Label = dchip.get_node_or_null("Key")
 	if dkey != null:
 		dkey.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(dchip)
+
 	# 右：可重绑的新键（点它进入捕获）
 	var chip := Button.new()
 	chip.name = "Chip"
 	chip.text = OS.get_keycode_string(int(_pending.get(id, 0)))
-	chip.custom_minimum_size = Vector2(KEY_COL_W, 32)
-	chip.add_theme_font_size_override("font_size", 16)
+	chip.custom_minimum_size = Vector2(KEY_COL_W, 26)
+	chip.add_theme_font_size_override("font_size", 13)
+	chip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	chip.set_meta("board_interactive", true)
-	for st_name in ["normal", "hover", "pressed", "disabled"]:
-		chip.add_theme_stylebox_override(st_name, KeyHintPanel.chip_style_box())
-	chip.add_theme_color_override("font_color", KeyHintPanel.chip_text_color())
+	UIStyle.apply_chip_button(chip, false)
 	chip.pressed.connect(begin_capture.bind(id))
 	row.add_child(chip)
+
 	var status := Label.new()
 	status.name = "Status"
-	status.add_theme_font_size_override("font_size", 14)
-	status.add_theme_color_override("font_color", ERR_COLOR)
+	status.custom_minimum_size = Vector2(STATUS_COL_W, 0)
+	status.add_theme_font_size_override("font_size", 11)
+	status.add_theme_color_override("font_color", UITheme.color("danger_text"))
+	status.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	status.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	status.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(status)
+
 	_chip_btns[id] = chip
 	_default_chips[id] = dchip
 	_status[id] = status
-	return row
+	return wrap
+
+func _on_row_hover(id: String, on: bool) -> void:
+	if str(_row_states.get(id, "")) != "normal" and str(_row_states.get(id, "")) != "hover":
+		return
+	_set_row_state(id, "hover" if on else "normal")
+
+func _set_row_state(id: String, state: String) -> void:
+	_row_states[id] = state
+	if _row_panels.has(id):
+		(_row_panels[id] as PanelContainer).add_theme_stylebox_override("panel", UIStyle.row(state))
 
 func begin_capture(id: String) -> void:
 	if _capturing != "":
 		cancel_capture()
 	_capturing = id
 	_chip_btns[id].text = CAPTURE_TEXT
+	UIStyle.apply_chip_button(_chip_btns[id], true)
+	_set_row_state(id, "capture")
 
 ## 由 main 捕获下一个 keydown 后调用。
 func capture_key(keycode: int) -> void:
@@ -140,10 +186,17 @@ func capture_key(keycode: int) -> void:
 	var res: Dictionary = KeybindModel.rebind(_pending, id, keycode)
 	if not bool(res.get("ok", false)):
 		_status[id].text = RESERVED_TEXT if str(res.get("error", "")) == KeybindModel.ERR_RESERVED else "无效"
+		_status[id].add_theme_color_override("font_color", UITheme.color("danger_text"))
+		_set_row_state(id, "bad")
 		return
 	_pending = res.get("map")
 	_capturing = ""
-	_status[id].text = ""
+	var swapped := str(res.get("swapped", ""))
+	_status[id].text = "已自动交换" if swapped != "" else ""
+	_status[id].add_theme_color_override("font_color",
+		UITheme.color("accent_focus") if swapped != "" else UITheme.color("danger_text"))
+	_set_row_state(id, "ok" if swapped != "" else "normal")
+	UIStyle.apply_chip_button(_chip_btns[id], false)
 	refresh_chips()
 	changed.emit()
 
@@ -153,6 +206,9 @@ func cancel_capture() -> void:
 	var id := _capturing
 	_capturing = ""
 	_status[id].text = ""
+	_status[id].add_theme_color_override("font_color", UITheme.color("danger_text"))
+	_set_row_state(id, "normal")
+	UIStyle.apply_chip_button(_chip_btns[id], false)
 	_refresh_chip(id)
 
 func capturing() -> String:
@@ -178,6 +234,7 @@ func refresh_chips() -> void:
 func _refresh_chip(id: String) -> void:
 	if _chip_btns.has(id):
 		_chip_btns[id].text = CAPTURE_TEXT if id == _capturing else OS.get_keycode_string(int(_pending.get(id, 0)))
+		UIStyle.apply_chip_button(_chip_btns[id], id == _capturing)
 
 ## 测试访问器。
 func row_count() -> int:

@@ -46,6 +46,7 @@ func build() -> void:
 	main.ready_button = board.get_node("HintArea/TopBar/ReadyButton")
 	main.ready_button.add_theme_color_override("font_color", UITheme.color("success"))
 	main.ready_button.pressed.connect(func():
+		AudioManager.play_select()
 		_ready_clicked = true
 		GameState.request_initial_ready())
 	main.center_hint = board.get_node("HintArea/CenterHint")

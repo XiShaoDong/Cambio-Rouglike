@@ -85,9 +85,10 @@ func _run() -> void:
 	_check("3D 左下角按键提示存在", main_node._key_hints != null and is_instance_valid(main_node._key_hints))
 	_check("3D 按键提示可见", main_node._key_hints.visible)
 	_check("3D 按键提示 4 行", main_node._key_hints.row_count() == 4)
-	_check("按键提示：道具 Space", main_node._key_hints.desc_text(0) == "道具" and main_node._key_hints.key_text(0) == "Space")
+	_check("按键提示：放大=鼠标右键图标", main_node._key_hints.desc_text(0) == "放大" and main_node._key_hints.has_mouse_icon(0))
 	_check("按键提示：标记 D", main_node._key_hints.desc_text(1) == "标记" and main_node._key_hints.key_text(1) == "D")
-	_check("按键提示：放大=鼠标右键图标", main_node._key_hints.desc_text(2) == "放大" and main_node._key_hints.has_mouse_icon(2))
+	_check("按键提示：手册 Tab", main_node._key_hints.desc_text(2) == "手册" and main_node._key_hints.key_text(2) == "Tab")
+	_check("按键提示：道具 Space", main_node._key_hints.desc_text(3) == "道具" and main_node._key_hints.key_text(3) == "Space")
 	# 左上角回合徽标（原右上角移来）（同款 chip 样式，字号 = Command ×2，实时）
 	_check("3D 左上角回合徽标存在", main_node._round_badge != null and is_instance_valid(main_node._round_badge))
 	_check("回合徽标可见", main_node._round_badge.visible)
@@ -123,14 +124,14 @@ func _run() -> void:
 	_check("左下角边距=75px 换算值（按键提示上移让出牌序面板）", is_equal_approx(main_node._key_hints.offset_left, m) and is_equal_approx(main_node._key_hints.offset_bottom, -(m + main_node.CARD_ORDER_LIFT)))
 	_check("左上角边距=75px 换算值", is_equal_approx(main_node._round_badge.offset_left, m) and is_equal_approx(main_node._round_badge.offset_top, m))
 	_check("右下角边距=75px 换算值", is_equal_approx(main_node._self_panel.offset_right, -m) and is_equal_approx(main_node._self_panel.offset_bottom, -m))
-	# 背景纯白（保留透明度）+ 字体纯白
+	# 深色玻璃（保留透明度）+ 文字令牌
 	var chip_bg := KeyHintPanel.chip_style_box().bg_color
-	_check("chip 背景纯白", chip_bg.r > 0.999 and chip_bg.g > 0.999 and chip_bg.b > 0.999)
+	_check("chip 背景深色玻璃", chip_bg.r < 0.5 and chip_bg.g < 0.5 and chip_bg.b < 0.5)
 	_check("chip 保留透明度", is_equal_approx(chip_bg.a, KeyHintPanel.CORNER_BG_ALPHA))
 	var chip = KeyHintPanel.make_chip("x")
-	_check("chip 字体纯白", (chip.get_node("Key") as Label).get_theme_color("font_color") == Color(1, 1, 1))
+	_check("chip 字体用 text_primary", (chip.get_node("Key") as Label).get_theme_color("font_color") == UITheme.color("text_primary"))
 	var self_bg: StyleBoxFlat = main_node._self_panel.frame_panel().get_theme_stylebox("panel")
-	_check("自身面板背景纯白", self_bg.bg_color.r > 0.999 and self_bg.bg_color.g > 0.999 and self_bg.bg_color.b > 0.999)
+	_check("自身面板使用 hud_surface", self_bg.bg_color == UITheme.color("hud_surface"))
 	main_node._toggle_manual()
 	await get_tree().process_frame
 	_check("Tab 打开手册", main_node.manual_panel != null and is_instance_valid(main_node.manual_panel))

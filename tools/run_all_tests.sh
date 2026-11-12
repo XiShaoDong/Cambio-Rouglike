@@ -88,6 +88,7 @@ fi
 say "== 单进程核心回归 =="
 run_single "protocol"   res://tests/verify_protocol.tscn
 run_single "swap"       res://tests/verify_swap.tscn
+run_single "discard_take_discard" res://tests/verify_discard_take_discard.tscn
 run_single "duel"       res://tests/verify_duel.tscn
 run_single "reconnect"  res://tests/verify_reconnect.tscn
 run_single "camera_fly" res://tests/verify_camera_fly.tscn
@@ -128,6 +129,7 @@ run_single "j_swap"     res://tests/verify_j_swap.tscn
 run_single "manual"     res://tests/verify_manual.tscn
 run_single "keybind"    res://tests/verify_keybind.tscn
 run_single "card_tooltip" res://tests/verify_card_tooltip.tscn
+run_single "hover_state" res://tests/verify_hover_state.tscn
 run_single "card_order"  res://tests/verify_card_order.tscn
 run_single "turn_effect" res://tests/verify_turn_effect.tscn
 run_single "turn_effect_rules" res://tests/verify_turn_effect_rules.tscn
@@ -137,6 +139,8 @@ run_single "hint_hud"   res://tests/verify_hint_hud.tscn
 run_single "slap_burst" res://tests/verify_slap_burst.tscn
 run_single "deck_back"  res://tests/verify_deck_back.tscn
 run_single "card_tilt"  res://tests/verify_card_tilt_math.tscn
+run_single "tutorial"   res://tests/verify_tutorial.tscn
+run_single "audio_sfx"  res://tests/verify_audio_sfx.tscn
 
 if [ "$QUICK" -eq 1 ]; then
 	say ""

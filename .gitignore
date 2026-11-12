@@ -20,3 +20,14 @@ __pycache__/
 # 导出产物
 build/
 !build/.gitkeep
+# 根目录导出产物（本地构建）
+/Kong.exe
+/Kong.console.exe
+/Kong.exe.zip
+/Kong-macos.app/
+/Kong-macos.zip
+/Kong-macos.command
+
+# docs 内 SVG 的 Godot 导入缓存
+docs/superpowers/specs/*.svg.import
+

@@ -17,9 +17,9 @@ const RISE_UP := 50.0
 const DROP_DUR := 0.30
 const UP_DUR := 0.18
 const PHASE_TURN_SECONDS := 30.0
-const COLOR_NORMAL := Color(0.95, 0.97, 1.0)
-const COLOR_WARN := Color(1.0, 0.78, 0.30)
-const COLOR_OVER := Color(1.0, 0.36, 0.34)
+const COLOR_NORMAL := Color("F1F3F9")
+const COLOR_WARN := Color("E8B86D")
+const COLOR_OVER := Color("E06A7A")
 ## 胶囊显示 / 计时的阶段（GameState.Phase 数值）：TURN_DRAW / TURN_DECISION / Q_DECISION / SLAP_EXCHANGE / SLAP_DUEL。
 ## 不含 INITIAL_PEEK：进入房间直到全员 ready 后才开始计时；含 12（本局效果展示）。
 const ACTIVE_PHASES := [2, 3, 4, 6, 8, 12]
@@ -33,10 +33,16 @@ const SLAP_BAR_W := 260.0
 const SLAP_BAR_H := 8.0
 const SLAP_FONT := 16
 const SLAP_GAP := 6.0
-const SLAP_OPEN_COLOR := Color("87d9a1")
-const SLAP_CLOSE_COLOR := Color("ff7b7b")
+const SLAP_OPEN_COLOR := Color("53C99A")
+const SLAP_CLOSE_COLOR := Color("C94F61")
 const SLAP_TEXT_OPEN := "SLAP OPEN"
 const SLAP_TEXT_CLOSE := "SLAP CLOSE"
+## 结算贴牌窗口（3s）：3 绿 / 2 黄 / 1 红，带大号数字与同色进度条。
+const SLAP_SETTLE_TEXT := "SLAP SETTLE"
+const SLAP_SETTLE_GREEN := Color("53C99A")
+const SLAP_SETTLE_YELLOW := Color("E8B86D")
+const SLAP_SETTLE_RED := Color("C94F61")
+const SLAP_SETTLE_FONT := 24
 
 var _timer := TurnTimer.new()
 var _pill: PanelContainer
@@ -47,14 +53,18 @@ var _cur: Label
 var _next: Label
 var _hint_text := ""
 var _pill_x := 0.0
+var _pill_phase := -1
 var _hint_base_y := 0.0
 var _animating := false
 var _tween: Tween = null
 var _slap_label: Label
 var _slap_bar: ProgressBar
+var _slap_bar_fill: StyleBoxFlat
 var _slap_state := SLAP_HIDDEN
 var _slap_left := 0.0
 var _slap_bar_seconds := SLAP_BAR_SECONDS  # 当前条总时长（= slap open 窗口长度）
+var _slap_settle := false   # true = 结算贴牌窗口（显示 3/2/1 倒计时）
+var _slap_last_count := -1
 var _start_delay := 0.0     # 新回合倒计时启动前的等待（随机效果展示）
 var _slap_exhausted := false
 var _slap_base_y := 0.0
@@ -82,6 +92,7 @@ func _process(delta: float) -> void:
 			_layout()
 		elif _slap_bar != null and _slap_bar.visible:
 			_slap_bar.value = clampf(_slap_left / _slap_bar_seconds, 0.0, 1.0)
+			_update_slap_countdown()
 
 func _build() -> void:
 	if _pill != null:
@@ -90,8 +101,8 @@ func _build() -> void:
 	_pill = PanelContainer.new()
 	_pill.name = "CountdownPill"
 	_pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_pill.custom_minimum_size = Vector2(0.0, PILL_H)
-	_pill.add_theme_stylebox_override("panel", _pill_style())
+	_pill.custom_minimum_size = Vector2(150.0, PILL_H)
+	_pill.add_theme_stylebox_override("panel", UIStyle.pill(0))
 	_pill_label = Label.new()
 	_pill_label.name = "Label"
 	_pill_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -128,25 +139,16 @@ func _build() -> void:
 	var bar_bg := StyleBoxFlat.new()
 	bar_bg.bg_color = Color(1, 1, 1, 0.18)
 	bar_bg.set_corner_radius_all(int(SLAP_BAR_H * 0.5))
-	var bar_fill := StyleBoxFlat.new()
-	bar_fill.bg_color = SLAP_OPEN_COLOR
-	bar_fill.set_corner_radius_all(int(SLAP_BAR_H * 0.5))
+	_slap_bar_fill = StyleBoxFlat.new()
+	_slap_bar_fill.bg_color = SLAP_OPEN_COLOR
+	_slap_bar_fill.set_corner_radius_all(int(SLAP_BAR_H * 0.5))
 	_slap_bar.add_theme_stylebox_override("background", bar_bg)
-	_slap_bar.add_theme_stylebox_override("fill", bar_fill)
+	_slap_bar.add_theme_stylebox_override("fill", _slap_bar_fill)
 	_slap_bar.visible = false
 	add_child(_slap_bar)
 
-func _pill_style() -> StyleBoxFlat:
-	var s := StyleBoxFlat.new()
-	s.bg_color = Color(0.08, 0.09, 0.12, 0.75)
-	s.set_corner_radius_all(int(PILL_H * 0.5))
-	s.content_margin_left = PILL_H_PAD
-	s.content_margin_right = PILL_H_PAD
-	s.content_margin_top = PILL_V_PAD
-	s.content_margin_bottom = PILL_V_PAD
-	s.border_color = Color(0.42, 0.72, 0.95, 0.85)
-	s.set_border_width_all(2)
-	return s
+func _pill_style(state := 0) -> StyleBoxFlat:
+	return UIStyle.pill(state)
 
 func _make_hint_label(n: String) -> Label:
 	var l := Label.new()
@@ -157,7 +159,7 @@ func _make_hint_label(n: String) -> Label:
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	l.custom_minimum_size = Vector2(HINT_MAX_W, 0.0)
 	l.add_theme_font_size_override("font_size", HINT_FONT)
-	l.add_theme_color_override("font_color", Color(0.92, 0.95, 1.0))
+	l.add_theme_color_override("font_color", UITheme.color("text_primary"))
 	return l
 
 ## 顶部居中锚点 + 按内容宽度/高度设置矩形；非动画中则把子节点落到基准位。
@@ -168,7 +170,11 @@ func _layout() -> void:
 	var hint_h := _cur.get_combined_minimum_size().y
 	var slap_h := 0.0
 	if _slap_row_visible():
-		slap_h = SEP + _slap_label.get_combined_minimum_size().y + SLAP_GAP + SLAP_BAR_H
+		# CLOSE 不画条，但保留条高，避免 hint 文本上下跳。
+		var bar_h := SLAP_BAR_H if (_slap_state == SLAP_CLOSE or (_slap_bar != null and _slap_bar.visible)) else 0.0
+		slap_h = SEP + _slap_label.get_combined_minimum_size().y
+		if bar_h > 0.0:
+			slap_h += SLAP_GAP + bar_h
 	var w := maxf(maxf(pill_size.x, HINT_MAX_W), SLAP_BAR_W)
 	var h := PILL_H + SEP + hint_h + slap_h
 	anchor_left = 0.5
@@ -197,14 +203,19 @@ func _place_all() -> void:
 func _update_pill_text() -> void:
 	if _pill_label == null:
 		return
-	_pill_label.text = str(_timer.seconds_left())
+	var secs := _timer.seconds_left()
+	_pill_label.text = str(maxi(secs, 0))
+	var phase := _timer.phase()
 	var c := COLOR_NORMAL
-	match _timer.phase():
+	match phase:
 		1:
 			c = COLOR_WARN
 		2:
 			c = COLOR_OVER
 	_pill_label.add_theme_color_override("font_color", c)
+	if phase != _pill_phase:
+		_pill_phase = phase
+		_pill.add_theme_stylebox_override("panel", UIStyle.pill(phase))
 
 func _kill_tween() -> void:
 	if _tween != null and _tween.is_valid():
@@ -323,26 +334,32 @@ func _on_swap_done(old: Label, inc: Label) -> void:
 	_animating = false
 	_layout()
 
-## SLAP 行是否可见：CLOSE 恒可见；OPEN 且未走空可见；其余隐藏。
+## SLAP 行是否可见：CLOSE 恒可见；结算窗口走空后隐藏；
+## 普通窗口 3s 倒计时走空后仍保留 "SLAP OPEN"（只隐藏数字/条），直到窗口关闭。
 func _slap_row_visible() -> bool:
 	if _slap_state == SLAP_CLOSE:
 		return true
-	return _slap_state == SLAP_OPEN and not _slap_exhausted
+	if _slap_state != SLAP_OPEN:
+		return false
+	if _slap_settle:
+		return not _slap_exhausted
+	return true
 
-## 由 main 喂入状态；HIDDEN/CLOSE → OPEN 视为"新窗口"，重置装饰条。
-func set_slap_state(state: int, window := 0.0) -> void:
-	if state == _slap_state:
+## 由 main 喂入状态；HIDDEN/CLOSE → OPEN 视为"新窗口"，重置 3s 倒计时。
+## settle=true 文案用 SLAP SETTLE；普通窗口用 SLAP OPEN + 3/2/1（纯视觉，窗口可长于 3s）。
+func set_slap_state(state: int, window := 0.0, settle := false) -> void:
+	var want_settle := settle and state == SLAP_OPEN
+	var entering_open := state == SLAP_OPEN and (_slap_state != SLAP_OPEN or (want_settle and not _slap_settle))
+	if state == _slap_state and not entering_open and want_settle == _slap_settle:
 		return
-	var entering_open := state == SLAP_OPEN and _slap_state != SLAP_OPEN
-	if entering_open:
-		if window > 0.0:
-			_slap_bar_seconds = window  # 条总时长同步到真实窗口
-	elif window > 0.0:
-		_slap_bar_seconds = window
+	if window > 0.0:
+		_slap_bar_seconds = window  # 条总时长同步到真实窗口
+	_slap_settle = want_settle
 	_slap_state = state
 	if entering_open:
 		_slap_left = _slap_bar_seconds
 		_slap_exhausted = false
+		_slap_last_count = -1
 	_update_slap_visuals()
 	_layout()
 
@@ -356,11 +373,52 @@ func _update_slap_visuals() -> void:
 		return
 	if _slap_state == SLAP_CLOSE:
 		_slap_label.text = SLAP_TEXT_CLOSE
+		_slap_label.add_theme_font_size_override("font_size", SLAP_FONT)
 		_slap_label.add_theme_color_override("font_color", SLAP_CLOSE_COLOR)
-	else:
+		_set_bar_color(SLAP_CLOSE_COLOR)
+		return
+	if _slap_settle:
+		var secs := maxi(1, int(ceil(_slap_left)))
+		_slap_label.text = "%s  %d" % [SLAP_SETTLE_TEXT, secs]
+		_slap_label.add_theme_font_size_override("font_size", SLAP_SETTLE_FONT)
+		var c := _settle_color(secs)
+		_slap_label.add_theme_color_override("font_color", c)
+		_set_bar_color(c)
+	elif _slap_exhausted:
+		# 普通窗口 3s 后仍开着：保留 SLAP OPEN，只隐藏数字/进度条。
+		_slap_bar.visible = false
 		_slap_label.text = SLAP_TEXT_OPEN
+		_slap_label.add_theme_font_size_override("font_size", SLAP_FONT)
 		_slap_label.add_theme_color_override("font_color", SLAP_OPEN_COLOR)
-		_slap_bar.value = clampf(_slap_left / _slap_bar_seconds, 0.0, 1.0)
+		_set_bar_color(SLAP_OPEN_COLOR)
+	else:
+		var secs2 := maxi(1, int(ceil(_slap_left)))
+		_slap_label.text = "%s  %d" % [SLAP_TEXT_OPEN, secs2]
+		_slap_label.add_theme_font_size_override("font_size", SLAP_SETTLE_FONT)
+		var c2 := _settle_color(secs2)
+		_slap_label.add_theme_color_override("font_color", c2)
+		_set_bar_color(c2)
+	_slap_bar.value = clampf(_slap_left / _slap_bar_seconds, 0.0, 1.0)
+
+func _settle_color(secs: int) -> Color:
+	if secs >= 3:
+		return SLAP_SETTLE_GREEN
+	if secs == 2:
+		return SLAP_SETTLE_YELLOW
+	return SLAP_SETTLE_RED
+
+func _set_bar_color(c: Color) -> void:
+	if _slap_bar_fill != null:
+		_slap_bar_fill.bg_color = c
+
+## settle 模式下每跨一个整数秒刷新一次文字/颜色（不每帧重排）。
+func _update_slap_countdown() -> void:
+	var secs := maxi(1, int(ceil(_slap_left)))
+	if secs == _slap_last_count:
+		return
+	_slap_last_count = secs
+	_update_slap_visuals()
+	_layout()
 
 ## 测试/调试访问器。
 func pill() -> PanelContainer:

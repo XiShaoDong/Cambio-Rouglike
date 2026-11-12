@@ -1,0 +1,350 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1920 3400" width="1920" height="3400">
+<title>KONG 3D HUD 统一风格稿 (dark-1 玻璃面板)</title>
+<style>
+/* ===== 令牌：与 scripts/ui/ui_theme.gd 的 dark-1 一一对应，改这里全图联动 ===== */
+:root{
+  --bg-table:#151821; --surface:#1E2330; --elevated:#292F40; --hover:#343B4F;
+  --border:#353C4D; --border-strong:#4A5368;
+  --text:#F1F3F9; --text2:#A3ADC0; --muted:#707B90; --on-accent:#FFFFFF;
+  --accent:#526BDE; --accent-hover:#657EF0; --accent-pressed:#4056BD; --accent-focus:#8294FF; --accent-soft:#252F52;
+  --success:#53C99A; --warning:#E8B86D; --danger:#C94F61;
+  --hud-alpha:.78; --board-alpha:.94;
+}
+text{font-family:"PingFang SC","Noto Sans SC","Helvetica Neue",system-ui,sans-serif;fill:var(--text)}
+.t2{fill:var(--text2)} .tm{fill:var(--muted)} .ta{fill:var(--on-accent)}
+.f12{font-size:12px}.f14{font-size:14px}.f16{font-size:16px}.f18{font-size:18px}.f22{font-size:22px}.f24{font-size:24px}.f26{font-size:26px}.f28{font-size:28px}.f32{font-size:32px}
+.b{font-weight:600}
+.c{text-anchor:middle;dominant-baseline:central}
+.v{dominant-baseline:central}
+.e{text-anchor:end;dominant-baseline:central}
+.lbl{font-size:20px;fill:#8899aa;font-weight:600}
+.sub{font-size:14px;fill:#8899aa}
+.mono{font-variant-numeric:tabular-nums}
+
+/* 面板 / 胶囊 / chip */
+.panel{fill:var(--surface);fill-opacity:var(--hud-alpha);stroke:var(--border-strong);stroke-width:1}
+.board{fill:var(--surface);fill-opacity:var(--board-alpha);stroke:var(--border-strong);stroke-width:1}
+.pill{fill:var(--surface);fill-opacity:var(--hud-alpha);stroke:var(--accent-focus);stroke-width:2}
+.pill-warn{fill:var(--surface);fill-opacity:var(--hud-alpha);stroke:var(--warning);stroke-width:2}
+.pill-over{fill:#3a1f27;fill-opacity:.9;stroke:var(--danger);stroke-width:2}
+.chip{fill:var(--elevated);stroke:var(--border-strong);stroke-width:1}
+.chip-on{fill:var(--accent-soft);stroke:var(--accent-focus);stroke-width:1}
+.row{fill:var(--elevated);fill-opacity:.55;stroke:var(--border);stroke-width:1}
+.row-hover{fill:var(--hover);fill-opacity:.9;stroke:var(--border-strong);stroke-width:1}
+.row-cap{fill:var(--accent-soft);stroke:var(--accent-focus);stroke-width:2}
+.row-bad{fill:#3a1f27;fill-opacity:.6;stroke:var(--danger);stroke-width:2}
+.tile{fill:var(--elevated);fill-opacity:.7;stroke:var(--border);stroke-width:1}
+.div{stroke:var(--border);stroke-width:1}
+
+/* 按钮 */
+.btn-p{fill:var(--accent);stroke:var(--accent-focus);stroke-width:2}
+.btn-p-h{fill:var(--accent-hover);stroke:#fff;stroke-opacity:.85;stroke-width:3}
+.btn-p-d{fill:var(--accent-pressed);stroke:var(--accent-focus);stroke-width:2}
+.btn-off{fill:var(--elevated);stroke:var(--muted);stroke-width:2}
+.btn-s{fill:var(--surface);fill-opacity:var(--hud-alpha);stroke:var(--border-strong);stroke-width:2}
+.btn-s-h{fill:var(--hover);stroke:var(--accent-focus);stroke-width:2}
+</style>
+
+<defs>
+  <radialGradient id="bgGrad" cx="50%" cy="55%" r="75%">
+    <stop offset="0" stop-color="#232b3a"/><stop offset="1" stop-color="#0f1219"/>
+  </radialGradient>
+  <clipPath id="frameA"><rect width="1920" height="1080"/></clipPath>
+  <!-- 图标（22x22 视窗，程序化图标的视觉目标） -->
+  <symbol id="i-heart" viewBox="0 0 24 24" width="22" height="22"><path d="M12 21C5 15 2 11 2 7.5 2 4.5 4.3 3 6.5 3 8.6 3 10.8 4.2 12 6.2 13.2 4.2 15.4 3 17.5 3 19.7 3 22 4.5 22 7.5 22 11 19 15 12 21Z" fill="#C94F61"/></symbol>
+  <symbol id="i-coin" viewBox="0 0 24 24" width="22" height="22"><circle cx="12" cy="12" r="10" fill="#E8B86D"/><rect x="8.5" y="8.5" width="7" height="7" fill="#1E2330"/></symbol>
+  <symbol id="i-cards" viewBox="0 0 24 24" width="22" height="22"><rect x="3" y="5" width="12" height="16" rx="2" fill="none" stroke="#A3ADC0" stroke-width="1.8"/><rect x="8" y="2" width="12" height="16" rx="2" fill="#1E2330" stroke="#A3ADC0" stroke-width="1.8"/></symbol>
+  <symbol id="i-effect" viewBox="0 0 24 24" width="36" height="36"><circle cx="12" cy="12" r="11" fill="#252F52" stroke="#8294FF" stroke-width="1.5"/><path d="M12 5l2.2 4.8L19 12l-4.8 2.2L12 19l-2.2-4.8L5 12l4.8-2.2Z" fill="#8294FF"/></symbol>
+  <!-- 牌背 / 迷你牌面 -->
+  <rect id="cardBack" width="60" height="84" rx="6" fill="#1E2330" stroke="#8294FF" stroke-width="2"/>
+  <rect id="cm" width="40" height="56" rx="5" fill="#F1F3F9" stroke="#353C4D"/>
+  <rect id="tileBg" width="126" height="134" rx="10" class="tile"/>
+  <!-- 鼠标图标：右键高亮用 accent -->
+  <g id="mouse"><path d="M0 -15 L0 0 L9.2 0 A9.2 15 0 0 0 0 -15 Z" fill="#526BDE" transform="translate(0,0) scale(1,1)"/><ellipse cx="0" cy="0" rx="9.2" ry="15" fill="none" stroke="#F1F3F9" stroke-width="1.8"/><line x1="-9.2" y1="0" x2="9.2" y2="0" stroke="#F1F3F9" stroke-width="1.8"/><line x1="0" y1="-15" x2="0" y2="0" stroke="#F1F3F9" stroke-width="1.8"/></g>
+</defs>
+
+<rect width="1920" height="3400" fill="#0b0d12"/>
+
+<!-- ============================================================ -->
+<!-- A. 局内总览 1920x1080 -->
+<!-- ============================================================ -->
+<text x="40" y="40" class="lbl">A · 局内总览（1920×1080，底图仅为示意，不代表真实牌桌）</text>
+<g transform="translate(0,60)">
+<g clip-path="url(#frameA)">
+  <rect width="1920" height="1080" fill="url(#bgGrad)"/>
+  <ellipse cx="960" cy="610" rx="800" ry="320" fill="#182231" stroke="#2a3748" stroke-width="8"/>
+  <ellipse cx="960" cy="610" rx="720" ry="270" fill="#141c29" stroke="#212c3c" stroke-width="2"/>
+  <!-- 牌堆 -->
+  <use href="#cardBack" x="890" y="490"/><use href="#cardBack" x="970" y="490"/>
+  <!-- 对家手牌 -->
+  <g>
+  <rect x="885" y="320" width="42" height="58" rx="5" fill="#1E2330" stroke="#8294FF" stroke-width="2"/><rect x="935" y="320" width="42" height="58" rx="5" fill="#1E2330" stroke="#8294FF" stroke-width="2"/><rect x="985" y="320" width="42" height="58" rx="5" fill="#1E2330" stroke="#8294FF" stroke-width="2"/><rect x="1035" y="320" width="42" height="58" rx="5" fill="#1E2330" stroke="#8294FF" stroke-width="2"/></g>
+  <!-- 左右玩家 -->
+  <rect x="330" y="520" width="50" height="70" rx="5" fill="#1E2330" stroke="#8294FF" stroke-width="2"/><rect x="390" y="520" width="50" height="70" rx="5" fill="#1E2330" stroke="#8294FF" stroke-width="2"/>
+  <rect x="1480" y="520" width="50" height="70" rx="5" fill="#1E2330" stroke="#8294FF" stroke-width="2"/><rect x="1540" y="520" width="50" height="70" rx="5" fill="#1E2330" stroke="#8294FF" stroke-width="2"/>
+  <!-- 自己手牌 -->
+  <rect x="880" y="880" width="64" height="90" rx="6" fill="#1E2330" stroke="#8294FF" stroke-width="2"/><rect x="952" y="880" width="64" height="90" rx="6" fill="#1E2330" stroke="#8294FF" stroke-width="2"/><rect x="1024" y="880" width="64" height="90" rx="6" fill="#1E2330" stroke="#8294FF" stroke-width="2"/><rect x="808" y="880" width="64" height="90" rx="6" fill="#1E2330" stroke="#8294FF" stroke-width="2"/>
+  <!-- 准星 -->
+  <circle cx="960" cy="540" r="9" fill="none" stroke="#fff" stroke-opacity=".5" stroke-width="2"/><circle cx="960" cy="540" r="2.5" fill="#fff" fill-opacity=".85"/>
+
+  <!-- ① 顶部居中：倒计时胶囊 + hint + SLAP -->
+  <rect x="885" y="40" width="150" height="48" rx="24" class="pill"/>
+  <text x="960" y="64" class="c f26 b mono">0:24</text>
+  <text x="960" y="124" class="c f18">选择一张手牌，与弃牌交换</text>
+  <text x="960" y="170" class="c f16 b" style="fill:var(--success);letter-spacing:2px">SLAP OPEN</text>
+  <rect x="830" y="190" width="260" height="8" rx="4" fill="#fff" fill-opacity=".14"/>
+  <rect x="830" y="190" width="182" height="8" rx="4" fill="var(--success)"/>
+
+  <!-- ② 左上：回合徽标 -->
+  <rect x="75" y="75" width="150" height="44" rx="22" class="panel"/>
+  <text x="150" y="97" class="c f22 b">回合 1/3</text>
+
+  <!-- ③ 右上：本局效果 -->
+  <rect x="1545" y="75" width="300" height="92" rx="12" class="panel"/>
+  <use href="#i-effect" x="1561" y="103"/>
+  <text x="1612" y="103" class="tm f14 v">本局效果</text>
+  <text x="1612" y="127" class="f18 b v">效果名称</text>
+  <text x="1612" y="150" class="t2 f14 v">效果说明文字，最多一行</text>
+
+  <!-- ④ 左下：按键提示面板 -->
+  <rect x="75" y="693" width="230" height="188" rx="12" class="panel"/>
+  <text x="95" y="731" class="f18 v">道具</text><rect x="221" y="716" width="64" height="30" rx="6" class="chip"/><text x="253" y="731" class="c f16">Space</text>
+  <text x="95" y="771" class="f18 v">标记</text><rect x="253" y="756" width="32" height="30" rx="6" class="chip"/><text x="269" y="771" class="c f16">D</text>
+  <text x="95" y="811" class="f18 v">放大</text><use href="#mouse" x="274" y="811"/>
+  <text x="95" y="851" class="f18 v">手册</text><rect x="237" y="836" width="48" height="30" rx="6" class="chip"/><text x="261" y="851" class="c f16">Tab</text>
+
+  <!-- ⑤ 左下：牌序 -->
+  <rect x="75" y="893" width="300" height="112" rx="12" class="panel"/>
+  <text x="91" y="921" class="f16 b v">牌序</text>
+  <rect x="140" y="908" width="56" height="26" rx="6" class="chip"/><text x="168" y="921" class="c f14">Shift</text>
+  <g font-size="12" font-weight="600">
+  <use href="#cm" x="91" y="940"/><text x="96" y="954" style="fill:#151821" class="f12 b">A</text>
+  <use href="#cm" x="110" y="940"/><text x="115" y="954" style="fill:#151821" class="f12 b">2</text>
+  <use href="#cm" x="129" y="940"/><text x="134" y="954" style="fill:#151821" class="f12 b">3</text>
+  <use href="#cm" x="148" y="940"/><text x="153" y="954" style="fill:#151821" class="f12 b">4</text>
+  <use href="#cm" x="167" y="940"/><text x="172" y="954" style="fill:#151821" class="f12 b">5</text>
+  <use href="#cm" x="186" y="940"/><text x="191" y="954" style="fill:#151821" class="f12 b">6</text>
+  <use href="#cm" x="205" y="940"/><text x="210" y="954" style="fill:#151821" class="f12 b">7</text>
+  <use href="#cm" x="224" y="940"/><text x="229" y="954" style="fill:#151821" class="f12 b">8</text>
+  <use href="#cm" x="243" y="940"/><text x="248" y="954" style="fill:#151821" class="f12 b">9</text>
+  <use href="#cm" x="262" y="940"/><text x="267" y="954" style="fill:#151821" class="f12 b">10</text>
+  <use href="#cm" x="281" y="940"/><text x="286" y="954" style="fill:#151821" class="f12 b">J</text>
+  <use href="#cm" x="300" y="940"/><text x="305" y="954" style="fill:#151821" class="f12 b">Q</text>
+  <use href="#cm" x="319" y="940"/><text x="324" y="954" style="fill:#151821" class="f12 b">K</text>
+  </g>
+
+  <!-- ⑥ 右下：自身状态 -->
+  <rect x="1609" y="953" width="236" height="52" rx="12" class="panel"/>
+  <use href="#i-heart" x="1627" y="968"/><text x="1655" y="979" class="f18 b v">3</text>
+  <use href="#i-coin" x="1701" y="968"/><text x="1729" y="979" class="f18 b v">12</text>
+  <use href="#i-cards" x="1775" y="968"/><text x="1803" y="979" class="f18 b v">4</text>
+
+  <!-- ⑦ 中央：Ready（3D 看板内，尺寸为世界尺寸，此处只示意比例） -->
+  <rect x="790" y="700" width="340" height="96" rx="12" class="btn-p"/>
+  <text x="960" y="748" class="c f32 b ta">Ready</text>
+</g>
+<rect width="1920" height="1080" fill="none" stroke="#2a3140" stroke-width="2"/>
+</g>
+
+<!-- ============================================================ -->
+<!-- B. 组件状态 -->
+<!-- ============================================================ -->
+<text x="40" y="1200" class="lbl">B · 组件状态与令牌</text>
+<g transform="translate(0,1220)">
+<rect width="1920" height="1010" fill="#151821" stroke="#2a3140" stroke-width="2"/>
+
+<!-- B1 倒计时 -->
+<text x="80" y="50" class="sub">倒计时胶囊：正常 / 警告 / 超时</text>
+<rect x="80" y="70" width="150" height="48" rx="24" class="pill"/><text x="155" y="94" class="c f26 b mono">0:24</text>
+<rect x="260" y="70" width="150" height="48" rx="24" class="pill-warn"/><text x="335" y="94" class="c f26 b mono" style="fill:var(--warning)">0:09</text>
+<rect x="440" y="70" width="150" height="48" rx="24" class="pill-over"/><text x="515" y="94" class="c f26 b mono" style="fill:var(--danger)">0:00</text>
+<text x="155" y="146" class="c sub">正常</text><text x="335" y="146" class="c sub">警告</text><text x="515" y="146" class="c sub">超时</text>
+
+<!-- B2 SLAP -->
+<text x="700" y="50" class="sub">SLAP：OPEN / CLOSE / SETTLE（3 绿 · 2 黄 · 1 红）</text>
+<text x="830" y="86" class="c f16 b" style="fill:var(--success);letter-spacing:2px">SLAP OPEN</text>
+<rect x="700" y="106" width="260" height="8" rx="4" fill="#fff" fill-opacity=".14"/><rect x="700" y="106" width="182" height="8" rx="4" fill="var(--success)"/>
+<text x="1090" y="86" class="c f16 b" style="fill:var(--danger);letter-spacing:2px">SLAP CLOSE</text>
+<text x="1090" y="116" class="c sub">无进度条</text>
+<g>
+  <text x="1280" y="80" class="c f24 b" style="fill:var(--success)">3</text><rect x="1220" y="106" width="120" height="8" rx="4" fill="#fff" fill-opacity=".14"/><rect x="1220" y="106" width="120" height="8" rx="4" fill="var(--success)"/>
+  <text x="1440" y="80" class="c f24 b" style="fill:var(--warning)">2</text><rect x="1380" y="106" width="120" height="8" rx="4" fill="#fff" fill-opacity=".14"/><rect x="1380" y="106" width="80" height="8" rx="4" fill="var(--warning)"/>
+  <text x="1600" y="80" class="c f24 b" style="fill:var(--danger)">1</text><rect x="1540" y="106" width="120" height="8" rx="4" fill="#fff" fill-opacity=".14"/><rect x="1540" y="106" width="40" height="8" rx="4" fill="var(--danger)"/>
+  <text x="1440" y="146" class="c f16 b" style="fill:var(--text2);letter-spacing:2px">SLAP SETTLE</text>
+</g>
+
+<!-- B3 Ready 按钮四态 -->
+<text x="80" y="210" class="sub">主按钮（Ready）：默认 / hover / 按下 / 禁用（此处按 0.7 倍绘制）</text>
+<rect x="80" y="230" width="240" height="68" rx="12" class="btn-p"/><text x="200" y="264" class="c f24 b ta">Ready</text>
+<rect x="350" y="230" width="240" height="68" rx="12" class="btn-p-h"/><text x="470" y="264" class="c f24 b ta">Ready</text>
+<rect x="620" y="230" width="240" height="68" rx="12" class="btn-p-d"/><text x="740" y="264" class="c f24 b ta">Ready</text>
+<rect x="890" y="230" width="240" height="68" rx="12" class="btn-off"/><text x="1010" y="264" class="c f24 b" style="fill:var(--muted)">Ready</text>
+<text x="200" y="324" class="c sub">默认</text><text x="470" y="324" class="c sub">hover（白边加粗）</text><text x="740" y="324" class="c sub">按下</text><text x="1010" y="324" class="c sub">已准备 / 禁用</text>
+
+<!-- B4 条件动作 -->
+<text x="80" y="390" class="sub">条件动作（Q 交换 / 不交换 / 变换 Joker）：主 + 次按钮</text>
+<rect x="80" y="410" width="200" height="60" rx="12" class="btn-p"/><text x="180" y="440" class="c f22 b ta">交换</text>
+<rect x="300" y="410" width="200" height="60" rx="12" class="btn-s"/><text x="400" y="440" class="c f22 b">不交换</text>
+<rect x="520" y="410" width="200" height="60" rx="12" class="btn-s"/><text x="620" y="440" class="c f22 b">变换 Joker</text>
+<rect x="740" y="410" width="200" height="60" rx="12" class="btn-s-h"/><text x="840" y="440" class="c f22 b">次按钮 hover</text>
+<rect x="960" y="410" width="200" height="60" rx="12" class="btn-off"/><text x="1060" y="440" class="c f22 b" style="fill:var(--muted)">不可用</text>
+
+<!-- B5 chip + tooltip -->
+<text x="80" y="540" class="sub">按键 chip：默认 / 激活 / 鼠标</text>
+<rect x="80" y="560" width="64" height="30" rx="6" class="chip"/><text x="112" y="575" class="c f16">Space</text>
+<rect x="164" y="560" width="32" height="30" rx="6" class="chip"/><text x="180" y="575" class="c f16">D</text>
+<rect x="216" y="560" width="56" height="26" rx="6" class="chip"/><text x="244" y="573" class="c f14">Shift</text>
+<rect x="292" y="560" width="56" height="26" rx="6" class="chip-on"/><text x="320" y="573" class="c f14" style="fill:var(--accent-focus)">Shift</text>
+<use href="#mouse" x="384" y="575"/>
+<rect x="420" y="558" width="56" height="30" rx="6" class="chip"/><text x="448" y="573" class="c f16">Q ◀</text>
+<rect x="488" y="558" width="56" height="30" rx="6" class="chip"/><text x="516" y="573" class="c f16">E ▶</text>
+
+<text x="700" y="540" class="sub">卡牌悬停气泡 + 第二框</text>
+<rect x="700" y="560" width="300" height="76" rx="12" class="board"/>
+<text x="718" y="584" class="f16 b v">能力名称</text>
+<text x="718" y="610" class="t2 f14 v">能力说明文字，最多两行；超出自动换行。</text>
+<rect x="700" y="648" width="300" height="38" rx="12" class="panel" style="stroke:var(--accent-focus)"/>
+<text x="850" y="667" class="c f14" style="fill:var(--accent-focus)">点击弃牌堆以触发能力</text>
+
+<!-- B6 令牌色板 -->
+<text x="80" y="730" class="sub">令牌色板（dark-1）</text>
+<g class="f12">
+  <rect x="80" y="750" width="96" height="48" rx="8" fill="#151821" stroke="#4A5368"/><text x="128" y="818" class="c f12 t2">bg_table</text><text x="128" y="834" class="c f12 tm">151821</text>
+  <rect x="190" y="750" width="96" height="48" rx="8" fill="#1E2330" stroke="#4A5368"/><text x="238" y="818" class="c f12 t2">bg_surface</text><text x="238" y="834" class="c f12 tm">1E2330</text>
+  <rect x="300" y="750" width="96" height="48" rx="8" fill="#292F40" stroke="#4A5368"/><text x="348" y="818" class="c f12 t2">bg_elevated</text><text x="348" y="834" class="c f12 tm">292F40</text>
+  <rect x="410" y="750" width="96" height="48" rx="8" fill="#343B4F" stroke="#4A5368"/><text x="458" y="818" class="c f12 t2">bg_hover</text><text x="458" y="834" class="c f12 tm">343B4F</text>
+  <rect x="520" y="750" width="96" height="48" rx="8" fill="#353C4D" stroke="#4A5368"/><text x="568" y="818" class="c f12 t2">border</text><text x="568" y="834" class="c f12 tm">353C4D</text>
+  <rect x="630" y="750" width="96" height="48" rx="8" fill="#4A5368" stroke="#4A5368"/><text x="678" y="818" class="c f12 t2">border_strong</text><text x="678" y="834" class="c f12 tm">4A5368</text>
+  <rect x="740" y="750" width="96" height="48" rx="8" fill="#F1F3F9"/><text x="788" y="818" class="c f12 t2">text_primary</text><text x="788" y="834" class="c f12 tm">F1F3F9</text>
+  <rect x="850" y="750" width="96" height="48" rx="8" fill="#A3ADC0"/><text x="898" y="818" class="c f12 t2">text_secondary</text><text x="898" y="834" class="c f12 tm">A3ADC0</text>
+
+  <rect x="80" y="860" width="96" height="48" rx="8" fill="#707B90"/><text x="128" y="928" class="c f12 t2">text_muted</text><text x="128" y="944" class="c f12 tm">707B90</text>
+  <rect x="190" y="860" width="96" height="48" rx="8" fill="#526BDE"/><text x="238" y="928" class="c f12 t2">accent</text><text x="238" y="944" class="c f12 tm">526BDE</text>
+  <rect x="300" y="860" width="96" height="48" rx="8" fill="#657EF0"/><text x="348" y="928" class="c f12 t2">accent_hover</text><text x="348" y="944" class="c f12 tm">657EF0</text>
+  <rect x="410" y="860" width="96" height="48" rx="8" fill="#4056BD"/><text x="458" y="928" class="c f12 t2">accent_pressed</text><text x="458" y="944" class="c f12 tm">4056BD</text>
+  <rect x="520" y="860" width="96" height="48" rx="8" fill="#8294FF"/><text x="568" y="928" class="c f12 t2">accent_focus</text><text x="568" y="944" class="c f12 tm">8294FF</text>
+  <rect x="630" y="860" width="96" height="48" rx="8" fill="#53C99A"/><text x="678" y="928" class="c f12 t2">success</text><text x="678" y="944" class="c f12 tm">53C99A</text>
+  <rect x="740" y="860" width="96" height="48" rx="8" fill="#E8B86D"/><text x="788" y="928" class="c f12 t2">warning</text><text x="788" y="944" class="c f12 tm">E8B86D</text>
+  <rect x="850" y="860" width="96" height="48" rx="8" fill="#C94F61"/><text x="898" y="928" class="c f12 t2">danger</text><text x="898" y="944" class="c f12 tm">C94F61</text>
+</g>
+
+<g>
+  <text x="1100" y="760" class="f16 b v">形状 / 字号 / 间距</text>
+  <text x="1100" y="796" class="t2 f16 v">圆角   chip 6 · HUD 面板 12 · 看板 16 · 胶囊 = 高/2</text>
+  <text x="1100" y="826" class="t2 f16 v">描边   面板、chip 1px · 按钮、胶囊 2px</text>
+  <text x="1100" y="856" class="t2 f16 v">字号   14 / 16 / 18 / 22 / 28（大按钮 24 / 32）</text>
+  <text x="1100" y="886" class="t2 f16 v">间距   4 / 8 / 12 / 16 · 四角边距 75</text>
+  <text x="1100" y="916" class="t2 f16 v">透明度 HUD 面板 .78 · 看板 .94</text>
+  <text x="1100" y="946" class="t2 f16 v">状态色 success / warning / danger 只用于状态，不做装饰</text>
+</g>
+</g>
+
+<!-- ============================================================ -->
+<!-- C. 看板：手册 / Stats(弃牌堆) / 按键 -->
+<!-- ============================================================ -->
+<text x="40" y="2290" class="lbl">C · 全息看板（手册 · Stats 弃牌堆 · 按键绑定 · 确认浮层）</text>
+<g transform="translate(0,2310)">
+<rect width="1920" height="1060" fill="#151821" stroke="#2a3140" stroke-width="2"/>
+
+<!-- C1 手册 -->
+<g transform="translate(40,40)">
+  <rect width="600" height="640" rx="16" class="board"/>
+  <text x="300" y="42" class="c f22 b">手册</text>
+  <rect x="24" y="68" width="56" height="36" rx="6" class="chip"/><text x="52" y="86" class="c f16">Q ◀</text>
+  <rect x="520" y="68" width="56" height="36" rx="6" class="chip"/><text x="548" y="86" class="c f16">E ▶</text>
+  <rect x="148" y="68" width="96" height="36" rx="8" class="chip-on"/><text x="196" y="86" class="c f18 b">手册</text>
+  <text x="300" y="86" class="c f18 t2">Stats</text>
+  <text x="404" y="86" class="c f18 t2">按键</text>
+  <line x1="24" y1="124" x2="576" y2="124" class="div"/>
+  <g transform="translate(24,140)">
+    <g transform="translate(0,0)"><use href="#tileBg"/><text x="14" y="34" class="f28 b v">A</text><text x="112" y="30" class="e tm f14">分值 1</text><text x="14" y="76" class="t2 f14 v">能力说明文字</text><text x="14" y="98" class="t2 f14 v">占位文字</text></g>
+    <g transform="translate(142,0)"><use href="#tileBg"/><text x="14" y="34" class="f28 b v">2</text><text x="112" y="30" class="e tm f14">分值 2</text><text x="14" y="76" class="t2 f14 v">能力说明文字</text><text x="14" y="98" class="t2 f14 v">占位文字</text></g>
+    <g transform="translate(284,0)"><use href="#tileBg"/><text x="14" y="34" class="f28 b v">3</text><text x="112" y="30" class="e tm f14">分值 3</text><text x="14" y="76" class="t2 f14 v">能力说明文字</text><text x="14" y="98" class="t2 f14 v">占位文字</text></g>
+    <g transform="translate(426,0)"><use href="#tileBg"/><text x="14" y="34" class="f28 b v">4</text><text x="112" y="30" class="e tm f14">分值 4</text><text x="14" y="76" class="t2 f14 v">能力说明文字</text><text x="14" y="98" class="t2 f14 v">占位文字</text></g>
+    <g transform="translate(0,148)"><use href="#tileBg"/><text x="14" y="34" class="f28 b v">5</text><text x="112" y="30" class="e tm f14">分值 5</text><text x="14" y="76" class="t2 f14 v">能力说明文字</text><text x="14" y="98" class="t2 f14 v">占位文字</text></g>
+    <g transform="translate(142,148)"><use href="#tileBg"/><text x="14" y="34" class="f28 b v">6</text><text x="112" y="30" class="e tm f14">分值 6</text><text x="14" y="76" class="t2 f14 v">能力说明文字</text><text x="14" y="98" class="t2 f14 v">占位文字</text></g>
+    <g transform="translate(284,148)"><use href="#tileBg"/><text x="14" y="34" class="f28 b v">7</text><text x="112" y="30" class="e tm f14">分值 7</text><text x="14" y="76" class="t2 f14 v">能力说明文字</text><text x="14" y="98" class="t2 f14 v">占位文字</text></g>
+    <g transform="translate(426,148)"><use href="#tileBg"/><text x="14" y="34" class="f28 b v">8</text><text x="112" y="30" class="e tm f14">分值 8</text><text x="14" y="76" class="t2 f14 v">能力说明文字</text><text x="14" y="98" class="t2 f14 v">占位文字</text></g>
+    <g transform="translate(0,296)"><use href="#tileBg"/><text x="14" y="34" class="f28 b v">9</text><text x="112" y="30" class="e tm f14">分值 9</text><text x="14" y="76" class="t2 f14 v">能力说明文字</text><text x="14" y="98" class="t2 f14 v">占位文字</text></g>
+    <g transform="translate(142,296)"><use href="#tileBg"/><text x="14" y="34" class="f28 b v">10</text><text x="112" y="30" class="e tm f14">分值 10</text><text x="14" y="76" class="t2 f14 v">能力说明文字</text><text x="14" y="98" class="t2 f14 v">占位文字</text></g>
+    <g transform="translate(284,296)"><use href="#tileBg"/><text x="14" y="34" class="f28 b v">J</text><text x="112" y="30" class="e tm f14">分值 11</text><text x="14" y="76" class="t2 f14 v">能力说明文字</text><text x="14" y="98" class="t2 f14 v">占位文字</text></g>
+    <g transform="translate(426,296)"><use href="#tileBg"/><text x="14" y="34" class="f28 b v">Q</text><text x="112" y="30" class="e tm f14">分值 12</text><text x="14" y="76" class="t2 f14 v">能力说明文字</text><text x="14" y="98" class="t2 f14 v">占位文字</text></g>
+  </g>
+  <text x="300" y="612" class="c f14 tm">Tab 手册 / S Stats / K 按键 / Q·E 切页 / Esc 关闭</text>
+</g>
+
+<!-- C2 Stats / 弃牌堆 -->
+<g transform="translate(660,40)">
+  <rect width="600" height="640" rx="16" class="board"/>
+  <text x="300" y="42" class="c f22 b">Stats</text>
+  <rect x="24" y="68" width="56" height="36" rx="6" class="chip"/><text x="52" y="86" class="c f16">Q ◀</text>
+  <rect x="520" y="68" width="56" height="36" rx="6" class="chip"/><text x="548" y="86" class="c f16">E ▶</text>
+  <text x="196" y="86" class="c f18 t2">手册</text>
+  <rect x="252" y="68" width="96" height="36" rx="8" class="chip-on"/><text x="300" y="86" class="c f18 b">Stats</text>
+  <text x="404" y="86" class="c f18 t2">按键</text>
+  <line x1="24" y1="124" x2="576" y2="124" class="div"/>
+  <text x="300" y="164" class="c f18 b">弃牌堆</text>
+  <text x="300" y="190" class="c f14 tm">按点数统计已弃出的牌</text>
+  <g transform="translate(300,520)">
+    <g transform="rotate(-54)"><rect x="-35" y="-290" width="70" height="98" rx="6" fill="#F1F3F9" stroke="#353C4D"/><text x="-26" y="-270" style="fill:#151821" class="f18 b v">A</text><circle cx="0" cy="-186" r="14" fill="#526BDE" stroke="#8294FF"/><text x="0" y="-186" class="c f14 b ta">4</text></g>
+    <g transform="rotate(-36)"><rect x="-35" y="-290" width="70" height="98" rx="6" fill="#F1F3F9" stroke="#353C4D"/><text x="-26" y="-270" style="fill:#151821" class="f18 b v">3</text><circle cx="0" cy="-186" r="14" fill="#526BDE" stroke="#8294FF"/><text x="0" y="-186" class="c f14 b ta">2</text></g>
+    <g transform="rotate(-18)"><rect x="-35" y="-290" width="70" height="98" rx="6" fill="#F1F3F9" stroke="#353C4D"/><text x="-26" y="-270" style="fill:#151821" class="f18 b v">5</text><circle cx="0" cy="-186" r="14" fill="#526BDE" stroke="#8294FF"/><text x="0" y="-186" class="c f14 b ta">3</text></g>
+    <g transform="rotate(0)"><rect x="-35" y="-290" width="70" height="98" rx="6" fill="#F1F3F9" stroke="#353C4D"/><text x="-26" y="-270" style="fill:#151821" class="f18 b v">7</text><circle cx="0" cy="-186" r="14" fill="#526BDE" stroke="#8294FF"/><text x="0" y="-186" class="c f14 b ta">1</text></g>
+    <g transform="rotate(18)"><rect x="-35" y="-290" width="70" height="98" rx="6" fill="#F1F3F9" stroke="#353C4D"/><text x="-26" y="-270" style="fill:#151821" class="f18 b v">9</text><circle cx="0" cy="-186" r="14" fill="#526BDE" stroke="#8294FF"/><text x="0" y="-186" class="c f14 b ta">5</text></g>
+    <g transform="rotate(36)"><rect x="-35" y="-290" width="70" height="98" rx="6" fill="#F1F3F9" stroke="#353C4D"/><text x="-26" y="-270" style="fill:#151821" class="f18 b v">J</text><circle cx="0" cy="-186" r="14" fill="#526BDE" stroke="#8294FF"/><text x="0" y="-186" class="c f14 b ta">2</text></g>
+    <g transform="rotate(54)"><rect x="-35" y="-290" width="70" height="98" rx="6" fill="#F1F3F9" stroke="#353C4D"/><text x="-26" y="-270" style="fill:#151821" class="f18 b v">K</text><circle cx="0" cy="-186" r="14" fill="#526BDE" stroke="#8294FF"/><text x="0" y="-186" class="c f14 b ta">6</text></g>
+  </g>
+  <rect x="220" y="540" width="160" height="40" rx="20" class="chip"/><text x="300" y="560" class="c f16 b">共 23 张</text>
+  <text x="300" y="612" class="c f14 tm">Tab 手册 / S Stats / K 按键 / Q·E 切页 / Esc 关闭</text>
+</g>
+
+<!-- C3 按键 -->
+<g transform="translate(1280,40)">
+  <rect width="600" height="640" rx="16" class="board"/>
+  <text x="300" y="42" class="c f22 b">按键绑定</text>
+  <rect x="24" y="68" width="56" height="36" rx="6" class="chip"/><text x="52" y="86" class="c f16">Q ◀</text>
+  <rect x="520" y="68" width="56" height="36" rx="6" class="chip"/><text x="548" y="86" class="c f16">E ▶</text>
+  <text x="196" y="86" class="c f18 t2">手册</text>
+  <text x="300" y="86" class="c f18 t2">Stats</text>
+  <rect x="356" y="68" width="96" height="36" rx="8" class="chip-on"/><text x="404" y="86" class="c f18 b">按键</text>
+  <line x1="24" y1="124" x2="576" y2="124" class="div"/>
+  <!-- 行：普通 -->
+  <rect x="24" y="140" width="552" height="44" rx="8" class="row"/>
+  <text x="44" y="162" class="f18 v">道具</text><text x="460" y="162" class="e tm f14">默认 Space</text><rect x="480" y="147" width="76" height="30" rx="6" class="chip"/><text x="518" y="162" class="c f16">Space</text>
+  <!-- 行：hover -->
+  <rect x="24" y="192" width="552" height="44" rx="8" class="row-hover"/>
+  <text x="44" y="214" class="f18 v">标记</text><text x="460" y="214" class="e tm f14">默认 D</text><rect x="480" y="199" width="76" height="30" rx="6" class="chip"/><text x="518" y="214" class="c f16">D</text>
+  <!-- 行：捕获中 -->
+  <rect x="24" y="244" width="552" height="44" rx="8" class="row-cap"/>
+  <text x="44" y="266" class="f18 v">放大</text><rect x="400" y="251" width="156" height="30" rx="6" class="chip-on"/><text x="478" y="266" class="c f16" style="fill:var(--accent-focus)">按下新按键…</text>
+  <!-- 行：冲突 -->
+  <rect x="24" y="296" width="552" height="44" rx="8" class="row-bad"/>
+  <text x="44" y="318" class="f18 v">手册</text><text x="460" y="318" class="e tm f14">默认 Tab</text><rect x="480" y="303" width="76" height="30" rx="6" class="chip" style="stroke:var(--danger)"/><text x="518" y="318" class="c f16" style="fill:var(--danger)">D</text>
+  <!-- 普通行 -->
+  <rect x="24" y="348" width="552" height="44" rx="8" class="row"/>
+  <text x="44" y="370" class="f18 v">Stats</text><text x="460" y="370" class="e tm f14">默认 S</text><rect x="480" y="355" width="76" height="30" rx="6" class="chip"/><text x="518" y="370" class="c f16">S</text>
+  <rect x="24" y="400" width="552" height="44" rx="8" class="row"/>
+  <text x="44" y="422" class="f18 v">按键页</text><text x="460" y="422" class="e tm f14">默认 K</text><rect x="480" y="407" width="76" height="30" rx="6" class="chip"/><text x="518" y="422" class="c f16">K</text>
+  <rect x="24" y="452" width="552" height="44" rx="8" class="row"/>
+  <text x="44" y="474" class="f18 v">表情</text><text x="460" y="474" class="e tm f14">默认 Y</text><rect x="480" y="459" width="76" height="30" rx="6" class="chip"/><text x="518" y="474" class="c f16">Y</text>
+  <!-- 状态 + 保存 -->
+  <text x="24" y="534" class="f14 v" style="fill:var(--danger)">D 已被「标记」使用，保存时将自动交换</text>
+  <rect x="436" y="516" width="140" height="44" rx="10" class="btn-p"/><text x="506" y="538" class="c f18 b ta">保存</text>
+  <text x="300" y="612" class="c f14 tm">点击一行后按下新按键 · Esc 取消</text>
+</g>
+
+<!-- C4 保存确认浮层 -->
+<g transform="translate(40,720)">
+  <rect width="600" height="300" rx="16" fill="#0b0d12"/>
+  <rect width="600" height="300" rx="16" fill="#000" fill-opacity=".45"/>
+  <rect x="90" y="58" width="420" height="184" rx="16" class="board"/>
+  <text x="300" y="100" class="c f22 b">保存按键设置？</text>
+  <text x="300" y="136" class="c f16 t2">将覆盖当前的按键映射</text>
+  <rect x="120" y="170" width="160" height="48" rx="10" class="btn-s"/><text x="200" y="194" class="c f18 b">取消</text>
+  <rect x="320" y="170" width="160" height="48" rx="10" class="btn-p"/><text x="400" y="194" class="c f18 b ta">保存</text>
+</g>
+<text x="680" y="760" class="sub">说明：看板底板用 board（.94）而非 HUD（.78），避免 3D 场景透出影响阅读。</text>
+<text x="680" y="788" class="sub">Tab 激活态统一用 chip-on（accent_soft 底 + accent_focus 描边）；hover 用 bg_hover。</text>
+<text x="680" y="816" class="sub">冲突 / 危险统一用 danger 描边 + 暗红底；捕获中统一用 accent_focus 描边。</text>
+</g>
+</svg>

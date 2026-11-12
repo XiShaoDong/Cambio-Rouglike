@@ -114,7 +114,7 @@ static func pending_discard_available(state: Dictionary) -> bool:
 	var pending: Dictionary = state.get("pending", {})
 	if pending.is_empty():
 		return false
-	return str(pending.get("source", "draw")) != "discard"
+	return true
 
 ## 弃牌堆在当前快照下是否可点（取弃牌顶 或 弃掉大牌 / 用能力）。
 static func discard_pile_actionable(state: Dictionary) -> bool:

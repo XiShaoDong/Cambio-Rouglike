@@ -112,6 +112,20 @@
 - **交互修复**：`Table3dView.render(..., ability_pending)` 在发起用能力后立即熄灭弃牌堆橙光；3D 中心准星改为常驻单点（不放大也显示）。
 - **验证**：`verify_card_tilt_math` 46/46、`verify_robot_avatar` 84/84、`verify_table3d` 62/62、`verify_table3d_interaction` 99/99、`verify_item_hand` 43/43、`verify_manual` 73/73；`tools/run_all_tests.sh --quick` **53/53**。
 - **文档**：本批设计/验收见 `docs/superpowers/specs/2026-10-30-card-tilt-2d-fake3d-design.md`；功能清单见 `docs/功能实现文档.md` 的 2026-10-30 批次。
+- **新手教程（2026-11-08，纯客户端本地时间线）**：主菜单「新手教程」→ `scenes/tutorial/tutorial_3d.tscn`（固定镜头 + 鼠标指针，2 人桌，预置回放 + 抽牌/替换/抢贴/Kongbaya 4 个真操作点）；`TutorialProgress` 持久化 `user://tutorial.cfg`；首局 5 条一次性轻提示。不改 `GameState`/协议/快照；测试 `verify_tutorial`。
+- **能力牌使用视觉（2026-11-08，3D + 表现层 RPC）**：点弃牌堆进入用能力后，`server_ability_start`/`receive_ability_start(seat)`（表现层 RPC，不入快照）让所有 3D 客户端立刻把 pending 大牌飞到弃牌堆并播落牌音：行动者看牌面、其他人看 `peek_hidden` 眼睛占位；`Table3dView.begin_ability_discard/clear_ability_discard` 覆盖 `render`（服务器 pending 仍在时不显示悬空大牌）。能力解析完成进入 slap（`slap_open`/pending 清空）时清除覆盖，弃牌顶显示真实牌面。只改 3D；规则/快照/2D 不变。测试 `verify_table3d`（70/70）、`verify_protocol`（53/53）。
+- **结算倒计时 + Sounds2 音效（2026-11-08，纯客户端展示层）**：普通/结算贴牌窗口都显示 3/2/1 倒计时（3 绿 `#87d9a1` / 2 黄 `#ffc857` / 1 红 `#ff6b6b`，条同色；普通窗口走空后保留 `SLAP OPEN`、只做视觉倒计时不播 countdown，结算文案 `SLAP SETTLE` 且播 countdown；正确贴牌后（含自贴，无 SLAP_EXCHANGE）短暂显示 `SLAP CLOSE` 1.5s），由 `settle_deadline_server_ms > 0` 判定（`HintHud.set_slap_state(state, window, settle)`）；`AudioManager` 新增 `card_place/card_slide(用 card-slide-8)/click(用 tech-click)/countdown/notification/slap_fail/slap_success/deal(用 card-shuffle，只播 1.8s)`（`assets/Sounds2/`，每事件 `GAIN_DB` 增益、池 6→10、countdown 独立播放器）；`main._sync_sfx_state` 接抽牌/倒计时/新局发牌 shuffle；Ready（2D/3D）、商店按钮、Q/J 交换·不交换等条件动作（`_on_action` 入口）接 `play_select`（tech-click），`card_exchange_animated` 接弃牌，`_show_private_reveal` 接贴牌成功失败（3D 看牌另补 `play_flip`），effect/bomb 接触发提示。**卡牌点击不再播 click 音**（`GameInteraction._play_select` 为空实现；UI 按钮仍保留）。不改规则/协议/快照；测试 `verify_audio_sfx`（28/28）、`verify_hint_hud`（79/79）。
+
+### 2.11 2026-11-11 3D HUD / Hover / 商店 / 投影看板批次（当前工作区）
+
+- **令牌/样式**：新增 `scripts/ui/ui_style.gd`（UIStyle 工厂）；`ui_theme.gd` 增 `hud_surface`/`board_surface`/`hud_text_muted`/`currency`/`danger_text`/`danger_soft`/`hud_shadow` 与 `hover_neutral/slap/action/valid/invalid/warning`（dark/dark-1/light）。3D HUD/看板/商店/结算/手册统一从这里取样式；2D 棋盘未改。
+- **3D HUD**：`HintHud` 倒计时纯秒数（24/9/0）+ 三态；`KeyHintPanel` 去外框、顺序 **放大/标记/手册/道具**；`CardOrderPanel` 叠放浅色小牌、无花色、JK 红字；`PlayerStatPanel`/回合徽标玻璃化；`TurnEffectPanel` 名称/多行；`CardTooltip` 360 宽状态气泡；`Crosshair` 圆环+点；Ready/条件按钮统一 `UIStyle` 主/次 + 阴影。
+- **3D 看板投影**：`Board3d` 屏幕改 24×16 细分 `PlaneMesh` + 顶点弧度；新增 `assets/shaders/board_holo.gdshader`（圆角 SDF 发光边 + 轻微色差，**无扫描线/无直边框**）；`set_frame_enabled` 控制发光边（提示板关）。第二批光锥/漂浮/Tab/卡片额外阴影已回滚。
+- **Hover**：新增 `scripts/ui/hover_state.gd`（neutral/slap/action/valid/invalid/warning）；`Table3dView.set_hover_state` 改虚线框色；`main` 每帧 `HoverState.resolve`；`CardTooltip.show_state`。覆盖贴牌、7/8、9/10、Q 两阶段、replace、抽牌阶弃牌、取自弃牌堆 warning、抽/弃牌堆门控与只读弃牌顶。
+- **商店**：`shop_panel.gd`/`shop_panel.tscn` 玻璃 board、1000 宽、标题「商店」/副标题「SHOP · 道具与遗物」居中；3 卡槽 + 2 遗物槽；购买 primary、锁定/刷新 secondary；价格 `currency`；仅底部货币。
+- **规则**：取自弃牌堆的 pending 可再次弃掉（`game_state._server_discard_draw` 放行 `source=discard`；仍禁止牌面能力；Joker 变换遗物按 R-11 保留）；`ActionModel.pending_discard_available` 两种来源 true；`main._on_pending_action` 仅 draw 进能力；弃掉后回弃牌顶、开贴牌窗口并换人。新增 `verify_discard_take_discard`。
+- **测试/设计**：`verify_hover_state` 24/24、`verify_card_tooltip` 30/30、`verify_board3d` 70/70、`--quick` 58/58；SVG `docs/superpowers/specs/2026-11-10-hud-unify-mockup-v2.svg`（F 商店 / G 默认卡牌 Info / H 投影看板 H1–H4）。
+- **未完成**：面板内部真实景深（分层 SubViewport/3D 按钮）、光锥/尘埃/真正 3D Tab、Web 客户端。
 
 ## 3. 架构不变量（禁止无理由重构）
 

@@ -145,10 +145,17 @@ func _test_slap_row() -> void:
 	_check("SLAP 初始隐藏", not hud.slap_row_visible())
 	hud.set_slap_state(HintHud.SLAP_OPEN)
 	_check("OPEN：行可见", hud.slap_row_visible())
-	_check("OPEN：绿 SLAP OPEN", hud.slap_label().text == "SLAP OPEN" and hud.slap_label().get_theme_color("font_color") == HintHud.SLAP_OPEN_COLOR)
+	_check("OPEN：3 绿 + 大字号", hud.slap_label().text == "SLAP OPEN  3" \
+		and hud.slap_label().get_theme_color("font_color") == HintHud.SLAP_SETTLE_GREEN \
+		and hud.slap_label().get_theme_font_size("font_size") == HintHud.SLAP_SETTLE_FONT)
 	_check("OPEN：条可见 value≈1", hud.slap_bar().visible and is_equal_approx(hud.slap_bar().value, 1.0))
 	_check("状态行水平居中", hud.slap_label().horizontal_alignment == HORIZONTAL_ALIGNMENT_CENTER)
 	hud._process(1.0)
+	_check("OPEN：2 黄", hud.slap_label().text == "SLAP OPEN  2" \
+		and hud.slap_label().get_theme_color("font_color") == HintHud.SLAP_SETTLE_YELLOW)
+	hud._process(1.0)
+	_check("OPEN：1 红", hud.slap_label().text == "SLAP OPEN  1" \
+		and hud.slap_label().get_theme_color("font_color") == HintHud.SLAP_SETTLE_RED)
 	var v_mid: float = hud.slap_bar().value
 	hud.set_slap_state(HintHud.SLAP_OPEN)
 	_check("同状态重发不重置条", is_equal_approx(hud.slap_bar().value, v_mid) and v_mid < 1.0)
@@ -160,12 +167,24 @@ func _test_slap_row() -> void:
 	hud.set_slap_state(HintHud.SLAP_OPEN)
 	_check("重开窗口条重置满", is_equal_approx(hud.slap_bar().value, 1.0) and not hud.slap_exhausted())
 	hud._process(HintHud.SLAP_BAR_SECONDS + 0.1)
-	_check("走空：整行消失", not hud.slap_row_visible() and hud.slap_exhausted())
+	_check("走空：仍显示 SLAP OPEN，条隐藏", hud.slap_row_visible() and hud.slap_exhausted() \
+		and hud.slap_label().text == "SLAP OPEN" and not hud.slap_bar().visible)
 	hud.set_slap_state(HintHud.SLAP_HIDDEN)
 	hud.set_slap_state(HintHud.SLAP_OPEN)
 	await get_tree().process_frame
 	var w: float = maxf(maxf(hud.pill().get_combined_minimum_size().x, HintHud.HINT_MAX_W), HintHud.SLAP_BAR_W)
 	_check("条水平居中", is_equal_approx(hud.slap_bar().position.x, (w - HintHud.SLAP_BAR_W) * 0.5))
+	# 结算贴牌 3s 倒计时：3 绿 / 2 黄 / 1 红。
+	hud.set_slap_state(HintHud.SLAP_HIDDEN)
+	hud.set_slap_state(HintHud.SLAP_OPEN, 3.0, true)
+	_check("SETTLE：3 绿", hud.slap_label().text == "SLAP SETTLE  3" and hud.slap_label().get_theme_color("font_color") == HintHud.SLAP_SETTLE_GREEN)
+	_check("SETTLE：大字号", hud.slap_label().get_theme_font_size("font_size") == HintHud.SLAP_SETTLE_FONT)
+	hud._process(1.01)
+	_check("SETTLE：2 黄", hud.slap_label().text == "SLAP SETTLE  2" and hud.slap_label().get_theme_color("font_color") == HintHud.SLAP_SETTLE_YELLOW)
+	hud._process(1.0)
+	_check("SETTLE：1 红", hud.slap_label().text == "SLAP SETTLE  1" and hud.slap_label().get_theme_color("font_color") == HintHud.SLAP_SETTLE_RED)
+	hud._process(1.1)
+	_check("SETTLE：走空隐藏", not hud.slap_row_visible() and hud.slap_exhausted())
 	hud.queue_free()
 
 func _main_state() -> Dictionary:
@@ -213,6 +232,47 @@ func _test_main_integration() -> void:
 	await get_tree().process_frame
 	_check("等待他人时 hint 正确", "Waiting" in main_node._hint_hud.cur_label().text)
 	_check("等待他人时 next 隐藏", not main_node._hint_hud.next_label().visible)
+	# 音效状态同步：抽牌 / 结算倒计时开始与停止。
+	main_node._sync_sfx_state({"pending": {"id": "sfx_test"}})
+	_check("pending→抽牌音效", AudioManager.last_event == "draw")
+	# Q/J 交换·不交换等条件按钮走 _on_action → tech-click
+	AudioManager.last_event = ""
+	main_node._on_action("j_keep")
+	_check("交换/不交换按钮→click 音", AudioManager.last_event == "select")
+	# 新局发牌 shuffle（每个 match_id 一次）
+	AudioManager.last_event = ""
+	main_node._sync_sfx_state({"match_id": "deal_test", "phase": 1})
+	_check("新局发牌→shuffle 音", AudioManager.last_event == "deal_shuffle")
+	main_node._sync_sfx_state({"match_id": "deal_test", "phase": 1})
+	_check("同局不重复 shuffle", main_node._deal_sfx_match_id == "deal_test")
+	# 普通贴牌窗口只有视觉倒计时，不播 countdown（避免每轮都响）
+	AudioManager.last_event = ""
+	main_node._sync_sfx_state({"phase": 2, "slap_open": true})
+	_check("普通窗口不播倒计时音", AudioManager.last_event != "countdown" and not main_node._settle_countdown_active)
+	main_node._sync_sfx_state({"phase": 2})
+	_check("普通窗口关闭仍不播", not main_node._settle_countdown_active)
+	# 结算窗口
+	main_node._sync_sfx_state({"phase": 2, "settle_deadline_server_ms": 123})
+	_check("结算窗口→倒计时音", AudioManager.last_event == "countdown" and main_node._settle_countdown_active)
+	main_node._sync_sfx_state({"phase": 2})
+	_check("结算结束→停", not main_node._settle_countdown_active)
+	# 自贴正确（没有 SLAP_EXCHANGE）也要短暂显示 SLAP CLOSE
+	main_node.latest_state = _main_state()
+	main_node.latest_state["phase"] = 2
+	main_node.latest_state["slap_open"] = false
+	main_node._mark_slap_close()
+	main_node._refresh_hint_panel()
+	await get_tree().process_frame
+	_check("自贴正确→HUD SLAP CLOSE", main_node._hint_hud.slap_state() == HintHud.SLAP_CLOSE)
+	# 新窗口优先于 CLOSE 残留
+	main_node.latest_state["slap_open"] = true
+	main_node._refresh_hint_panel()
+	await get_tree().process_frame
+	_check("新窗口→HUD SLAP OPEN", main_node._hint_hud.slap_state() == HintHud.SLAP_OPEN)
+	main_node.latest_state["slap_open"] = false
+	main_node._refresh_hint_panel()
+	await get_tree().process_frame
+	_check("关闭后无 CLOSE 残留→HIDDEN", main_node._hint_hud.slap_state() == HintHud.SLAP_HIDDEN)
 	main_node._set_table3d(false)
 	await get_tree().process_frame
 	_check("退出 3D 后 HintHud 隐藏", not main_node._hint_hud.visible)

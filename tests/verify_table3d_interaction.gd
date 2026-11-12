@@ -172,7 +172,7 @@ func _test_view() -> void:
 			{"id": 1, "name": "乙", "count": 4, "currency": 0, "health": 2,
 			 "slots": [{"card_id": "c9"}, {"card_id": "c10"}, {"card_id": "c11"}, {"card_id": "c12"}]},
 		],
-		"draw_count": 30, "discard": {}, "pending": {}, "phase": 2,
+		"draw_count": 30, "discard": {}, "pending": {}, "phase": 2, "current_player": 0,
 	})
 	await get_tree().physics_frame
 	_check("_card_blocks 登记", view._card_blocks.has(0) and view._card_blocks[0].has(0))
@@ -210,6 +210,10 @@ func _test_view() -> void:
 	_check("hover 命中可点目标", view.update_hover())
 	_check("hover 显示虚线边框", deck_block.has_border())
 	_check("无选择上下文边框=白", deck_block.border_color() == CardBlock.BORDER_WHITE)
+	view.set_hover_state(HoverState.SLAP)
+	_check("HoverState 状态色覆盖边框", deck_block.border_color() == UIStyle.hover_color(HoverState.SLAP))
+	view.set_hover_state("")
+	_check("清空状态恢复白色", deck_block.border_color() == CardBlock.BORDER_WHITE)
 	view.clear_hover()
 	_check("取消 hover 清除边框", not deck_block.has_border())
 	# hover 边框颜色映射（table3d_view 按"选择上下文 + 目标可操作"决定）

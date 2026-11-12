@@ -15,6 +15,7 @@ signal card_exchange_animated(data: Dictionary)
 signal item_card_used(data: Dictionary)
 signal mark_placed(seat: int, pos: Vector3, style: String, icon: String, text: String)
 signal emote_played(seat: int, index: int)
+signal ability_start_received(seat: int)  # 表现层：当前玩家已点“用能力”（不改规则/快照）
 signal peek_highlighted(data: Dictionary)
 signal registered_token_received(token: String)
 signal resume_hand_received(hand: Array, pending: Dictionary)
@@ -1036,15 +1037,16 @@ func _server_discard_draw(sender: int, action_id := "") -> void:
 	if sender != current_player_id:
 		_reject(sender, RejectCode.NOT_CURRENT_PLAYER, action_id)
 		return
-	if pending_draw.get("source") != "draw":
-		_reject(sender, RejectCode.ABILITY_FORBIDDEN, action_id)
+	if pending_draw.is_empty():
+		_reject(sender, RejectCode.INVALID_SOURCE, action_id)
 		return
+	var source := str(pending_draw.get("source", "draw"))
 	if not _check_action_id(sender, action_id):
 		_reject(sender, RejectCode.DUPLICATE_OR_EXPIRED_ACTION, action_id)
 		return
 	_broadcast_exchange({"kind": "discard", "actor": sender, "big_data": _card_public(pending_draw.card_id)})
 	_discard_pending_and_open_slap("advance")
-	_add_log("%s 弃掉了抽到的牌。" % players[sender].name)
+	_add_log("%s 弃掉了%s。" % [players[sender].name, "取到的牌" if source == "discard" else "抽到的牌"])
 
 func request_use_ability(data: Dictionary, action_id := "") -> void:
 	if multiplayer.is_server():
@@ -3141,6 +3143,46 @@ func receive_item_card_used(data: Dictionary) -> void:
 @rpc("authority", "call_remote", "reliable")
 func receive_toast(message: String) -> void:
 	toast_received.emit(message)
+
+## 表现层事件：当前玩家已点“用能力”（尚未选目标）。只用于客户端把大牌飞到弃牌堆并显示眼睛，
+## 不改变 pending/规则/快照；非法来源/阶段直接忽略。
+func request_ability_start() -> void:
+	if multiplayer.is_server():
+		_server_ability_start(_peer_to_seat(1))
+	else:
+		server_ability_start.rpc_id(1)
+
+@rpc("any_peer", "reliable")
+func server_ability_start() -> void:
+	if multiplayer.is_server():
+		_server_ability_start(_peer_to_seat(multiplayer.get_remote_sender_id()))
+
+func _server_ability_start(sender: int) -> void:
+	if phase != Phase.TURN_DECISION or sender != current_player_id:
+		return
+	if pending_draw.is_empty() or str(pending_draw.get("source", "")) != "draw":
+		return
+	var rank := str(cards.get(str(pending_draw.get("card_id", "")), {}).get("rank", ""))
+	if str(pending_draw.get("granted_ability", "")).is_empty() and not KongRules.has_ability(rank):
+		return
+	_broadcast_ability_start(sender)
+
+func _broadcast_ability_start(seat: int) -> void:
+	for pid in players.keys():
+		var peer := int(players[pid].peer_id)
+		if peer <= 0:
+			continue
+		if peer == 1:
+			_receive_ability_start(seat)
+		else:
+			receive_ability_start.rpc_id(peer, seat)
+
+func _receive_ability_start(seat: int) -> void:
+	ability_start_received.emit(seat)
+
+@rpc("authority", "call_remote", "reliable")
+func receive_ability_start(seat: int) -> void:
+	ability_start_received.emit(seat)
 
 ## 服务器广播的音效事件（kind: bell/winner），客户端据此播放本地音效。
 @rpc("authority", "call_remote", "reliable")

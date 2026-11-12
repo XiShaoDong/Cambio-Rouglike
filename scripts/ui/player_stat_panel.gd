@@ -8,9 +8,9 @@ const FONT_SIZE := 14
 const NAME_FONT_SIZE := 28
 const BG_COLOR := Color(0.86, 0.88, 0.92, 0.22)
 const BORDER_COLOR := Color(0.0, 0.0, 0.0, 0.85)
-# 四个角 UI（dark mode）：背景纯白（保留原透明度 0.22），字体纯白。
-const CORNER_BG := Color(1.0, 1.0, 1.0, 0.22)
-const CORNER_TEXT := Color(1.0, 1.0, 1.0)
+# 四个角 UI：深色玻璃（由 UIStyle 统一提供）。
+const CORNER_ICON_SIZE := 20
+const CORNER_FONT_SIZE := 18
 
 var data := {}
 
@@ -23,22 +23,31 @@ var _corner := false
 func set_corner_style(on := true) -> void:
 	_corner = on
 	if _frame != null:
-		var style := _frame.get_theme_stylebox("panel")
-		if style is StyleBoxFlat:
-			(style as StyleBoxFlat).bg_color = _frame_bg()
+		_frame.add_theme_stylebox_override("panel", _frame_style())
 	if _name_label != null:
 		_name_label.add_theme_color_override("font_color", _text_color())
 	if not data.is_empty():
 		set_data(str(data.get("name", "")), int(data.get("health", 0)), int(data.get("currency", 0)), int(data.get("cards", 0)))
 
 func _corner_active() -> bool:
-	return _corner and UITheme.current in ["dark", "dark-1"]
+	return _corner
 
 func _frame_bg() -> Color:
-	return CORNER_BG if _corner_active() else BG_COLOR
+	return UITheme.color("hud_surface") if _corner_active() else BG_COLOR
 
 func _text_color() -> Color:
-	return CORNER_TEXT if _corner_active() else UITheme.color("text_primary")
+	return UITheme.color("text_primary")
+
+func _frame_style() -> StyleBoxFlat:
+	if _corner_active():
+		return UIStyle.panel(12, 12, 8, true)
+	var style := StyleBoxFlat.new()
+	style.bg_color = BG_COLOR
+	style.border_color = BORDER_COLOR
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(6)
+	style.set_content_margin_all(6)
+	return style
 
 func _ready() -> void:
 	_build()
@@ -59,13 +68,7 @@ func _build() -> void:
 	_frame.name = "Frame"
 	_frame.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_frame.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	var style := StyleBoxFlat.new()
-	style.bg_color = _frame_bg()
-	style.border_color = BORDER_COLOR
-	style.set_border_width_all(2)
-	style.set_corner_radius_all(6)
-	style.set_content_margin_all(6)
-	_frame.add_theme_stylebox_override("panel", style)
+	_frame.add_theme_stylebox_override("panel", _frame_style())
 	add_child(_frame)
 
 	var box := VBoxContainer.new()
@@ -87,17 +90,19 @@ func set_data(player_name: String, health: int, currency: int, cards: int) -> vo
 		_row.remove_child(child)
 		child.queue_free()
 	_add_group(LifeIcon.new(), UITheme.color("danger"), health)
-	_add_group(CoinIcon.new(), UITheme.color("accent"), currency)
+	_add_group(CoinIcon.new(), UITheme.color("currency") if _corner else UITheme.color("accent"), currency)
 	_add_group(CardCountIcon.new(), UITheme.color("text_secondary"), cards)
 
 func _add_group(icon: Control, color: Color, value: int) -> void:
-	icon.custom_minimum_size = Vector2(ICON_SIZE, ICON_SIZE)
+	var icon_size := CORNER_ICON_SIZE if _corner_active() else ICON_SIZE
+	var font_size := CORNER_FONT_SIZE if _corner_active() else FONT_SIZE
+	icon.custom_minimum_size = Vector2(icon_size, icon_size)
 	icon.size = icon.custom_minimum_size
 	icon.call("setup", color)
 	_row.add_child(icon)
 	var num := Label.new()
 	num.text = str(value)
-	num.add_theme_font_size_override("font_size", FONT_SIZE)
+	num.add_theme_font_size_override("font_size", font_size)
 	num.add_theme_color_override("font_color", _text_color())
 	num.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_row.add_child(num)

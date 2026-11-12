@@ -1,6 +1,6 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene format=3 uid="uid://cduhqrg3ddc1d"]
 
-[ext_resource type="Script" path="res://scripts/dev/table3d_tuner.gd" id="1"]
+[ext_resource type="Script" uid="uid://dqsx731k4o1ld" path="res://scripts/dev/table3d_tuner.gd" id="1"]
 
-[node name="Table3dTuner" type="Node3D"]
+[node name="Table3dTuner" type="Node3D" unique_id=535868504]
 script = ExtResource("1")

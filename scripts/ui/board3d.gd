@@ -11,6 +11,7 @@ const PICK_PAD := Vector2(0.18, 0.18)  # 拾取盒比视觉尺寸外扩的世界
 const HALO_MARGIN := 0.06
 const HALO_COLOR := Color(0.42, 0.72, 0.95, 0.35)
 const BOARD_ALPHA := 0.94
+const EDGE_GLOW := 0.14
 
 var _viewport: SubViewport
 var _screen: MeshInstance3D
@@ -23,6 +24,7 @@ var _pending_release: InputEventMouseButton = null
 var _world_size := Vector2(0.6, 0.3)
 var _viewport_size := MIN_VIEWPORT
 var halo_enabled := false  # 是否显示外圈光晕边框（默认关：面板/按钮只显示内容本身，不带外框）
+var frame_enabled := true  # 圆角发光边：模态看板默认开，常驻提示板关（只显示按钮）
 var pick_pad := PICK_PAD   # 拾取盒相对视觉尺寸的外扩量（提示板可加大，便于对准）
 
 func _ready() -> void:
@@ -56,17 +58,19 @@ func _build() -> void:
 	_halo.visible = halo_enabled
 	add_child(_halo)
 
-	# 屏幕
+	# 屏幕：细分曲面 + 全息 shader（圆角发光边/轻微色差/顶点弧度）
 	_screen = MeshInstance3D.new()
 	_screen.name = "Screen"
-	_screen.mesh = QuadMesh.new()
-	var mat := StandardMaterial3D.new()
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.albedo_texture = _viewport.get_texture()
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.albedo_color = Color(1.0, 1.0, 1.0, BOARD_ALPHA)
-	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	mat.no_depth_test = true
+	var screen_mesh := PlaneMesh.new()
+	screen_mesh.orientation = PlaneMesh.FACE_Z
+	screen_mesh.subdivide_width = 24
+	screen_mesh.subdivide_depth = 16
+	_screen.mesh = screen_mesh
+	var mat := ShaderMaterial.new()
+	mat.shader = preload("res://assets/shaders/board_holo.gdshader")
+	mat.set_shader_parameter("board_tex", _viewport.get_texture())
+	mat.set_shader_parameter("tint", Color(1.0, 1.0, 1.0, BOARD_ALPHA))
+	mat.set_shader_parameter("edge_glow", EDGE_GLOW if frame_enabled else 0.0)
 	_screen.material_override = mat
 	add_child(_screen)
 
@@ -182,7 +186,7 @@ func _apply_size() -> void:
 		return
 	_viewport.size = _viewport_size
 	_world_size = Vector2(_viewport_size) * PIXEL_SCALE
-	(_screen.mesh as QuadMesh).size = _world_size
+	(_screen.mesh as PlaneMesh).size = _world_size
 	(_halo.mesh as QuadMesh).size = _world_size + Vector2(HALO_MARGIN, HALO_MARGIN) * 2.0
 	_halo.visible = halo_enabled
 	_pick_box.size = Vector3(_world_size.x + pick_pad.x, _world_size.y + pick_pad.y, 0.02)
@@ -221,6 +225,14 @@ func set_halo_enabled(on: bool) -> void:
 	halo_enabled = on
 	if _halo != null and is_instance_valid(_halo):
 		_halo.visible = on
+
+## 显隐圆角发光边（常驻提示板关闭，只保留按钮）。
+func set_frame_enabled(on: bool) -> void:
+	frame_enabled = on
+	if _screen != null:
+		var m := _screen.material_override as ShaderMaterial
+		if m != null:
+			m.set_shader_parameter("edge_glow", EDGE_GLOW if on else 0.0)
 
 ## 设置拾取盒外扩量（提示板可加大，让准星略偏也能命中按钮）。
 func set_pick_pad(p: Vector2) -> void:

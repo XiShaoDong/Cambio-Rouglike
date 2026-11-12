@@ -22,6 +22,7 @@ func _run() -> void:
 	_test_camera()
 	await _test_view_render()
 	await _test_discard_glow_ability()
+	await _test_ability_discard()
 	await _test_flip_label()
 
 func _test_card_block() -> void:
@@ -102,9 +103,94 @@ func _test_discard_glow_ability() -> void:
 	view.render(state, Callable(), true)
 	await get_tree().process_frame
 	_check("发起用能力后弃牌堆立即熄灭", not view._discard_block.has_glow())
+	# 取自弃牌堆的 pending：可继续弃掉，但光晕是金色可操作而不是橙色用能力
+	var from_discard := state.duplicate(true)
+	from_discard["pending"] = {"rank": "7", "suit": "♣", "source": "discard"}
+	from_discard["discard"] = {}
+	view.render(from_discard)
+	await get_tree().process_frame
+	_check("弃牌来源 pending 弃牌堆可点", view._discard_block.is_pick_enabled())
+	_check("弃牌来源光晕=金色可操作", view._discard_block.has_glow() and view._discard_block.glow_color() == Table3dLayout.ACTIONABLE_COLOR)
+	# 拾取门控：弃牌顶只读 hover / 抽牌堆仅当前玩家抽牌前
+	var other := state.duplicate(true)
+	other["current_player"] = 1
+	other["phase"] = 2
+	other["pending"] = {}
+	view.render(other)
+	await get_tree().process_frame
+	_check("其他玩家可 hover 弃牌顶（只读）", view._discard_block.is_pick_enabled())
+	_check("其他玩家抽牌堆不可 hover", not view._deck_block.is_pick_enabled())
+	var mine := other.duplicate(true)
+	mine["current_player"] = 0
+	view.render(mine)
+	await get_tree().process_frame
+	_check("当前玩家抽牌前抽牌堆可 hover", view._deck_block.is_pick_enabled())
+	var after := mine.duplicate(true)
+	after["phase"] = 3
+	after["pending"] = {"rank": "A", "suit": "♥", "source": "draw"}
+	view.render(after)
+	await get_tree().process_frame
+	_check("抽牌后抽牌堆不可 hover", not view._deck_block.is_pick_enabled())
+	_check("抽牌后弃牌顶仍可 hover（大牌能力）", view._discard_block.is_pick_enabled())
 	view.queue_free()
 	await get_tree().process_frame
 
+
+func _test_ability_discard() -> void:
+	var scene: PackedScene = load("res://scenes/ui/table3d.tscn")
+	var view := scene.instantiate()
+	add_child(view)
+	await get_tree().process_frame
+	var state := {
+		"viewer_id": 0,
+		"players": [
+			{"id": 0, "name": "甲", "count": 4, "currency": 100, "health": 2, "eliminated": false,
+			 "slots": [{"card_id": "c1"}, {"card_id": "c2"}, {"card_id": "c3"}, {"card_id": "c4"}]},
+			{"id": 1, "name": "乙", "count": 4, "currency": 80, "health": 2, "eliminated": false,
+			 "slots": [{"card_id": "c9"}, {"card_id": "c10"}, {"card_id": "c11"}, {"card_id": "c12"}]},
+		],
+		"draw_count": 30,
+		"discard": {"rank": "9", "suit": "♠"},
+		"discard_count": 1,
+		"pending": {"rank": "Q", "suit": "♦", "source": "draw"},
+		"phase": 3,
+	}
+	view.render(state)
+	await get_tree().create_timer(1.0).timeout
+	var center = view.get_node("Center")
+	var pending_block: CardBlock = center.get_node("Pending")
+	var discard_block: CardBlock = center.get_node("DiscardTop")
+	_check("能力前 pending 可见", pending_block.visible)
+	# 行动者：牌面飞到弃牌堆
+	view.begin_ability_discard({"rank": "Q", "suit": "♦"}, true)
+	await get_tree().create_timer(1.0).timeout
+	_check("能力中 pending 隐藏", not pending_block.visible)
+	_check("行动者弃牌顶显示 Q♦", discard_block.label_text() == "Q♦" and not discard_block.is_peek_hidden())
+	# 服务器 pending 仍在：重新 render 不应让大牌回来
+	view.render(state)
+	await get_tree().process_frame
+	_check("render 后 pending 仍隐藏", not pending_block.visible)
+	_check("render 后弃牌顶仍 Q♦", discard_block.label_text() == "Q♦")
+	# 其他人视角：眼睛
+	view.clear_ability_discard()
+	view.render(state)
+	await get_tree().process_frame
+	view.begin_ability_discard({}, false)
+	await get_tree().create_timer(1.0).timeout
+	_check("其他人弃牌顶为眼睛", discard_block.is_peek_hidden())
+	# 进入 slap：清除覆盖，显示真实牌面
+	view.clear_ability_discard()
+	var clear_state: Dictionary = state.duplicate(true)
+	clear_state["pending"] = {}
+	clear_state["slap_open"] = true
+	clear_state["discard"] = {"rank": "Q", "suit": "♦"}
+	clear_state["discard_count"] = 2
+	view.render(clear_state)
+	await get_tree().process_frame
+	_check("slap 后 pending 隐藏", not pending_block.visible)
+	_check("slap 后弃牌顶显示真实牌面", discard_block.label_text() == "Q♦" and not discard_block.is_peek_hidden())
+	view.queue_free()
+	await get_tree().process_frame
 
 func _test_flip_label() -> void:
 	var b := CardBlock.new()

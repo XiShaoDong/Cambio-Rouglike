@@ -157,8 +157,10 @@ func _test_board3d() -> void:
 	_check("mount 后 has_panel", b.has_panel())
 	_check("面板父节点为 SubViewport", panel.get_parent() == b.viewport())
 	_check("看板可见", b.visible)
-	_check("屏幕贴图为视口纹理",
-		(b.screen_mesh().material_override as StandardMaterial3D).albedo_texture == b.viewport().get_texture())
+	var screen_mat := b.screen_mesh().material_override as ShaderMaterial
+	_check("屏幕使用全息 ShaderMaterial", screen_mat != null)
+	_check("屏幕贴图为视口纹理", screen_mat != null and screen_mat.get_shader_parameter("board_tex") == b.viewport().get_texture())
+	_check("模态看板有圆角发光边", screen_mat != null and float(screen_mat.get_shader_parameter("edge_glow")) > 0.0)
 
 	# wrap：视口尺寸 = 内容最小尺寸 + 内边距；quad = 视口 × 像素比例
 	var content := panel.get_combined_minimum_size()

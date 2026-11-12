@@ -178,9 +178,10 @@ func _reset() -> void:
 	selected_own_slot = -1
 	selected_their_slot = -1
 
-## 有效点击音效：所有成功动作（发出请求或推进交互模式）统一在此播。
+## 卡牌点击音效：2026-11-08 起**不再播放**（用户反馈点击音多余，替换时会和弃牌音叠成两声）。
+## 保留空函数作为统一入口，未来若要恢复只改这里；UI 按钮点击仍由各自调用 AudioManager.play_select()。
 func _play_select() -> void:
-	AudioManager.play_select()
+	pass
 
 ## 模式相关提示语。
 func mode_instruction(fallback: String) -> String:

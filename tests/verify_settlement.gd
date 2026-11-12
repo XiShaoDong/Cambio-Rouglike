@@ -175,6 +175,12 @@ func _test_page_flip_callback() -> void:
 	page._reveal_flip(0, 0, {"seat": 0, "value": 7, "rank": "7", "suit": "♠", "total": 7}, 0.0)
 	_check("结算页联动回调触发", flip_log.size() == 1 and flip_log[0] == 0)
 	_check("行内新增翻牌文本", page._rows[0].cards.get_child_count() == 1)
+	var black_jk: PanelContainer = page._make_card_chip("JOKER", "black")
+	var black_lbl: Label = black_jk.get_child(0)
+	_check("黑 Joker 显示 JK 黑字", black_lbl.text == "JK" and black_lbl.get_theme_color("font_color") == UITheme.color("card_rank_black"))
+	var red_jk: PanelContainer = page._make_card_chip("JOKER", "red")
+	var red_lbl: Label = red_jk.get_child(0)
+	_check("红 Joker 显示 JK 红字", red_lbl.text == "JK" and red_lbl.get_theme_color("font_color") == UITheme.color("card_rank_red"))
 	page.queue_free()
 
 ## CardView.flip_reveal：设正面数据后纵轴从背面翻到正面。

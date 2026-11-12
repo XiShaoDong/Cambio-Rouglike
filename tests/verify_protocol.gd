@@ -20,6 +20,7 @@ func _ready() -> void:
 	GameState._reset_match()
 	GameState._add_player(1, "房主")
 	run_checks()
+	_test_ability_start_signal()
 	print("=== RESULT: %d/%d passed%s ===" % [checks - failures, checks, " (FAILURES!)" if failures else ""])
 	get_tree().quit(1 if failures else 0)
 
@@ -224,6 +225,25 @@ func run_checks() -> void:
 	_check("房主座位保留在线", not bool(GameState.players[0].get("offline", false)))
 	# 条件暂停：seat1 非当前玩家（当前应为 0 或 1 视状态），先断言 suspended 计算正确
 	_check("suspended 字段存在于快照", GameState._snapshot_for(0).has("suspended"))
+
+## 表现层事件：当前玩家点“用能力” → ability_start_received（不改快照）。
+func _test_ability_start_signal() -> void:
+	var got := [-1]
+	var cb := func(seat: int): got[0] = seat
+	GameState.ability_start_received.connect(cb)
+	GameState._reset_match()
+	GameState._add_player(1, "房主")
+	GameState.phase = GameState.Phase.TURN_DECISION
+	GameState.current_player_id = 0
+	GameState.cards["test7"] = {"id": "test7", "rank": "7", "suit": "♠", "value": 7}
+	GameState.pending_draw = {"card_id": "test7", "source": "draw"}
+	GameState._server_ability_start(0)
+	_check("ability_start 广播当前玩家", got[0] == 0)
+	GameState.pending_draw.clear()
+	got[0] = -1
+	GameState._server_ability_start(0)
+	_check("无 pending 不广播", got[0] == -1)
+	GameState.ability_start_received.disconnect(cb)
 
 func _snapshot_leaks(s: Dictionary) -> bool:
 	for player in s.get("players", []):

@@ -10,7 +10,6 @@ const ROW_GAP := 24.0          # 行间距
 const ARC := 6.0               # 扇形弧度（中点抬高）
 const TILT_DEG := 2.5          # 两端最大倾角
 const X0 := 46.0               # 行首（让开行标签）
-const TEXT_MUTED := Color(0.35, 0.38, 0.44)
 const ROW_SUITS := ["♠", "♥", "♣", "♦"]
 const SUIT_LABEL := {"♠": "黑桃", "♥": "红桃", "♣": "梅花", "♦": "方片"}
 const RANK_ORDER := ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "JOKER"]
@@ -57,15 +56,35 @@ func setup(history: Array) -> void:
 	custom_minimum_size = Vector2(maxf(max_w, 120.0), maxf(y, CARD_SIZE.y))
 
 ## 固定槽位：按 RANK_ORDER 每个槽位固定 X/Y/角度；只在有牌的槽位放置 CardView。
+func _slot_style() -> StyleBoxFlat:
+	var s := StyleBoxFlat.new()
+	var border := UITheme.color("border")
+	border.a = 0.45
+	s.bg_color = Color(0, 0, 0, 0)
+	s.border_color = border
+	s.set_border_width_all(1)
+	s.set_corner_radius_all(5)
+	return s
+
 func _layout_row(suit: String, by_rank: Dictionary, y: float) -> float:
 	var label := Label.new()
-	label.text = SUIT_LABEL.get(suit, suit)
-	label.add_theme_color_override("font_color", TEXT_MUTED)
+	label.text = suit
+	label.add_theme_color_override("font_color", UITheme.color("hud_text_muted"))
 	label.add_theme_font_size_override("font_size", 14)
 	label.position = Vector2(0.0, y + CARD_SIZE.y * 0.5 - 8.0)
 	add_child(label)
 	var step := CARD_SIZE.x * STEP_FRAC
 	var n := RANK_ORDER.size()
+	# 固定槽位：先画淡描边空槽，再把已出现的牌叠上去。
+	var slot_style := _slot_style()
+	for i in n:
+		var t := 0.0 if n <= 1 else float(i) / float(n - 1)
+		var slot := Panel.new()
+		slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot.position = Vector2(X0 + step * i, y + ARC * (1.0 - pow(2.0 * t - 1.0, 2.0)))
+		slot.size = CARD_SIZE
+		slot.add_theme_stylebox_override("panel", slot_style)
+		add_child(slot)
 	var i := 0
 	for rank in RANK_ORDER:
 		if by_rank.has(rank):

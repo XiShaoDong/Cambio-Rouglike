@@ -4,7 +4,7 @@ extends Control
 ## 场景实体承载静态骨架（scenes/ui/settlement_page.tscn），脚本负责填动态排名行、主题样式、标题、动画。
 
 const ROW_H := 46
-const ROW_W := 480
+const ROW_W := 520
 const FLIP_STEP := 0.35
 const ROUND_DELAY := 0.55
 const RESORT_DURATION := 0.35
@@ -41,15 +41,25 @@ func setup(model: Dictionary, is_host: bool, match_number: int,
 func _bind_ui(match_number: int, match_limit := 0) -> void:
 	var center: CenterContainer = get_node("Center")
 	var panel: PanelContainer = center.get_node("Panel")
+	panel.custom_minimum_size = Vector2(600, 0)
 	panel.add_theme_stylebox_override("panel", _panel_style())
 	_title = get_node("Center/Panel/VBox/Title")
 	if match_limit > 0:
 		_title.text = "结算 · 第 %d / %d 局" % [match_number, match_limit]
 	else:
 		_title.text = "结算 · 第 %d 局" % match_number
-	_title.add_theme_color_override("font_color", UITheme.color("accent"))
+	_title.add_theme_font_size_override("font_size", 22)
+	_title.add_theme_color_override("font_color", UITheme.color("accent_focus"))
 	_rank_area = get_node("Center/Panel/VBox/RankingArea")
+	_rank_area.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	_footer = get_node("Center/Panel/VBox/Footer")
+	var status_lbl: Label = get_node("Center/Panel/VBox/StatusLabel")
+	status_lbl.add_theme_color_override("font_color", UITheme.color("text_secondary"))
+	var econ_lbl: Label = get_node("Center/Panel/VBox/EconomyLabel")
+	econ_lbl.add_theme_color_override("font_color", UITheme.color("currency"))
+	var series_title: Label = get_node_or_null("Center/Panel/VBox/SeriesBox/SeriesTitle")
+	if series_title != null:
+		series_title.add_theme_color_override("font_color", UITheme.color("currency"))
 
 	var n: int = _model.layout_order.size()
 	_rank_area.custom_minimum_size = Vector2(ROW_W, n * ROW_H)
@@ -64,6 +74,13 @@ func _make_row(seat: int, index: int) -> Control:
 	row.size = Vector2(ROW_W, ROW_H)
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
+	var bg := Panel.new()
+	bg.name = "Bg"
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bg.add_theme_stylebox_override("panel", UIStyle.row("normal"))
+	row.add_child(bg)
+
 	var hbox := HBoxContainer.new()
 	hbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	row.add_child(hbox)
@@ -73,12 +90,14 @@ func _make_row(seat: int, index: int) -> Control:
 	rank_lbl.text = str(index + 1)
 	rank_lbl.add_theme_font_size_override("font_size", 18)
 	rank_lbl.add_theme_color_override("font_color", UITheme.color("text_secondary"))
+	rank_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	hbox.add_child(rank_lbl)
 
 	var name_lbl := Label.new()
 	name_lbl.custom_minimum_size = Vector2(130, ROW_H)
 	name_lbl.add_theme_font_size_override("font_size", 16)
 	name_lbl.add_theme_color_override("font_color", UITheme.color("text_primary"))
+	name_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	hbox.add_child(name_lbl)
 
 	var cards_box := HBoxContainer.new()
@@ -91,21 +110,16 @@ func _make_row(seat: int, index: int) -> Control:
 	total_lbl.custom_minimum_size = Vector2(70, ROW_H)
 	total_lbl.text = "0"
 	total_lbl.add_theme_font_size_override("font_size", 18)
-	total_lbl.add_theme_color_override("font_color", UITheme.color("accent"))
+	total_lbl.add_theme_color_override("font_color", UITheme.color("accent_focus"))
 	total_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	total_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	hbox.add_child(total_lbl)
 
-	_rows[seat] = {"row": row, "rank": rank_lbl, "name": name_lbl, "cards": cards_box, "total": total_lbl}
+	_rows[seat] = {"row": row, "bg": bg, "rank": rank_lbl, "name": name_lbl, "cards": cards_box, "total": total_lbl}
 	return row
 
 func _panel_style() -> StyleBoxFlat:
-	var style := StyleBoxFlat.new()
-	style.bg_color = UITheme.color("bg_elevated")
-	style.set_corner_radius_all(12)
-	style.set_content_margin_all(20)
-	style.border_color = UITheme.color("border")
-	style.set_border_width_all(1)
-	return style
+	return UIStyle.board(20, true)
 
 func _run_sequence() -> void:
 	for round in _model.rounds:
@@ -130,17 +144,45 @@ func _reveal_flip(seat: int, slot: int, flip: Dictionary, delay: float) -> void:
 	if _on_flip.is_valid():
 		_on_flip.call(seat, slot, {"rank": str(flip.rank), "suit": str(flip.suit)})
 	var entry: Dictionary = _rows[seat]
-	var card_lbl := Label.new()
-	card_lbl.text = "%s%s" % [str(flip.rank), str(flip.suit)]
-	card_lbl.add_theme_font_size_override("font_size", 14)
-	card_lbl.add_theme_color_override("font_color", UITheme.color("text_primary"))
-	card_lbl.modulate.a = 0.0
-	entry.cards.add_child(card_lbl)
+	var card_chip := _make_card_chip(str(flip.rank), str(flip.suit))
+	card_chip.modulate.a = 0.0
+	card_chip.pivot_offset = card_chip.custom_minimum_size * 0.5
+	card_chip.scale = Vector2(0.82, 0.82)
+	entry.cards.add_child(card_chip)
 	var tween := create_tween()
 	tween.set_parallel(true)
-	tween.tween_property(card_lbl, "modulate:a", 1.0, 0.25)
-	tween.tween_property(card_lbl, "scale", Vector2.ONE, 0.25)
+	tween.tween_property(card_chip, "modulate:a", 1.0, 0.25)
+	tween.tween_property(card_chip, "scale", Vector2.ONE, 0.25)
 	_count_total(entry, int(flip.total))
+
+func _make_card_chip(rank: String, suit: String) -> PanelContainer:
+	var chip := PanelContainer.new()
+	chip.custom_minimum_size = Vector2(30, 38)
+	chip.size = Vector2(30, 38)
+	chip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var style := StyleBoxFlat.new()
+	style.bg_color = UITheme.color("card_face_bg")
+	style.border_color = UITheme.color("card_border")
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(5)
+	style.set_content_margin_all(2)
+	chip.add_theme_stylebox_override("panel", style)
+	var lbl := Label.new()
+	if rank == "JOKER":
+		lbl.text = "JK"
+		lbl.add_theme_font_size_override("font_size", 13)
+		lbl.add_theme_color_override("font_color",
+			UITheme.color("card_rank_red") if suit == "red" else UITheme.color("card_rank_black"))
+	else:
+		lbl.text = "%s%s" % [rank, suit]
+		lbl.add_theme_font_size_override("font_size", 12)
+		lbl.add_theme_color_override("font_color",
+			UITheme.color("card_rank_red") if suit in ["♥", "♦"] else UITheme.color("card_rank_black"))
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	chip.add_child(lbl)
+	return chip
 
 func _count_total(entry: Dictionary, target: int) -> void:
 	var from := int(entry.total.text)
@@ -171,7 +213,9 @@ func _champion() -> void:
 	if entry.is_empty():
 		return
 	entry.name.text = "★ %s" % str(entry.name.text)
-	entry.name.add_theme_color_override("font_color", Color("f6d77a"))
+	entry.name.add_theme_color_override("font_color", UITheme.color("currency"))
+	if entry.has("bg"):
+		entry.bg.add_theme_stylebox_override("panel", UIStyle.row("champion"))
 	var tween := create_tween()
 	tween.set_loops(6)
 	tween.tween_property(entry.name, "modulate", Color(1.6, 1.35, 0.4), 0.22)
@@ -192,8 +236,8 @@ func _show_series_summary(series: Dictionary) -> void:
 		row.text = "%d. %s　胜场 %d · 货币 %d" % [index + 1, str(entry.name), int(entry.wins), int(entry.currency)]
 		row.add_theme_font_size_override("font_size", 15)
 		row.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		if index == 0:
-			row.add_theme_color_override("font_color", UITheme.color("accent"))
+		row.add_theme_color_override("font_color",
+			UITheme.color("accent_focus") if index == 0 else UITheme.color("text_secondary"))
 		rows.add_child(row)
 	box.visible = true
 

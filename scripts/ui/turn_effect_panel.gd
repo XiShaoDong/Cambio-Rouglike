@@ -15,10 +15,8 @@ const MOVE_SECS := 0.8
 const CARD_SIZE := Vector2(40, 56)
 const DESC_W := 190.0
 
-const BG := Color(0.08, 0.09, 0.12, 0.90)
-const BORDER := Color(1.0, 1.0, 1.0, 0.30)
-
 var _title: Label
+var _name: Label
 var _card_box: Control
 var _card_tex: TextureRect
 var _bomb: BombIcon
@@ -35,18 +33,17 @@ func _ready() -> void:
 func _build() -> void:
 	if _title != null:
 		return
-	# 彻底无背景 / 无边框
-	add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+	add_theme_stylebox_override("panel", UIStyle.panel(12, 14, 12, true))
 	var vb := VBoxContainer.new()
 	vb.name = "VBox"
-	vb.add_theme_constant_override("separation", 8)
+	vb.add_theme_constant_override("separation", 6)
 	add_child(vb)
 	_title = Label.new()
 	_title.name = "Title"
 	_title.text = "本局效果"
-	_title.add_theme_font_size_override("font_size", 22)
-	_title.add_theme_color_override("font_color", Color(1, 1, 1))
-	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_title.add_theme_font_size_override("font_size", 14)
+	_title.add_theme_color_override("font_color", UITheme.color("hud_text_muted"))
+	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	vb.add_child(_title)
 	var row := HBoxContainer.new()
 	row.name = "Row"
@@ -70,14 +67,24 @@ func _build() -> void:
 	_bomb.position = Vector2(CARD_SIZE.x - 12.0, -6.0)
 	_bomb.visible = false
 	_card_box.add_child(_bomb)
+	var info := VBoxContainer.new()
+	info.name = "Info"
+	info.add_theme_constant_override("separation", 2)
+	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(info)
+	_name = Label.new()
+	_name.name = "Name"
+	_name.add_theme_font_size_override("font_size", 18)
+	_name.add_theme_color_override("font_color", UITheme.color("text_primary"))
+	info.add_child(_name)
 	_desc = Label.new()
 	_desc.name = "Desc"
 	_desc.custom_minimum_size.x = DESC_W
 	_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_desc.add_theme_font_size_override("font_size", 13)
-	_desc.add_theme_color_override("font_color", Color(0.92, 0.95, 1.0))
-	_desc.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	row.add_child(_desc)
+	_desc.add_theme_color_override("font_color", UITheme.color("text_secondary"))
+	_desc.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+	info.add_child(_desc)
 
 ## 更新展示内容（不发动画）。
 func set_effect(effect: Dictionary) -> void:
@@ -91,6 +98,7 @@ func set_effect(effect: Dictionary) -> void:
 		_card_tex.texture = null
 		_card_tex.visible = false
 	_bomb.visible = bool(effect.get("bomb", false))
+	_name.text = str(effect.get("name", ""))
 	_desc.text = str(effect.get("desc", ""))
 
 ## 中央放大 → 停顿 5s → 缩小移动到 dock 点（右上角），并停留。

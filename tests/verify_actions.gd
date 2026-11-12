@@ -70,7 +70,7 @@ func _run() -> void:
 	_check("非抽牌阶段不可取", not ActionModel.discard_take_available({"phase": 3, "viewer_id": 0, "current_player": 0, "discard": {"rank": "7", "suit": "♣"}}))
 	var pend := {"phase": 3, "viewer_id": 0, "current_player": 0, "pending": {"rank": "7", "source": "draw"}}
 	_check("弃大牌可用", ActionModel.pending_discard_available(pend))
-	_check("取自弃牌堆的 pending 不可弃", not ActionModel.pending_discard_available({"phase": 3, "viewer_id": 0, "current_player": 0, "pending": {"rank": "7", "source": "discard"}}))
+	_check("取自弃牌堆的 pending 也可弃", ActionModel.pending_discard_available({"phase": 3, "viewer_id": 0, "current_player": 0, "pending": {"rank": "7", "source": "discard"}}))
 	_check("非当前不可弃大牌", not ActionModel.pending_discard_available({"phase": 3, "viewer_id": 1, "current_player": 0, "pending": {"rank": "7", "source": "draw"}}))
 	_check("无 pending 不可弃", not ActionModel.pending_discard_available({"phase": 3, "viewer_id": 0, "current_player": 0, "pending": {}}))
 	_check("弃牌堆 actionable 合并", ActionModel.discard_pile_actionable(take) and ActionModel.discard_pile_actionable(pend))

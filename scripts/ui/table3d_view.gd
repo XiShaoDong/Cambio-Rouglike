@@ -64,6 +64,7 @@ var _card_blocks := {}  # {seat: {slot: CardBlock}}
 var _viewer := 0
 var crown_ready := true   # 结算冠军音结束前先不显示皇冠
 var _sel_active := false           # 当前是否有"选择"上下文（决定 hover 边框红/绿/白）
+var _hover_state := ""             # UIStyle hover 状态（slap/action/valid/invalid/warning/neutral）
 var _hover_slot := {}
 var _hover_ray_local := Vector2.ZERO
 var _avatar_dim_mat: StandardMaterial3D = null
@@ -97,6 +98,11 @@ var _anim_slots := {}          # "seat_slot" -> true（在途动画槽位，rend
 var _flyers: Array = []        # 在途 CardFly
 var _discard_hold := false     # 飞向弃牌堆期间隐藏弃牌顶
 var _pending_hold := false     # 抽牌飞行期间隐藏大牌
+## 能力牌本地视觉：服务器 pending 仍在，但客户端先把大牌飞到弃牌堆；
+## 行动者显示牌面，其他人显示“眼睛”占位，直到 main 调 clear_ability_discard()。
+var _ability_discard_active := false
+var _ability_discard_card: Dictionary = {}
+var _ability_discard_face := false
 var _prev_pending := {}        # 上一帧快照的 pending（检测新抽牌）
 var _prev_discard := {}        # 上一帧快照的弃牌顶（判断抽牌 vs 取弃牌顶）
 var _pending_seen := false     # 已见过一次 pending（避免进入 3D 首帧误触发抽牌飞牌）
@@ -356,7 +362,10 @@ func render(state: Dictionary, actionable := Callable(), ability_pending := fals
 	# 抽牌堆：轮到自己抽牌（TURN_DRAW）时金色光晕；结算贴牌窗口锁死（红色虚线框见 _set_locked_dash）
 	var locked_dash := ActionModel.settle_pending(state)
 	if _deck_block != null and is_instance_valid(_deck_block):
-		_deck_block.set_actionable(ActionModel.draw_available(state))
+		# 抽牌堆：只有当前玩家抽牌前可 hover/点击；其他人/抽牌后关闭拾取。
+		var draw_available := ActionModel.draw_available(state)
+		_deck_block.set_actionable(draw_available)
+		_deck_block.set_pick_enabled(draw_available)
 	var discard: Dictionary = state.get("discard", {})
 	var discard_count := int(state.get("discard_count", 0))
 	# 弃牌堆视觉随 discard_count 变高；顶牌 CardBlock 抬到堆顶
@@ -368,9 +377,24 @@ func render(state: Dictionary, actionable := Callable(), ability_pending := fals
 	# 弃牌堆可点：取弃牌顶（金）/ 弃掉抽到的牌·用能力（橙）；可点时对应光晕。
 	# ability_pending=true 表示玩家已在本地发起用能力（等待选目标/服务器确认），
 	# 此时立即熄灭橙色光晕，不等下一次快照。
-	var use_power := ActionModel.pending_discard_available(state) and not ability_pending
-	var discard_actionable := ActionModel.discard_take_available(state) or use_power
-	if _discard_hold:
+	var pending_source := str((state.get("pending", {}) as Dictionary).get("source", "draw"))
+	var pending_can_discard := ActionModel.pending_discard_available(state)
+	var use_power := pending_can_discard and pending_source == "draw" and not ability_pending
+	var discard_actionable := ActionModel.discard_take_available(state) \
+		or (pending_can_discard and not (ability_pending and pending_source == "draw"))
+	if _ability_discard_active:
+		# 能力牌本地视觉：大牌已飞向弃牌堆；落地后行动者看牌面、其他人看"眼睛"。
+		_discard_block.visible = not _discard_hold
+		if not _discard_hold:
+			if _ability_discard_face:
+				_discard_block.setup({"card": _ability_discard_card})
+			else:
+				_discard_block.setup({"card": {}})
+				_discard_block.reveal_hidden()
+			_discard_block.set_pick({"kind": "discard"})
+			_discard_block.set_pick_enabled(false)
+			_discard_block.set_actionable(false)
+	elif _discard_hold:
 		# 顶牌变换动画期间：保留显示"上一张"，避免下方为空（无上一张则隐藏）
 		var held: Dictionary = _discard_shown if not _discard_shown.is_empty() else discard
 		_discard_block.visible = not held.is_empty()
@@ -382,19 +406,21 @@ func render(state: Dictionary, actionable := Callable(), ability_pending := fals
 		_discard_block.visible = true
 		_discard_block.setup({"card": discard} if not discard.is_empty() else {})
 		_discard_block.set_pick({"kind": "discard"})
-		_discard_block.set_pick_enabled(discard_actionable)
+		# 有弃牌顶就允许 hover（其他玩家只读查看）；可弃大牌/用能力时即使空堆也可点。
+		_discard_block.set_pick_enabled(discard_actionable or not discard.is_empty())
 		_discard_block.set_actionable_color(USE_POWER_COLOR if use_power else Table3dLayout.ACTIONABLE_COLOR)
 		_discard_block.set_actionable(discard_actionable)
 	_set_locked_dash(locked_dash)
 	var pending: Dictionary = state.get("pending", {})
-	_detect_draw(pending, discard)
+	if not _ability_discard_active:
+		_detect_draw(pending, discard)
 	_prev_pending = pending.duplicate()
 	_prev_discard = discard.duplicate()
 	_pending_seen = true
-	_pending_block.visible = not pending.is_empty() and not _pending_hold
+	_pending_block.visible = not _ability_discard_active and not pending.is_empty() and not _pending_hold
 	_pending_block.set_pick({"kind": "pending"})
 	# 大牌不可点（弃牌/用能力由弃牌堆触发），但保留拾取用于 hover 解释气泡
-	_pending_block.set_pick_enabled(not pending.is_empty())
+	_pending_block.set_pick_enabled(not _ability_discard_active and not pending.is_empty())
 	if not pending.is_empty():
 		_pending_block.setup({"card": pending} if pending.has("rank") else {})
 	# HUD 放在 viewer 座位内侧、朝向 viewer
@@ -1173,7 +1199,20 @@ func clear_hover() -> void:
 	_hover_collider = null
 	_hover_kind = ""
 	_hover_card = null
+	_hover_state = ""
 	_leave_hover_slot()
+
+## 由 main 在解析完 HoverState 后喂入；用于统一虚线框颜色。
+func set_hover_state(state: String) -> void:
+	if _hover_state == state:
+		return
+	_hover_state = state
+	if _hover_collider != null and is_instance_valid(_hover_collider):
+		_apply_hover(_hover_collider, false)
+		_apply_hover(_hover_collider, true)
+
+func hover_state() -> String:
+	return _hover_state
 
 ## 当前悬停对象的 pick 元数据（{} = 无）。
 func hovered_pick() -> Dictionary:
@@ -1436,6 +1475,8 @@ func _apply_hover(collider, on: bool) -> void:
 
 ## hover 边框颜色：无选择上下文=白；有上下文且目标可操作=绿；否则=红。
 func _hover_border_color(block) -> Color:
+	if not _hover_state.is_empty():
+		return UIStyle.hover_color(_hover_state)
 	if not _sel_active:
 		return BORDER_WHITE
 	var actionable: bool = block.has_method("is_actionable") and bool(block.call("is_actionable"))
@@ -1549,6 +1590,30 @@ func _has_anim_slot(seat: int, slot: int) -> bool:
 	return _anim_slots.has("%d_%d" % [seat, slot])
 
 ## 生成一张飞牌；on_land 在落地（finished）时先于重渲染调用。
+## 能力牌本地视觉：把 pending 大牌飞到弃牌堆；落地后行动者看牌面、其他人看"眼睛"。
+## 服务器 pending 仍在（直到能力解析），main 在 slap 开始/ pending 清空时调 clear_ability_discard()。
+func begin_ability_discard(card_data: Dictionary, face_up: bool) -> void:
+	_bind()
+	if not _bound:
+		return
+	_ability_discard_active = true
+	_ability_discard_face = face_up
+	_ability_discard_card = card_data.duplicate() if face_up else {}
+	_pending_block.visible = false
+	_begin_discard_hold()
+	var fly_data: Dictionary = _ability_discard_card if face_up else {}
+	_spawn_fly(center_xform("pending"), center_xform("discard"), fly_data, face_up, face_up, func():
+		_end_discard_hold()
+		_refresh())
+
+func clear_ability_discard() -> void:
+	if not _ability_discard_active:
+		return
+	_ability_discard_active = false
+	_ability_discard_card = {}
+	_ability_discard_face = false
+	_refresh()
+
 func _spawn_fly(from: Transform3D, to: Transform3D, data: Dictionary,
 		start_up: bool, end_up: bool, on_land := Callable()) -> CardFly:
 	var f := CardFly.new()
@@ -1589,6 +1654,9 @@ func _clear_exchange_anim() -> void:
 	_prev_pending = {}
 	_prev_discard = {}
 	_dealing = false
+	_ability_discard_active = false
+	_ability_discard_card = {}
+	_ability_discard_face = false
 
 ## 开局发牌动画：从中央抽牌堆逐张飞到各席手牌槽（按座位轮转），落地露出。
 func play_deal(state: Dictionary) -> void:

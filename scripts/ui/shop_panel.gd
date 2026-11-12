@@ -82,7 +82,7 @@ func _fill_cards() -> void:
 		var offer: Dictionary = offers[slot] if slot < offers.size() else {}
 		row.add_child(_make_card_slot(slot, offer))
 	# 卡牌刷新按钮：与卡牌同一行末尾（常规尺寸，accent 边可点态）
-	_card_refresh_btn = _make_button("⟳  刷新卡牌", bool(_shop().get("card_can_refresh", false)), true)
+	_card_refresh_btn = _make_button("⟳  刷新卡牌", bool(_shop().get("card_can_refresh", false)), false, "secondary")
 	_card_refresh_btn.name = "CardRefresh"
 	_card_refresh_btn.custom_minimum_size = Vector2(150, 36)
 	_card_refresh_btn.add_theme_font_size_override("font_size", 13)
@@ -97,7 +97,7 @@ func _fill_relics() -> void:
 		var offer: Dictionary = offers[slot] if slot < offers.size() else {}
 		row.add_child(_make_relic_slot(slot, offer))
 	# 遗物刷新按钮：与遗物同一行末尾
-	_relic_refresh_btn = _make_button("⟳  刷新遗物", bool(_shop().get("can_refresh", false)), true)
+	_relic_refresh_btn = _make_button("⟳  刷新遗物", bool(_shop().get("can_refresh", false)), false, "secondary")
 	_relic_refresh_btn.name = "Refresh"
 	_relic_refresh_btn.custom_minimum_size = Vector2(150, 36)
 	_relic_refresh_btn.add_theme_font_size_override("font_size", 13)
@@ -106,10 +106,14 @@ func _fill_relics() -> void:
 	_refresh_bottom()
 
 func _make_card_slot(slot: int, offer: Dictionary) -> Control:
+	var slot_panel := PanelContainer.new()
+	slot_panel.name = "CardSlot%d" % slot
+	slot_panel.custom_minimum_size = Vector2(160, 0)
+	slot_panel.add_theme_stylebox_override("panel", UIStyle.panel(12, 10, 10, false))
 	var box := VBoxContainer.new()
-	box.name = "CardSlot%d" % slot
+	box.name = "CardSlotBox"
 	box.add_theme_constant_override("separation", 5)
-	box.custom_minimum_size = Vector2(150, 0)
+	slot_panel.add_child(box)
 	var card_id := str(offer.get("id", ""))
 	var card_def := ItemCards.def_by_id(card_id)
 	var card_name := str(offer.get("name", card_def.get("name", "空卡位")))
@@ -137,7 +141,7 @@ func _make_card_slot(slot: int, offer: Dictionary) -> Control:
 	price_lbl.text = "$%d" % price if not card_id.is_empty() else "—"
 	price_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	price_lbl.add_theme_font_size_override("font_size", 15)
-	price_lbl.add_theme_color_override("font_color", UITheme.color("accent"))
+	price_lbl.add_theme_color_override("font_color", UITheme.color("currency"))
 	box.add_child(price_lbl)
 	var status := "可购买"
 	if card_id.is_empty():
@@ -156,14 +160,16 @@ func _make_card_slot(slot: int, offer: Dictionary) -> Control:
 		status = "已锁定"
 	var can_buy := not _done and not card_bought and not card_id.is_empty() \
 		and not _owned_cards.has(card_id) and _card_count < ItemCards.SLOT_LIMIT and _currency >= price
-	var buy := _make_button("购买" if can_buy else status, can_buy)
+	var buy := _make_button("购买" if can_buy else status, can_buy, false, "primary")
 	buy.name = "Buy"
+	buy.custom_minimum_size = Vector2(140, 30)
 	if can_buy:
 		buy.pressed.connect(_card_buy.bind(slot))
 	box.add_child(buy)
 	var can_lock := not _done and not card_id.is_empty()
-	var lock_btn := _make_button("解锁" if locked else "锁定", can_lock, locked)
+	var lock_btn := _make_button("解锁" if locked else "锁定", can_lock, locked, "lock")
 	lock_btn.name = "Lock"
+	lock_btn.custom_minimum_size = Vector2(140, 26)
 	if can_lock:
 		lock_btn.pressed.connect(_card_lock.bind(slot, not locked))
 	box.add_child(lock_btn)
@@ -175,17 +181,21 @@ func _make_card_slot(slot: int, offer: Dictionary) -> Control:
 		lock_lbl.add_theme_color_override("font_color", UITheme.color("accent"))
 		box.add_child(lock_lbl)
 	var tip := "%s\n%s\n%s" % [card_name, desc, status]
-	box.tooltip_text = tip
+	slot_panel.tooltip_text = tip
 	for child in box.get_children():
 		if child is Control:
 			(child as Control).tooltip_text = tip
-	return box
+	return slot_panel
 
 func _make_relic_slot(slot: int, offer: Dictionary) -> Control:
+	var slot_panel := PanelContainer.new()
+	slot_panel.name = "RelicSlot%d" % slot
+	slot_panel.custom_minimum_size = Vector2(190, 0)
+	slot_panel.add_theme_stylebox_override("panel", UIStyle.panel(12, 10, 10, false))
 	var box := VBoxContainer.new()
-	box.name = "RelicSlot%d" % slot
+	box.name = "RelicSlotBox"
 	box.add_theme_constant_override("separation", 6)
-	box.custom_minimum_size = Vector2(180, 0)
+	slot_panel.add_child(box)
 	var relic_id := str(offer.get("id", ""))
 	var relic_name := str(offer.get("name", "空货位"))
 	var offer_index := int(offer.get("index", slot))
@@ -238,20 +248,22 @@ func _make_relic_slot(slot: int, offer: Dictionary) -> Control:
 	price_lbl.text = "$%d" % price if not relic_id.is_empty() else "—"
 	price_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	price_lbl.add_theme_font_size_override("font_size", 16)
-	price_lbl.add_theme_color_override("font_color", UITheme.color("accent"))
+	price_lbl.add_theme_color_override("font_color", UITheme.color("currency"))
 	box.add_child(price_lbl)
 
 	var can_buy := not _done and not relic_bought and not relic_id.is_empty() \
 		and not _owned_relics.has(relic_id) and _relic_count < 3 and _currency >= price
-	var buy := _make_button("购买" if can_buy else status, can_buy)
+	var buy := _make_button("购买" if can_buy else status, can_buy, false, "primary")
 	buy.name = "Buy"
+	buy.custom_minimum_size = Vector2(170, 30)
 	if can_buy:
 		buy.pressed.connect(_buy.bind(offer_index))
 	box.add_child(buy)
 
 	var can_lock := not _done and not relic_id.is_empty()
-	var lock_btn := _make_button("解锁" if locked else "锁定", can_lock, locked)
+	var lock_btn := _make_button("解锁" if locked else "锁定", can_lock, locked, "lock")
 	lock_btn.name = "Lock"
+	lock_btn.custom_minimum_size = Vector2(170, 26)
 	if can_lock:
 		lock_btn.pressed.connect(_lock.bind(offer_index, not locked))
 	box.add_child(lock_btn)
@@ -264,40 +276,30 @@ func _make_relic_slot(slot: int, offer: Dictionary) -> Control:
 		lock_lbl.add_theme_color_override("font_color", UITheme.color("accent"))
 		box.add_child(lock_lbl)
 
-	box.tooltip_text = tip
+	slot_panel.tooltip_text = tip
 	for child in box.get_children():
 		if child is Control:
 			(child as Control).tooltip_text = tip
-	return box
+	return slot_panel
 
-func _make_button(text: String, enabled: bool, active := false) -> Button:
+func _make_button(text: String, enabled: bool, active := false, kind := "secondary") -> Button:
 	var btn := Button.new()
 	btn.text = text
 	btn.custom_minimum_size = Vector2(150, 34)
 	btn.disabled = not enabled
-	btn.add_theme_font_size_override("font_size", 14)
-	var style := StyleBoxFlat.new()
-	style.bg_color = UITheme.color("bg_elevated")
-	style.bg_color.a = 0.85
-	style.set_corner_radius_all(8)
-	style.set_content_margin_all(6)
-	style.border_color = UITheme.color("accent") if active else UITheme.color("border")
-	style.set_border_width_all(1)
-	btn.add_theme_stylebox_override("normal", style)
-	var hover: StyleBoxFlat = style.duplicate()
-	hover.bg_color = UITheme.color("bg_surface_alt")
-	hover.border_color = UITheme.color("accent")
-	btn.add_theme_stylebox_override("hover", hover)
-	var down: StyleBoxFlat = style.duplicate()
-	down.bg_color.a = 1.0
-	down.border_color = UITheme.color("success")
-	btn.add_theme_stylebox_override("pressed", down)
-	# 禁用态：降透明度 + 灰字（不退回默认主题暗色，可读）
-	var off: StyleBoxFlat = style.duplicate()
-	off.bg_color.a = 0.4
-	btn.add_theme_stylebox_override("disabled", off)
-	btn.add_theme_color_override("font_color", UITheme.color("text_primary"))
-	btn.add_theme_color_override("font_disabled_color", UITheme.color("text_muted"))
+	btn.add_theme_font_size_override("font_size", 13)
+	match kind:
+		"primary":
+			UIStyle.apply_primary(btn)
+		"lock":
+			if active:
+				UIStyle.apply_tab(btn, true)
+			else:
+				UIStyle.apply_secondary(btn)
+		_:
+			UIStyle.apply_secondary(btn)
+	# 商店所有小按钮统一点击音（禁用按钮不会 emit）。
+	btn.pressed.connect(func(): AudioManager.play_select())
 	return btn
 
 func _refresh_bottom() -> void:
@@ -315,7 +317,7 @@ func _refresh_bottom() -> void:
 		_card_refresh_btn.disabled = not bool(shop.get("card_can_refresh", false))
 		_card_refresh_btn.tooltip_text = _refresh_tip("道具卡", bool(shop.get("card_can_refresh", false)), _card_count, ItemCards.SLOT_LIMIT, card_cost)
 	var leave: Button = get_node("Center/Panel/VBox/Bottom/Leave")
-	leave.text = "已结束商店" if _done else "结束商店（跳过剩余）"
+	leave.text = "已结束商店" if _done else "结束商店"
 	leave.disabled = _done
 
 func _refresh_tip(label: String, can: bool, count: int, limit: int, cost: int) -> String:
@@ -355,39 +357,30 @@ func _card_refresh() -> void:
 
 func _ready() -> void:
 	var panel: PanelContainer = get_node("Center/Panel")
-	var style := StyleBoxFlat.new()
-	style.bg_color = UITheme.color("bg_elevated")
-	style.bg_color.a = 1.0
-	style.set_corner_radius_all(12)
-	style.set_content_margin_all(22)
-	style.border_color = UITheme.color("border")
-	style.set_border_width_all(1)
-	panel.add_theme_stylebox_override("panel", style)
-	# "结束商店" = 唯一主操作：放大靠右下角、accent 高亮
+	panel.custom_minimum_size = Vector2(1000, 0)
+	panel.add_theme_stylebox_override("panel", UIStyle.board(22, true))
+	var title: Label = get_node("Center/Panel/VBox/Title")
+	title.add_theme_font_size_override("font_size", 22)
+	title.add_theme_color_override("font_color", UITheme.color("text_primary"))
+	var subtitle: Label = get_node_or_null("Center/Panel/VBox/Subtitle")
+	if subtitle != null:
+		subtitle.add_theme_font_size_override("font_size", 13)
+		subtitle.add_theme_color_override("font_color", UITheme.color("hud_text_muted"))
+	var cards_label: Label = get_node("Center/Panel/VBox/CardsLabel")
+	cards_label.add_theme_font_size_override("font_size", 14)
+	cards_label.add_theme_color_override("font_color", UITheme.color("hud_text_muted"))
+	var relics_label: Label = get_node("Center/Panel/VBox/RelicsLabel")
+	relics_label.add_theme_font_size_override("font_size", 14)
+	relics_label.add_theme_color_override("font_color", UITheme.color("hud_text_muted"))
+	var currency: Label = get_node("Center/Panel/VBox/Bottom/Currency")
+	currency.add_theme_font_size_override("font_size", 18)
+	currency.add_theme_color_override("font_color", UITheme.color("currency"))
+	# "结束商店" = 唯一主操作
 	var leave: Button = get_node("Center/Panel/VBox/Bottom/Leave")
-	leave.custom_minimum_size = Vector2(240, 52)
-	leave.add_theme_font_size_override("font_size", 17)
-	leave.add_theme_stylebox_override("normal", _big_accent_style())
-	var leave_hover: StyleBoxFlat = _big_accent_style()
-	leave_hover.bg_color = UITheme.color("accent_hover")
-	leave.add_theme_stylebox_override("hover", leave_hover)
-	leave.add_theme_stylebox_override("pressed", leave_hover)
-	var leave_disabled: StyleBoxFlat = _big_accent_style()
-	leave_disabled.bg_color.a = 0.4
-	leave.add_theme_stylebox_override("disabled", leave_disabled)
-	leave.add_theme_color_override("font_color", UITheme.color("text_on_accent"))
-	leave.add_theme_color_override("font_disabled_color", UITheme.color("text_on_accent"))
+	leave.custom_minimum_size = Vector2(160, 40)
+	leave.add_theme_font_size_override("font_size", 16)
+	UIStyle.apply_primary(leave)
 	leave.pressed.connect(_leave)
-
-## 结束商店大按钮的 accent 样式（alpha 控制正常/悬停/禁用）。
-func _big_accent_style() -> StyleBoxFlat:
-	var st := StyleBoxFlat.new()
-	st.bg_color = UITheme.color("accent")
-	st.set_corner_radius_all(10)
-	st.set_content_margin_all(10)
-	st.border_color = UITheme.color("accent_hover")
-	st.set_border_width_all(1)
-	return st
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not visible:
@@ -398,6 +391,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 ## 结束商店（跳过剩余遗物+道具卡）。面板保持显示，由快照刷新为“已结束”。
 func _leave() -> void:
+	AudioManager.play_select()
 	if _done:
 		return
 	if _on_skip.is_valid():

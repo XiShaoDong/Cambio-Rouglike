@@ -92,3 +92,26 @@ main.gd（HTML 角色：节点/布局）  →  UITheme.color("token")（CSS 角�
 | --- | --- |
 | `F12` | 切换布局调试：所有容器半透明彩色边框（不同层级不同色） |
 | `T` | 切换 dark / light 主题 |
+
+## 3D HUD / Hover 令牌（2026-11-11）
+
+> 3D 专用扩展；2D 棋盘仍使用既有令牌。实现见 `scripts/ui/ui_style.gd`。
+
+| 令牌 | dark | dark-1 | light | 用途 |
+| --- | --- | --- | --- | --- |
+| `hud_surface` | `22303f` 82% | `1E2330` 82% | `FFFDF8` 92% | HUD 玻璃面板 |
+| `board_surface` | `22303f` 96% | `1E2330` 96% | `FFFDF8` 97% | 看板/信息框 |
+| `hud_text_muted` | `9aa8bd` | `909AAD` | `8B8577` | HUD 次要文字 |
+| `currency` | `f6d77a` | `E8B86D` | `D9A441` | 货币/价格 |
+| `danger_text` | `ff9b9b` | `E06A7A` | `C1604F` | 红色 info 文本 |
+| `danger_soft` | `3a1f27` | `3A1F27` | `FBE3D8` | 红色 info 底 |
+| `hud_shadow` | 黑 35% | 黑 32% | 暖棕 18% | HUD/看板阴影 |
+| `hover_neutral` | `e9effa` | `F1F3F9` | `3A362E` | 普通/默认 info |
+| `hover_slap` / `hover_action` | `7aa2ff` | `4C6FFF` | `3D63D8` | 贴牌/可交互深蓝 |
+| `hover_valid` | `87d9a1` | `53C99A` | `7A9B6E` | 能力合法目标 |
+| `hover_invalid` | `ff7b7b` | `C94F61` | `C1604F` | 能力非法目标 |
+| `hover_warning` | `f6d77a` | `E8B86D` | `D9A441` | 抽牌阶弃牌提醒（黄） |
+
+- 3D 按钮/面板/看板/信息框统一走 `UIStyle`；不要在新 UI 里写 `Color("...")`。
+- `UIStyle.info_box(state)` 负责圆角、状态描边、状态条与阴影；`hover_color(state)` 供 CardBlock 虚线框使用。
+

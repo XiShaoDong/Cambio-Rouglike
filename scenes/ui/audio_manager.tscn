@@ -10,6 +10,14 @@
 [ext_resource type="AudioStream" uid="uid://cgsro1flq1nme" path="res://assets/Sounds/winner02.mp3" id="8_w02"]
 [ext_resource type="AudioStream" uid="uid://bsujab1l1vlv6" path="res://assets/Sounds/Winner03.mp3" id="9_w03"]
 [ext_resource type="AudioStream" uid="uid://bstowidgexmsi" path="res://assets/Sounds/Winner04.mp3" id="10_w04"]
+[ext_resource type="AudioStream" path="res://assets/Sounds2/card-place.ogg" id="11_place"]
+[ext_resource type="AudioStream" path="res://assets/Sounds2/card-slide-8.ogg" id="12_slide"]
+[ext_resource type="AudioStream" path="res://assets/Sounds2/tech-click.wav" id="13_click"]
+[ext_resource type="AudioStream" path="res://assets/Sounds2/countdown.wav" id="14_countdown"]
+[ext_resource type="AudioStream" path="res://assets/Sounds2/notification.ogg" id="15_notify"]
+[ext_resource type="AudioStream" path="res://assets/Sounds2/slap-fail.ogg" id="16_fail"]
+[ext_resource type="AudioStream" path="res://assets/Sounds2/slap-success.wav" id="17_success"]
+[ext_resource type="AudioStream" path="res://assets/Sounds2/card-shuffle.ogg" id="18_deal"]
 
 [node name="AudioManager" type="Node"]
 script = ExtResource("1_script")
@@ -19,3 +27,11 @@ flip_quick_sfx = ExtResource("3_quick")
 fly_sfx = ExtResource("4_fly")
 bell_sfx = ExtResource("6_bell")
 winner_sfx = Array[AudioStream]([ExtResource("7_w01"), ExtResource("8_w02"), ExtResource("9_w03"), ExtResource("10_w04")])
+card_place_sfx = ExtResource("11_place")
+card_slide_sfx = ExtResource("12_slide")
+click_sfx = ExtResource("13_click")
+countdown_sfx = ExtResource("14_countdown")
+notification_sfx = ExtResource("15_notify")
+slap_fail_sfx = ExtResource("16_fail")
+slap_success_sfx = ExtResource("17_success")
+deal_sfx = ExtResource("18_deal")

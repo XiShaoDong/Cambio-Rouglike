@@ -270,6 +270,16 @@ func _build_menu_wide() -> void:
 	_apply_primary_style(host)
 	lv.add_child(host)
 
+	var tutorial: Button = main._button("新手教程")
+	tutorial.name = "TutorialButton"
+	tutorial.custom_minimum_size = Vector2(0, 48)
+	tutorial.tooltip_text = "3 分钟学会基础牌局"
+	tutorial.pressed.connect(main._open_tutorial)
+	_apply_secondary_style(tutorial)
+	if not main.tutorial_progress.seen:
+		tutorial.text = "★ 新手教程（推荐先玩）"
+	lv.add_child(tutorial)
+
 	# 高级连接
 	_advanced_toggle = main._button("›  高级连接选项\n       IP 直连 · 手动配置")
 	_advanced_toggle.alignment = HORIZONTAL_ALIGNMENT_LEFT
@@ -490,6 +500,16 @@ func _build_menu_compact() -> void:
 	host.disabled = main.is_dev_join
 	_apply_primary_style(host)
 	_menu_box.add_child(host)
+
+	var tutorial: Button = main._button("新手教程")
+	tutorial.name = "TutorialButton"
+	tutorial.custom_minimum_size = Vector2(0, 48)
+	tutorial.tooltip_text = "3 分钟学会基础牌局"
+	tutorial.pressed.connect(main._open_tutorial)
+	_apply_secondary_style(tutorial)
+	if not main.tutorial_progress.seen:
+		tutorial.text = "★ 新手教程（推荐先玩）"
+	_menu_box.add_child(tutorial)
 
 	# 弹性空白：主要操作在上，次要操作靠下
 	var spacer := Control.new()
