@@ -132,11 +132,19 @@
 
 ### 2.12 2026-11-11 教程 V2（当前工作区，纯客户端）
 
-- **定位**：`scenes/tutorial/tutorial_3d.tscn` + `TutorialView`；本地时间线，不接网络/`GameState`。输入改为正式对局同款**鼠标捕获 + 屏幕中心准星**：移动鼠标自由环视，左键中心射线交互，`Esc` 暂停/释放鼠标；不强制移动镜头，目标用金色 glow + `TutorialPointer` 红色箭头提示。
-- **固定牌局**：玩家 `K K / 2 10`（下排开局翻转），阿岚 `Q Q Q Q`；抽 7 换 10 → 抽 9 弃掉 → 阿岚弃 2 → 贴牌比赛（阿岚手里也有 2，1.5s 后贴；玩家必须更快，失败提示并重试）→ 阿岚自己示范贴错（「我记得我也有一张 2 来着」）→ 玩家贴阿岚右下角的 Q 并选一张自己的牌交给她（SLAP_EXCHANGE）→ 阿岚 7 张结算。
-- **文件**：`tutorial_steps.gd`（固定牌序/比赛/交牌/动态结算）、`tutorial_controller.gd`（talk/interact/auto/summary + gift_slot）、`tutorial_text.gd`、`tutorial_overlay.gd`（进度/任务/对话/贴牌倒计时/暂停/完成）、`tutorial_view.gd`（准星/自由视角/比赛/自动演示/结算）、`tutorial_pointer.gd`（红色箭头）、`animalese_voice.gd`（逐字语音，`assets/animalese/`）。
-- **表现层修复**：教程 Table3D 相机 `make_current()`；主对局进 3D 也 `make_current()`（B50）；`RobotAvatar` 的 `jawOpen` 只驱动 `Face+Eyes`，`Arms/Legs/Body` 不驱动（B51，避免说话带动胳膊/腿）；教程卡牌 `hover_amp=0.2`（手牌 hover 摆幅 −80%）。
-- **测试**：`verify_tutorial` 140/140、`verify_robot_avatar` 87/87、`verify_table3d_interaction` 101/101。规则/协议/快照/服务器零改动。
+- **定位**：`scenes/tutorial/tutorial_3d.tscn` + `TutorialView`；本地时间线，不接网络/`GameState`。正式对局同款**鼠标捕获 + 屏幕中心准星**，自由环视；不强制转镜头，目标用金色 glow + `TutorialPointer` 红色箭头。开局/重新开局用**可见鼠标 + Ready 按钮**（没翻牌点 Ready 会加大红字警告）。
+- **教程流程**：① 欢迎文案 + 点击翻开下排两张 + Ready；② 规则演示：抽 9 → 讲解替换/弃牌两个选择 → A—Q=1—12、K=-1、Joker=0 + Shift 牌序 → Tab 手册/瞄准卡牌看能力；③「重新开始」重发同样的牌，再翻开 + Ready；④ 正式局先手抽 A，提示「你好像有一张 10」并替换；⑤ 阿岚抽 Q/换牌均至少等 1s，只说明换牌与弃牌（此步不提 slap）；⑥ 接回第二次抽 9/弃牌 → 贴牌比赛 → 阿岚贴错示范 → 贴别人牌/交牌 → 7 张结算。
+- **牌序/状态**：玩家初始 `K K / 2 10`，正式局 10 换 A；阿岚 `Q Q Q Q`，贴牌比赛起多一张 2；最终按 `gift_slot` 动态结算。
+- **交互/UI**：`TutorialOverlay` 增加 Ready 按钮、红字警告、任务条更新；`tutorial_pointer.gd` 屏幕空间红箭头；`CardTooltip` 悬停显示已知牌能力；Tab 打开 `ManualPanel`（只留手册页，隐藏 Stats/按键页签）；Shift 开关 `CardOrderPanel` 牌序。教程卡牌 hover 恢复完整幅度（`hover_amp=1.0`）。
+- **表现层修复**：教程 Table3D 相机 `make_current()`；主对局进 3D 也 `make_current()`（B50）；`RobotAvatar` 的 `jawOpen` 只驱动 `Face+Eyes`，`Arms/Legs/Body` 不驱动（B51）。
+- **测试**：`verify_tutorial` 154/154、`verify_robot_avatar` 87/87、`verify_table3d_interaction` 101/101。规则/协议/快照/服务器零改动。
+
+### 2.13 2026-11-12 资产瘦身与性能基准
+
+- **扫描/计划**：`tools/scan_unused_assets.py` → `docs/资源未使用扫描.md`；执行计划 `docs/游戏瘦身计划.md`。
+- **已执行**：Batch 1 删零引用小资源约 0.68 MB（SmallCards 51 张、多余卡背、1× TypeCards、旧音效、`lobby_stage_art.gd`、MCP 备份）；A2 删 dev-only 抽牌堆模型/沙盒约 33.5 MB；A3 删重复 `scenes/poker_table.blend` 1.78 MB。扫描当前零引用/重复/缺失均为 0；皇冠 albedo 是 GLB 导入依赖，保留。
+- **性能基准**：`tests/bench_server.tscn`（4 人、5000×4 快照）：单次快照约 41 µs、4 人广播约 164 µs、约 2.7 KB/人 JSON、占 60fps 帧预算约 0.99%。事件驱动下 10 次操作/秒约 0.16% 单核；当前服务器性能 A，客户端/教程重构的服务器收益约 0。
+- **测试**：`tools/run_all_tests.sh --quick` **57/57**（已移除 `deck_back` 用例）。
 
 ## 3. 架构不变量（禁止无理由重构）
 
@@ -240,8 +248,7 @@ UI 层已拆分（main.gd 是组合根）：
 | `bell_model.gd` | Kong 铃铛模型包装：实例化 `assets/3Dmodels/call-bell.glb` + `bell_metal.gdshader`（按局部 Y 三段：黑底座/金钟体/银顶钮），`set_glow` 可用性金光；`table3d_view._bind` 挂载并隐藏旧占位 Base/Dome/Knob |
 | `deck_pile.gd`（`DeckPile`） | 牌堆视觉：把 N 张卡边薄盒叠成一摞；`with_back=true`（抽牌堆，顶面贴合卡背）/`false`（弃牌堆，只画卡边，正面朝上）；`set_count` 仅在变化时重建 |
 | `stats_board.gd`（`StatsBoard`） | **Stats 面板内容**：把 `discard_history` 去重后按 4 行花色（♠♥♣♦，红 Joker→♥/黑 Joker→♠、A..K **固定槽位**）扇形展开（沿 X 叠 `STEP_FRAC`、微弧 `ARC` + 倾角 `TILT_DEG`），复用 `CardFactory`/`CardView` |
-| `assets/shaders/bell_metal.gdshader` / `deck_back_projection.gdshader` | 铃铛金属（Y 分段）/ 抽牌堆模型卡背投影（沙盒）；纯展示着色器 |
-| `deck_back_config.gd` / `deck_back_math.gd` / `deck_model_sandbox.gd` + `scenes/ui/deck_model_sandbox.tscn` | 抽牌堆模型 `DeckCardPile.glb` 卡背拟合沙盒（方案 3 第一步，未接入对局） |
+| `assets/shaders/bell_metal.gdshader` | 铃铛金属（Y 分段）；纯展示着色器 |
 
 ## 5. 状态机（`GameState.Phase` 数值不可随意变更，需同步 UI 与测试）
 
@@ -311,7 +318,9 @@ UI 层已拆分（main.gd 是组合根）：
 
 > **2026-10-30 视觉批次**：`--quick` 全量 **53/53**；本批新增/更新的关键用例：`card_tilt` 46/46、`robot_avatar` 84/84、`table3d` 62/62、`table3d_interaction` 99/99、`item_hand` 43/43、`manual` 73/73。
 >
-> **2026-11-11 教程 V2**：`verify_tutorial` 140/140（固定牌序/中心准星命中/1.5s 贴牌比赛及重试/阿岚自动贴错/贴别人 Q/SLAP_EXCHANGE 交牌/动态结算/教程相机接管）；`verify_robot_avatar` 87/87（jawOpen 仅 Face+Eyes）；`verify_table3d_interaction` 101/101。
+> **2026-11-12 服务器性能基准**：`tests/bench_server.tscn`（4 人、5000×4 快照）：单次快照约 41 µs、4 人广播约 164 µs、约 2.7 KB/人 JSON、占 60fps 帧预算约 0.99%；事件驱动下 10 次操作/秒约 0.16% 单核。当前规模无需为服务器性能重构。
+>
+> **2026-11-11 教程 V2**：`verify_tutorial` 154/154（欢迎 peek/Ready 警告/规则 9/正式 A/悬停手册/Shift 牌序/1.5s 贴牌比赛及重试/阿岚自动贴错/贴别人 Q/SLAP_EXCHANGE 交牌/动态结算/教程相机接管）；`verify_robot_avatar` 87/87（jawOpen 仅 Face+Eyes）；`verify_table3d_interaction` 101/101。
 
 ```bash
 # 编译检查
@@ -384,7 +393,6 @@ UI 层已拆分（main.gd 是组合根）：
 # Q 看牌 hold（12/12：2D hold 登记/交换 consume 返回牌面与撤标记/不交换翻回动画后清理）
 ... --headless --path . res://tests/verify_q_hold.tscn
 # 抽牌堆模型卡背投影沙盒（48/48：DeckBackConfig/分层 hash/投影 XZ/侧面 AO/着色器 uniform/沙盒 apply_config·set_param）
-... --headless --path . res://tests/verify_deck_back.tscn
 # 双实例网络回归（host + client 各跑，均 exit 0）
 ... --headless --path . res://tests/verify_net.tscn -- -role host
 ... --headless --path . res://tests/verify_net.tscn -- -role client
