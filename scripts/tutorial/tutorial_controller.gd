@@ -3,11 +3,16 @@ extends RefCounted
 ## 教学步骤机：talk 逐句推进，interact 真操作校验，auto 由视图播完动画后推进，summary 收尾。
 
 const STEPS := [
-	{"id": "intro_1", "mode": "talk", "state": "dealt", "focus": ""},
-	{"id": "intro_2", "mode": "talk", "state": "initial", "focus": ""},
-	{"id": "intro_3", "mode": "talk", "state": "memorized", "focus": ""},
-	{"id": "draw", "mode": "interact", "state": "ready_draw", "focus": "deck"},
-	{"id": "replace", "mode": "interact", "state": "drawn_7", "focus": "own_hand"},
+	{"id": "welcome", "mode": "peek", "state": "dealt", "focus": "own_hand"},
+	{"id": "rules_draw9", "mode": "interact", "state": "ready_draw", "focus": "deck"},
+	{"id": "rules_choices_hand", "mode": "talk", "state": "rules_drawn_9", "focus": "own_hand"},
+	{"id": "rules_choices_discard", "mode": "talk", "state": "rules_drawn_9", "focus": "discard"},
+	{"id": "rules_scoring", "mode": "talk", "state": "rules_drawn_9", "focus": "own_hand"},
+	{"id": "rules_abilities", "mode": "talk", "state": "rules_drawn_9", "focus": ""},
+	{"id": "rules_restart", "mode": "talk", "state": "rules_drawn_9", "focus": ""},
+	{"id": "part2_peek", "mode": "peek", "state": "dealt", "focus": "own_hand"},
+	{"id": "part2_drawA", "mode": "interact", "state": "ready_draw", "focus": "deck"},
+	{"id": "part2_replace", "mode": "interact", "state": "drawn_A", "focus": "own_hand"},
 	{"id": "opponent_replace", "mode": "auto", "state": "player_replaced",
 		"end_state": "opponent_replaced", "focus": "opponent_hand"},
 	{"id": "opponent_replace_explain", "mode": "talk", "state": "opponent_replaced",
@@ -137,12 +142,12 @@ func restart() -> void:
 func pick(meta: Dictionary) -> Dictionary:
 	var kind := str(meta.get("kind", ""))
 	match step_id():
-		"draw", "draw2":
+		"rules_draw9", "part2_drawA", "draw2":
 			if kind == "deck":
 				_advance_forced()
 				return {"ok": true, "message": "", "effect": "draw"}
 			return {"ok": false, "message": TutorialText.toast("draw_wrong")}
-		"replace":
+		"part2_replace":
 			if kind == "slot":
 				if int(meta.get("seat", -1)) == TutorialSteps.PLAYER \
 						and int(meta.get("slot", -1)) == 3:

@@ -10,7 +10,7 @@ const OPPONENT_NAME := "阿岚"
 
 const CARDS := {
 	"p0": ["K", "♠"], "p1": ["K", "♥"], "p2": ["2", "♦"], "p3": ["10", "♣"],
-	"p4": ["7", "♠"], "p5": ["9", "♥"],
+	"p4": ["7", "♠"], "p5": ["9", "♥"], "p6": ["A", "♠"],
 	"o0": ["Q", "♠"], "o1": ["Q", "♥"], "o2": ["Q", "♦"], "o3": ["Q", "♣"],
 	"o4": ["Q", "♠"], "o5": ["2", "♥"], "o6": ["4", "♣"],
 	"o7": ["5", "♠"], "o8": ["8", "♦"], "o9": ["9", "♣"],
@@ -78,10 +78,10 @@ static func _player_hand() -> Array:
 	return [_slot("p0"), _slot("p1"), _slot("p2"), _slot("p3")]
 
 static func _player_after_replace() -> Array:
-	return [_slot("p0"), _slot("p1"), _slot("p2"), _slot("p4")]
+	return [_slot("p0"), _slot("p1"), _slot("p2"), _slot("p6")]
 
 static func _player_after_slap() -> Array:
-	return [_slot("p0"), _slot("p1"), _empty_slot(), _slot("p4")]
+	return [_slot("p0"), _slot("p1"), _empty_slot(), _slot("p6")]
 
 static func _opponent_hand() -> Array:
 	return [_slot("o0"), _slot("o1"), _slot("o2"), _slot("o3")]
@@ -117,14 +117,21 @@ static func state_memorized() -> Dictionary:
 static func state_ready_draw() -> Dictionary:
 	return _state(GameState.Phase.TURN_DRAW, _player_hand(), _opponent_hand())
 
-## 4) 抽到 7（等待替换）。
-static func state_drawn_7() -> Dictionary:
-	var pending := card_by_id("p4")
+## 规则演示：抽到 9（等待讲解两个选择）。
+static func state_rules_drawn_9() -> Dictionary:
+	var pending := card_by_id("p5")
 	pending["source"] = "draw"
 	return _state(GameState.Phase.TURN_DECISION, _player_hand(), _opponent_hand(),
 		{"draw_count": 45, "pending": pending})
 
-## 5) 玩家把 10 换成 7；旧牌 10 进弃牌堆并开贴牌窗口，轮到对手。
+## 正式局：抽到 A（等待替换 10）。
+static func state_drawn_A() -> Dictionary:
+	var pending := card_by_id("p6")
+	pending["source"] = "draw"
+	return _state(GameState.Phase.TURN_DECISION, _player_hand(), _opponent_hand(),
+		{"draw_count": 45, "pending": pending})
+
+## 5) 玩家把 10 换成 A；旧牌 10 进弃牌堆并开贴牌窗口，轮到对手。
 static func state_player_replaced() -> Dictionary:
 	return _state(GameState.Phase.TURN_DRAW, _player_after_replace(), _opponent_hand(), {
 		"current_player": OPPONENT, "draw_count": 45,
@@ -132,7 +139,16 @@ static func state_player_replaced() -> Dictionary:
 		"slap_open": true,
 	})
 
-## 6) 对手也换一张（Q 换 Q），弃掉旧 Q；轮到玩家。
+## 6a) 对手抽一张 Q（等待 1s 再换牌；他人视角背面）。
+static func state_opponent_drew_Q() -> Dictionary:
+	return _state(GameState.Phase.TURN_DRAW, _player_after_replace(), _opponent_hand(), {
+		"current_player": OPPONENT, "draw_count": 44,
+		"pending": {"card_id": "o4", "source": "draw", "hidden": true},
+		"discard": _discard("p3"), "discard_count": 1,
+		"discard_history": [_discard("p3")],
+	})
+
+## 6b) 对手也换一张（Q 换 Q），弃掉旧 Q；轮到玩家。
 static func state_opponent_replaced() -> Dictionary:
 	return _state(GameState.Phase.TURN_DRAW, _player_after_replace(), _opponent_after_replace(), {
 		"current_player": PLAYER, "draw_count": 44,
@@ -297,8 +313,10 @@ static func state_by_id(id: String) -> Dictionary:
 		"initial": return state_initial()
 		"memorized": return state_memorized()
 		"ready_draw": return state_ready_draw()
-		"drawn_7": return state_drawn_7()
+		"rules_drawn_9": return state_rules_drawn_9()
+		"drawn_A": return state_drawn_A()
 		"player_replaced": return state_player_replaced()
+		"opponent_drew_Q": return state_opponent_drew_Q()
 		"opponent_replaced": return state_opponent_replaced()
 		"drawn_9": return state_drawn_9()
 		"player_discarded_9": return state_player_discarded_9()

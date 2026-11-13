@@ -5,13 +5,18 @@ extends RefCounted
 const SPEAKER := "阿岚"
 
 const TITLES := {
-	"intro_1": "开局与记忆",
-	"intro_2": "点数越小越好",
-	"intro_3": "记住下排两张",
-	"draw": "抽牌",
-	"replace": "替换手牌",
-	"opponent_replace": "对手回合",
-	"opponent_replace_explain": "对手换牌结果",
+	"welcome": "欢迎来到 Kong",
+	"rules_draw9": "抽一张牌",
+	"rules_choices_hand": "选择：替换",
+	"rules_choices_discard": "选择：弃牌",
+	"rules_scoring": "点数就是分数",
+	"rules_abilities": "卡牌能力",
+	"rules_restart": "重新开始",
+	"part2_peek": "正式开局",
+	"part2_drawA": "抽牌",
+	"part2_replace": "替换 10",
+	"opponent_replace": "阿岚回合",
+	"opponent_replace_explain": "阿岚换牌",
 	"draw2": "再抽一张",
 	"discard": "弃牌",
 	"opponent_discard": "对手弃牌",
@@ -32,30 +37,42 @@ const TITLES := {
 }
 
 const LINES := {
-	"intro_1": [
-		"开局你会拿到 4 张牌，只有下排两张会翻开。点击任意位置翻开它们。",
-		"移动鼠标可以环视；准星对准目标后按左键。记住下排两张的点数和位置。",
+	"welcome": [
+		"欢迎来到 Kong！靠记忆和策略减少卡牌点数或数量来获胜。\n规则很简单：开局可查看下方两张牌，记住它们，后面会考。点击任意位置翻开卡牌。",
 	],
-	"intro_2": [
-		"点数越小越好：A 是 1 分，K 是 -1 分，Joker 是 0 分。",
-		"2 到 10 就是牌面点数，J 和 Q 都是 10 分。",
+	"rules_draw9": [
+		"每回合你会抽一张牌。点击高亮的抽牌堆，抽一张。",
 	],
-	"intro_3": [
-		"现在它们盖回去了，接下来只能靠你的记忆。",
+	"rules_choices_hand": [
+		"抽到 9 后你有两个选择。第一：替换手牌，减少点数。",
 	],
-	"draw": [
-		"轮到你了。点击高亮的抽牌堆，抽一张牌。",
+	"rules_choices_discard": [
+		"第二：弃掉它，发挥它的能力。",
 	],
-	"replace": [
-		"抽到 7。你记得下排有一张 10，比 7 大。",
-		"点击那张 10，把它替换掉。",
+	"rules_scoring": [
+		"卡牌点数就是分数：A—Q 是 1—12 分，K 是 -1 分，Joker 是 0 分。按 Shift 可以开关牌序。",
+	],
+	"rules_abilities": [
+		"卡牌能力可以按 Tab 打开手册，或瞄准卡牌查看。",
+	],
+	"rules_restart": [
+		"好了，基本规则你都了解了。剩下的可以在对局中学习——让我们重新开始吧！",
+	],
+	"part2_peek": [
+		"重新发牌，和刚才一样。点击翻开下方两张牌，记好再点 Ready。",
+	],
+	"part2_drawA": [
+		"这次你先手。点击抽牌堆，抽一张。",
+	],
+	"part2_replace": [
+		"抽到 A。你好像有一张 10 哦——点它，把 10 换成 A。",
 	],
 	"opponent_replace": [
 		"我也换一张。",
 	],
 	"opponent_replace_explain": [
-		"阿岚把换下来的旧 Q 丢进弃牌堆，贴牌窗口打开了。",
-		"你手里没有 Q，所以这次不贴。轮到你抽牌。",
+		"阿岚换了一张牌，把换下来的旧 Q 丢进了弃牌堆。",
+		"现在轮到你抽牌。",
 	],
 	"draw2": [
 		"又轮到你了，再点抽牌堆抽一张。",
@@ -115,12 +132,17 @@ const LINES := {
 }
 
 const TASKS := {
-	"intro_1": "记住下排两张牌",
-	"intro_2": "目标：手牌点数总和尽量小",
-	"intro_3": "目标：手牌点数总和尽量小",
-	"draw": "点击高亮的抽牌堆",
-	"replace": "点击你记得的那张 10",
-	"opponent_replace": "对手的回合",
+	"welcome": "点击翻开下方的两张牌（高亮）",
+	"rules_draw9": "点击高亮的抽牌堆",
+	"rules_choices_hand": "看：替换手牌",
+	"rules_choices_discard": "看：弃牌堆",
+	"rules_scoring": "按 Shift 查看牌序",
+	"rules_abilities": "Tab 手册 / 瞄准卡牌",
+	"rules_restart": "准备重新开始",
+	"part2_peek": "点击翻开下方的两张牌（高亮）",
+	"part2_drawA": "点击高亮的抽牌堆",
+	"part2_replace": "点击你记得的那张 10",
+	"opponent_replace": "阿岚的回合",
 	"opponent_replace_explain": "看阿岚换牌的结果",
 	"draw2": "点击高亮的抽牌堆",
 	"discard": "点击弃牌堆弃掉 9",
@@ -149,6 +171,7 @@ const TOAST := {
 	"slap_other_hint": "请跟随提示：点阿岚右下角亮起的 Q。",
 	"slap_gift_hint": "请跟随提示：选一张自己的牌交给阿岚。",
 	"race_lost": "只有最快翻开牌的人才可以成功贴牌哦，再试一次！",
+	"peek_need_flip": "先翻开下方的两张牌，再点 Ready！",
 	"slap_timeout": "窗口结束了，再来一次！",
 	"wait": "先完成当前这一步。",
 }

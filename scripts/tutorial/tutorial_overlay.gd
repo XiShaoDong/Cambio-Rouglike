@@ -8,6 +8,7 @@ signal skip_step_pressed
 signal skip_all_pressed
 signal exit_pressed
 signal summary_done_pressed
+signal ready_pressed
 
 const SLAP_SECONDS := 3.0
 const GLASS_BG := Color(0.05, 0.06, 0.09, 0.86)
@@ -31,6 +32,9 @@ var _toast: Label
 var _toast_timer := 0.0
 var _pause_root: Control
 var _summary_root: Control
+var _ready_btn: Button
+var _ready_warn: Label
+var _ready_warn_timer := 0.0
 
 
 func _ready() -> void:
@@ -45,6 +49,7 @@ func _build() -> void:
 	_build_speech()
 	_build_slap()
 	_build_toast()
+	_build_ready()
 	_build_pause()
 	_build_summary()
 
@@ -229,6 +234,35 @@ func _button_style(bg: Color, text_color: Color) -> StyleBoxFlat:
 	return s
 
 
+func _build_ready() -> void:
+	_ready_btn = _menu_button("READY", func(): ready_pressed.emit(), true)
+	_ready_btn.name = "ReadyButton"
+	_ready_btn.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	_ready_btn.offset_left = -300
+	_ready_btn.offset_right = -24
+	_ready_btn.offset_top = -104
+	_ready_btn.offset_bottom = -24
+	_ready_btn.add_theme_font_size_override("font_size", 26)
+	_ready_btn.visible = false
+	add_child(_ready_btn)
+	_ready_warn = Label.new()
+	_ready_warn.name = "ReadyWarn"
+	_ready_warn.set_anchors_preset(Control.PRESET_CENTER)
+	_ready_warn.offset_left = -340
+	_ready_warn.offset_right = 340
+	_ready_warn.offset_top = -150
+	_ready_warn.offset_bottom = -90
+	_ready_warn.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_ready_warn.add_theme_font_size_override("font_size", 34)
+	_ready_warn.add_theme_color_override("font_color", Color("ff4b4b"))
+	_ready_warn.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	_ready_warn.add_theme_constant_override("outline_size", 8)
+	_ready_warn.text = "先翻开下方的两张牌！"
+	_ready_warn.visible = false
+	_ready_warn.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_ready_warn)
+
+
 func _build_pause() -> void:
 	_pause_root = Control.new()
 	_pause_root.name = "Pause"
@@ -276,9 +310,9 @@ func _build_summary() -> void:
 	_summary_root = Control.new()
 	_summary_root.name = "Summary"
 	_summary_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_summary_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_summary_root.mouse_filter = Control.MOUSE_FILTER_STOP
 	_summary_root.visible = false
-	_summary_root.z_index = 200
+	_summary_root.z_index = 400
 	add_child(_summary_root)
 	var panel := PanelContainer.new()
 	panel.set_anchors_preset(Control.PRESET_CENTER_TOP)
@@ -309,7 +343,7 @@ func _build_summary() -> void:
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	row.add_theme_constant_override("separation", 10)
 	box.add_child(row)
-	row.add_child(_menu_button("开始第一局", func(): summary_done_pressed.emit(), true))
+	row.add_child(_menu_button("回到主界面", func(): summary_done_pressed.emit(), true))
 	row.add_child(_menu_button("重看教程", func(): restart_pressed.emit()))
 
 
@@ -384,6 +418,29 @@ func show_toast(text: String) -> void:
 	_toast_timer = 2.8
 
 
+func show_ready(on: bool) -> void:
+	if _ready_btn != null:
+		_ready_btn.visible = on
+
+
+func is_over_ready(pos: Vector2) -> bool:
+	if _ready_btn == null or not _ready_btn.visible:
+		return false
+	return Rect2(_ready_btn.global_position, _ready_btn.size).has_point(pos)
+
+
+func set_task(text: String) -> void:
+	_task_label.text = text
+	_task_panel.visible = not text.is_empty()
+
+
+func flash_ready_warning() -> void:
+	if _ready_warn == null:
+		return
+	_ready_warn.visible = true
+	_ready_warn_timer = 2.2
+
+
 func show_pause(on: bool) -> void:
 	_pause_root.visible = on
 
@@ -397,6 +454,10 @@ func is_paused_visible() -> bool:
 
 
 func _process(delta: float) -> void:
+	if _ready_warn_timer > 0.0:
+		_ready_warn_timer -= delta
+		if _ready_warn_timer <= 0.0 and _ready_warn != null:
+			_ready_warn.visible = false
 	if _toast_timer > 0.0:
 		_toast_timer -= delta
 		if _toast_timer <= 0.0:

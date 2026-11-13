@@ -171,9 +171,9 @@
 
 | 文件 | 职责 |
 | --- | --- |
-| `scenes/tutorial/tutorial_3d.tscn` / `scripts/tutorial/tutorial_view.gd` | 3D 教学局：正式对局同款鼠标捕获 + 中心准星、自由环视、红色箭头、贴牌比赛/贴别人牌；本地时间线，**不接网络/GameState**。 |
+| `scenes/tutorial/tutorial_3d.tscn` / `scripts/tutorial/tutorial_view.gd` | 3D 教学局：正式对局同款鼠标捕获 + 中心准星、自由环视、红色箭头、Ready/翻牌、悬停能力/Tab 手册/Shift 牌序、贴牌比赛/贴别人牌；本地时间线，**不接网络/GameState**。 |
 | `scripts/tutorial/tutorial_controller.gd` | 教学步骤机（talk/interact/auto/summary；比赛/贴别人 Q/交牌 `gift_slot`；跳过/重来）。 |
-| `scripts/tutorial/tutorial_overlay.gd` | 引导层（进度、任务条、对话气泡、贴牌倒计时、纠错 toast、Esc 暂停菜单、完成卡）。 |
+| `scripts/tutorial/tutorial_overlay.gd` | 引导层（进度、任务条、对话气泡、贴牌倒计时、Ready 按钮/红字警告、纠错 toast、Esc 暂停菜单、完成卡）。 |
 | `scripts/tutorial/tutorial_steps.gd` | 固定牌序与各阶段快照（含阿岚的 2、贴牌比赛、贴别人牌、动态交牌/结算）。 |
 | `scripts/tutorial/tutorial_text.gd` | 教学文案集中处（含比赛/贴错/交牌）。 |
 | `scripts/tutorial/tutorial_pointer.gd` | 教程屏幕空间红色箭头（目标屏内悬停/屏外贴边；不移动相机）。 |
@@ -186,13 +186,12 @@
 | `scripts/ui/card_animation_sandbox.gd` + `scenes/ui/card_animation_sandbox.tscn` | 卡牌 hover/按压/翻牌/落位动效调参。 |
 | `scripts/ui/card_fly_sandbox.gd` + `scenes/ui/card_fly_sandbox.tscn` | 3D 飞牌 6 种 kind 演示。 |
 | `scripts/ui/card_tilt_sandbox.gd` + `scenes/ui/card_tilt_sandbox.tscn` | 2D 伪 3D 大牌倾斜调参。 |
-| `scripts/ui/deck_model_sandbox.gd` + `scenes/ui/deck_model_sandbox.tscn` | 抽牌堆模型卡背投影调参（未接入对局）。 |
 
 ### 3.6 场景与资源
 
 - 场景：`scenes/ui/{game_board, player_area, table3d, settlement_page, shop_panel, joker_transform_panel, manual_panel, relic_bar, card, audio_manager, hand_silhouette_2d, item_arm_hand_3d, *sandbox}.tscn`；教学 `scenes/tutorial/tutorial_3d.tscn`。
 - 资源：`assets/ui/slap_burst.svg`；卡牌 `assets/Cards/`、图集 `assets/TypeCards/`；3D 模型 `assets/3Dmodels/`、`assets/characters/source/Robot.blend`。
-- 着色器：`assets/shaders/board_holo.gdshader`、`assets/shaders/board_beam.gdshader`、`assets/shaders/card_face_3d.gdshader`、`card_tilt.gdshader`、`table_surface.gdshader`、`bell_metal.gdshader`、`avatar_body.gdshader`、`crown_gold.gdshader`、`arm_overlay_3d.gdshader`、`deck_back_projection.gdshader`。
+- 着色器：`assets/shaders/board_holo.gdshader`、`assets/shaders/board_beam.gdshader`、`assets/shaders/card_face_3d.gdshader`、`card_tilt.gdshader`、`table_surface.gdshader`、`bell_metal.gdshader`、`avatar_body.gdshader`、`crown_gold.gdshader`、`arm_overlay_3d.gdshader`。
 
 ---
 
@@ -479,17 +478,22 @@ $GODOT --headless --path . res://tests/verify_hint.tscn
 ### 10.1 输入与镜头
 
 - `TutorialView` 使用正式对局同款**鼠标捕获 + 屏幕中心准星**：移动鼠标自由环视，左键按中心射线交互，`Esc` 暂停/释放鼠标。
+- 开局/重新开局用**可见鼠标 + 屏幕 Ready 按钮**：点任意位置翻开下排两张；没翻开就点 Ready → 加大红字「先翻开下方的两张牌！」。
 - 不再 `aim_at` / `lock_aim_at` 强制转镜头；目标只做金色 glow + `TutorialPointer` 红色箭头（屏内悬在目标上方、屏外贴边指向）。点错统一提示「请跟随提示」。
-- 大牌每次渲染前 `Table3dView.update_facing(current_player)`，并在 `_process` 每帧同步，保证竖立且朝向行动者。
+- 大牌每次渲染前 `Table3dView.update_facing(current_player)`，并在 `_process` 每帧同步，保证竖立且朝向行动者；卡牌 hover 恢复完整幅度（`hover_amp=1.0`）。
 
 ### 10.2 流程
 
-- 固定牌：玩家 `K K / 2 10`，阿岚 `Q Q Q Q`；开局先显示文字、牌仍背面，第一次点击/Enter 才 `reveal_slot_held` 翻开下排两张。
-- 抽 7 换 10 → 抽 9 弃 → 阿岚弃 2 → `slap_explain` → **贴牌比赛**：阿岚手里也有 2，1.5s 后自动贴；玩家必须更快，失败提示「只有最快翻开牌的人才可以成功贴牌哦，再试一次！」并重置重试。
+- **欢迎/规则演示**：欢迎文案 + 翻开下排两张 + Ready；抽 9 演示「替换 / 弃掉」两个选择；讲解 A—Q=1—12、K=-1、Joker=0，Shift 开关牌序；Tab 打开手册或瞄准公开牌看能力；「重新开始」重发同样的牌。
+- **正式局**：再次翻开 + Ready；玩家先手抽 A，提示「你好像有一张 10」并替换（`part2_replace`）；阿岚抽 Q/换牌均至少等 1s，只说明换牌与弃牌（此步不提 slap）；接回第二次抽 9/弃牌。
+- 阿岚弃 2 → `slap_explain` → **贴牌比赛**：阿岚手里也有 2，1.5s 后自动贴；玩家必须更快，失败提示「只有最快翻开牌的人才可以成功贴牌哦，再试一次！」并重置重试。
 - 阿岚抽/弃 4 后自己贴她的 2（错）→ 罚到 6；`slap_other_setup` 换一张 Q 出去；`slap_other_tell` 提示右下角还有 Q；玩家贴她的 Q → `SLAP_EXCHANGE`；`slap_other_exchange` 玩家选自己的 slot0/1/3 交给她（`slap_gift`）；阿岚再贴错到 7 → 动态 `game_over_gift` 结算。
-- 教程卡牌 `hover_amp=0.2`；`RobotAvatar` 说话只驱动 `Face+Eyes`（`Arms/Legs/Body` 不驱动）。
+- `RobotAvatar` 说话只驱动 `Face+Eyes`（`Arms/Legs/Body` 不驱动）。
+- 完成卡：`回到主界面`（可点击；结算页设为点击穿透，看板/完成卡移到输入最前）；`重看教程` 保留。
+- 贴牌表现：自己贴牌/贴别人 Q 都先 `reveal_slot` 真翻牌（绿光）→ 等待 → `slap_resolved` 飞到弃牌堆；不再直接进弃牌堆。
+- 悬停：只显示公开/真实已知牌（pending/弃牌顶）；手牌背面不再从教程记忆表反推点数。
 
 ### 10.3 文件与测试
 
 - `scripts/tutorial/{tutorial_steps,tutorial_controller,tutorial_text,tutorial_overlay,tutorial_view,tutorial_pointer,animalese_voice}.gd`；`assets/animalese/light/`。
-- `verify_tutorial` **140/140**、`verify_robot_avatar` **87/87**、`verify_table3d_interaction` **101/101**。
+- `verify_tutorial` **154/154**、`verify_robot_avatar` **87/87**、`verify_table3d_interaction` **101/101**。
